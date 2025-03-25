@@ -544,23 +544,50 @@ export const gerarRelatorioSemanalV2 = async (
                 <table class="presenca-table">
                   <tr>
                     <th>Funcionário</th>
-                    ${presencas[0].presencas.map((p: any) => {
-                      const dataObj = parseISO(p.data);
-                      return `<th>${format(dataObj, 'EEE, dd/MM', { locale: ptBR })}</th>`;
-                    }).join('')}
+                    ${(() => {
+                      // Obter as datas da semana (segunda a sexta)
+                      const diasUteis = [];
+                      const inicioSemana = parseISO(dataInicio);
+                      
+                      // Adicionar dias de segunda (índice 1) a sexta (índice 5)
+                      for (let i = 0; i < 5; i++) {
+                        const dia = new Date(inicioSemana);
+                        dia.setDate(inicioSemana.getDate() + i);
+                        diasUteis.push(format(dia, 'yyyy-MM-dd'));
+                      }
+                      
+                      return diasUteis.map(data => {
+                        const dataObj = parseISO(data);
+                        return `<th>${format(dataObj, 'EEE, dd/MM', { locale: ptBR })}</th>`;
+                      }).join('');
+                    })()}
                   </tr>
                   ${presencas.map((funcionario: any) => `
                     <tr>
                       <td>${funcionario.nome}</td>
-                      ${funcionario.presencas.map((p: any) => {
-                        if (p.presente === 1) {
-                          return `<td class="presente">✓</td>`;
-                        } else if (p.presente === 0.5) {
-                          return `<td class="meio-periodo">½</td>`;
-                        } else {
-                          return `<td class="ausente">✗</td>`;
+                      ${(() => {
+                        // Obter as datas da semana (segunda a sexta)
+                        const diasUteis = [];
+                        const inicioSemana = parseISO(dataInicio);
+                        
+                        // Adicionar dias de segunda (índice 1) a sexta (índice 5)
+                        for (let i = 0; i < 5; i++) {
+                          const dia = new Date(inicioSemana);
+                          dia.setDate(inicioSemana.getDate() + i);
+                          diasUteis.push(format(dia, 'yyyy-MM-dd'));
                         }
-                      }).join('')}
+                        
+                        return diasUteis.map(data => {
+                          const presenca = funcionario.presencas[data];
+                          if (presenca === 1) {
+                            return `<td class="presente">✓</td>`;
+                          } else if (presenca === 0.5) {
+                            return `<td class="meio-periodo">½</td>`;
+                          } else {
+                            return `<td class="ausente">✗</td>`;
+                          }
+                        }).join('');
+                      })()}
                     </tr>
                   `).join('')}
                 </table>

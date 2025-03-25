@@ -147,6 +147,9 @@ const Relatorios = () => {
       // Carregar presenças para a semana atual
       const semanaKey = format(startOfWeek(semanaAtual, { weekStartsOn: 0 }), 'yyyy-MM-dd');
       carregarFuncionariosDaSemana(semanaKey);
+    } else {
+      // Se não houver ID, redirecionar para a lista de obras
+      navigate('/obras');
     }
   }, [id]);
 
@@ -196,11 +199,21 @@ const Relatorios = () => {
         const semanaRecente = todasSemanas[todasSemanas.length - 1];
         const funcionariosRecentes = funcionariosPorSemana[semanaRecente];
         
-        // Criar novos funcionários para esta semana, mas sem presenças
-        const novosFuncionarios = funcionariosRecentes.map(func => ({
-          ...func,
-          presencas: {}
-        }));
+        // Criar novos funcionários para esta semana com presença inicializada como 1 (presente)
+        const novosFuncionarios = funcionariosRecentes.map(func => {
+          // Inicializar presença com valor 1 (presente) para todos os dias da semana
+          const presencas = {};
+          const diasUteis = getDiasUteis(semanaAtual);
+          diasUteis.forEach(dia => {
+            const dataString = format(dia, 'yyyy-MM-dd');
+            presencas[dataString] = 1; // Inicializa com presente (1)
+          });
+          
+          return {
+            ...func,
+            presencas: presencas
+          };
+        });
         
         console.log('[DEBUG] Criando funcionários para nova semana baseados em semana anterior:', novosFuncionarios);
         
@@ -232,11 +245,21 @@ const Relatorios = () => {
               const semanaRecenteLS = semanasLocalStorage[semanasLocalStorage.length - 1];
               const funcionariosRecentesLS = funcionariosParsed[semanaRecenteLS];
               
-              // Criar novos funcionários para esta semana, mas sem presenças
-              const novosFuncionarios = funcionariosRecentesLS.map((func: Funcionario) => ({
-                ...func,
-                presencas: {}
-              }));
+              // Criar novos funcionários para esta semana com presença inicializada como 1 (presente)
+              const novosFuncionarios = funcionariosRecentesLS.map((func: Funcionario) => {
+                // Inicializar presença com valor 1 (presente) para todos os dias da semana
+                const presencas = {};
+                const diasUteis = getDiasUteis(semanaAtual);
+                diasUteis.forEach(dia => {
+                  const dataString = format(dia, 'yyyy-MM-dd');
+                  presencas[dataString] = 1; // Inicializa com presente (1)
+                });
+                
+                return {
+                  ...func,
+                  presencas: presencas
+                };
+              });
               
               console.log('[DEBUG] Criando funcionários para nova semana baseados em localStorage:', novosFuncionarios);
               
@@ -376,6 +399,31 @@ const Relatorios = () => {
 
       if (!relatorio) {
         throw new Error('Não foi possível gerar o relatório');
+      }
+
+      // Salvar o relatório no banco de dados
+      try {
+        const { error } = await supabase
+          .from('relatorios')
+          .insert({
+            obra_id: Number(id),
+            data_inicio: format(startOfWeek(semanaAtual, { weekStartsOn: 1 }), 'yyyy-MM-dd'),
+            data_fim: format(endOfWeek(semanaAtual, { weekStartsOn: 1 }), 'yyyy-MM-dd'),
+            conteudo: relatorio,
+            tipo: 'semanal'
+          });
+
+        if (error) {
+          console.error('[DEBUG] Erro ao salvar relatório no banco:', error);
+          throw error;
+        }
+        
+        // Recarregar a lista de relatórios
+        await carregarRelatoriosAnteriores();
+        
+      } catch (saveError) {
+        console.error('[DEBUG] Erro ao salvar relatório:', saveError);
+        // Não impedir o download mesmo se falhar ao salvar
       }
 
       // Criar um link para download
@@ -842,29 +890,43 @@ const Relatorios = () => {
   };
 
   // Função para adicionar um novo funcionário
-  const adicionarFuncionario = () => {
+  const handleAdicionarFuncionario = () => {
     if (!novoFuncionario.trim()) return;
-
-    const funcionarioExistente = funcionarios.find(f => f.nome === novoFuncionario);
-    if (funcionarioExistente) {
-      alert('Este funcionário já está na lista!');
-      return;
-    }
-
-    const diasSemana = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
-    const presencasIniciais = diasSemana.map(dia => ({
-      data: format(addDays(startOfWeek(semanaAtual), diasSemana.indexOf(dia)), 'yyyy-MM-dd'),
-      presente: 1 // Inicializa como presente (1)
-    }));
-
-    const novoFuncionarioObj = {
-      id: Date.now().toString(),
+    
+    const semanaKey = format(startOfWeek(semanaAtual, { weekStartsOn: 0 }), 'yyyy-MM-dd');
+    const novoId = `func-${Date.now()}`;
+    
+    // Inicializar presença com valor 1 (presente) para todos os dias da semana
+    const presencas = {};
+    const diasUteis = getDiasUteis(semanaAtual);
+    diasUteis.forEach(dia => {
+      const dataString = format(dia, 'yyyy-MM-dd');
+      presencas[dataString] = 1; // Inicializa com presente (1)
+    });
+    
+    const novoFunc = {
+      id: novoId,
       nome: novoFuncionario,
-      presencas: presencasIniciais
+      presencas: presencas
     };
-
-    setFuncionarios(prev => [...prev, novoFuncionarioObj]);
+    
+    // Atualizar lista de funcionários
+    setFuncionarios(prev => [...prev, novoFunc]);
+    
+    // Atualizar funcionários da semana
+    setFuncionariosPorSemana(prev => ({
+      ...prev,
+      [semanaKey]: [...(prev[semanaKey] || []), novoFunc]
+    }));
+    
+    // Limpar campo
     setNovoFuncionario('');
+    
+    // Salvar no localStorage
+    salvarFuncionariosNoLocalStorage({
+      ...funcionariosPorSemana,
+      [semanaKey]: [...(funcionariosPorSemana[semanaKey] || []), novoFunc]
+    });
   };
   
   // Função para remover um funcionário
@@ -950,38 +1012,6 @@ const Relatorios = () => {
     salvarPresencasNoLocalStorage();
   };
 
-  // Função para adicionar novo funcionário
-  const handleAdicionarFuncionario = () => {
-    if (!novoFuncionario.trim()) return;
-    
-    const semanaKey = format(startOfWeek(semanaAtual, { weekStartsOn: 0 }), 'yyyy-MM-dd');
-    const novoId = `func-${Date.now()}`;
-    
-    const novoFunc = {
-      id: novoId,
-      nome: novoFuncionario,
-      presencas: {}
-    };
-    
-    // Atualizar lista de funcionários
-    setFuncionarios(prev => [...prev, novoFunc]);
-    
-    // Atualizar funcionários da semana
-    setFuncionariosPorSemana(prev => ({
-      ...prev,
-      [semanaKey]: [...(prev[semanaKey] || []), novoFunc]
-    }));
-    
-    // Limpar campo
-    setNovoFuncionario('');
-    
-    // Salvar no localStorage
-    salvarFuncionariosNoLocalStorage({
-      ...funcionariosPorSemana,
-      [semanaKey]: [...(funcionariosPorSemana[semanaKey] || []), novoFunc]
-    });
-  };
-
   // Função para salvar presenças no localStorage
   const salvarPresencasNoLocalStorage = () => {
     try {
@@ -995,34 +1025,39 @@ const Relatorios = () => {
     <div className="container mx-auto p-4 space-y-8">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="flex gap-2">
-          <Button variant="ghost" onClick={() => navigate('/obras')}>
+          <Button variant="ghost" onClick={() => navigate(`/obras/${id}`)}>
             <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
           </Button>
-          <Button variant="ghost" onClick={() => navigate(`/diario/${id}`)}>
+          <Button variant="ghost" onClick={() => navigate(`/obras/${id}/diario`)}>
             <CalendarIcon className="mr-2 h-4 w-4" /> Diário de Obra
-                </Button>
-              </div>
-            </div>
+          </Button>
+        </div>
+      </div>
 
       <Card className="p-4">
         <div className="flex flex-col space-y-4">
-          <Calendar
-            mode="single"
-            selected={semanaAtual}
-            onSelect={(value) => {
-              if (value instanceof Date) setSemanaAtual(value);
-            }}
-            className="rounded-md border"
-            locale={ptBR}
-            tileClassName={({ date }) => {
-              const temDiario = diasComDiario.some(d => 
-                d.getDate() === date.getDate() &&
-                d.getMonth() === date.getMonth() &&
-                d.getFullYear() === date.getFullYear()
-              );
-              return temDiario ? 'bg-primary/10 font-bold cursor-pointer' : '';
-            }}
-          />
+          <div className="w-full flex justify-center">
+            <h2 className="text-2xl font-semibold mb-6 text-center">Calendário de Registros</h2>
+          </div>
+          <div className="w-full flex justify-center">
+            <Calendar
+              mode="single"
+              selected={semanaAtual}
+              onSelect={(value) => {
+                if (value instanceof Date) setSemanaAtual(value);
+              }}
+              className="rounded-md border mx-auto p-3 sm:p-6 bg-white shadow-lg"
+              locale={ptBR}
+              tileClassName={({ date }) => {
+                const temDiario = diasComDiario.some(d => 
+                  d.getDate() === date.getDate() &&
+                  d.getMonth() === date.getMonth() &&
+                  d.getFullYear() === date.getFullYear()
+                );
+                return temDiario ? 'bg-primary/10 font-bold cursor-pointer' : '';
+              }}
+            />
+          </div>
 
           <div className="flex justify-between items-center gap-4">
             <Button
@@ -1057,6 +1092,11 @@ const Relatorios = () => {
                   value={novoFuncionario}
                   onChange={(e) => setNovoFuncionario(e.target.value)}
                   className="flex-1"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleAdicionarFuncionario();
+                    }
+                  }}
                 />
                 <Button onClick={handleAdicionarFuncionario} variant="secondary">
                   <Plus className="mr-2 h-4 w-4" /> Adicionar

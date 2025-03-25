@@ -1,0 +1,501 @@
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { ArrowLeft, Plus, Edit, Trash2, Clock, Tag, CheckSquare, MessageSquare, Paperclip } from 'lucide-react';
+import { useToast } from '@/components/ui/use-toast';
+import { buscarObra } from '@/lib/api';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogClose
+} from '@/components/ui/dialog';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  obterQuadroObra,
+  criarCard,
+  moverCard,
+  excluirCard,
+  atualizarCard
+} from '@/lib/trello-local';
+import { TrelloBoard, TrelloList, TrelloCard } from '@/types/trello';
+import { Badge } from '@/components/ui/badge';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+
+const PendenciasObra = () => {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [board, setBoard] = useState<TrelloBoard | null>(null);
+  const [obraNome, setObraNome] = useState('');
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [cardAtual, setCardAtual] = useState<TrelloCard | null>(null);
+  const [listaAtual, setListaAtual] = useState<TrelloList | null>(null);
+  
+  // Estado para novo card
+  const [novoCard, setNovoCard] = useState({
+    title: '',
+    description: '',
+    due_date: '',
+    labels: [] as string[]
+  });
+
+  useEffect(() => {
+    carregarDados();
+  }, [id]);
+
+  const carregarDados = async () => {
+    try {
+      setLoading(true);
+      console.log('Iniciando carregamento de dados para obra ID:', id);
+      
+      // Buscar dados da obra
+      const obra = await buscarObra(Number(id));
+      console.log('Dados da obra:', obra);
+      
+      if (!obra) {
+        console.error('Obra não encontrada');
+        toast({
+          title: "Erro",
+          description: "Obra não encontrada",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      setObraNome(obra.nome);
+      await carregarQuadro();
+    } catch (error) {
+      console.error('Erro detalhado ao carregar dados:', error);
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : "Não foi possível carregar os dados.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const carregarQuadro = async () => {
+    try {
+      console.log('Carregando quadro da obra:', id);
+      const quadro = await obterQuadroObra(Number(id));
+      console.log('Quadro carregado:', quadro);
+      setBoard(quadro);
+    } catch (error) {
+      console.error('Erro detalhado ao carregar quadro:', error);
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : "Não foi possível carregar o quadro.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleAddCard = async (listaId: number) => {
+    setListaAtual({ id: listaId } as TrelloList);
+    setNovoCard({
+      title: '',
+      description: '',
+      due_date: '',
+      labels: []
+    });
+    setShowAddDialog(true);
+  };
+
+  const handleSaveNewCard = async () => {
+    try {
+      if (!novoCard.title) {
+        toast({
+          title: "Erro",
+          description: "O título do card é obrigatório.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (!listaAtual) {
+        toast({
+          title: "Erro",
+          description: "Lista não selecionada.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      await criarCard(
+        listaAtual.id,
+        novoCard.title,
+        novoCard.description || null,
+        novoCard.due_date || null,
+        novoCard.labels
+      );
+
+      toast({
+        title: "Sucesso",
+        description: "Card criado com sucesso!",
+      });
+
+      setShowAddDialog(false);
+      await carregarQuadro();
+    } catch (error) {
+      console.error('Erro ao criar card:', error);
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : "Não foi possível criar o card.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleEditCard = (card: TrelloCard) => {
+    setCardAtual(card);
+    setNovoCard({
+      title: card.title,
+      description: card.description || '',
+      due_date: card.due_date ? new Date(card.due_date).toISOString().split('T')[0] : '',
+      labels: card.labels || []
+    });
+    setShowEditDialog(true);
+  };
+
+  const handleSaveEditCard = async () => {
+    try {
+      if (!cardAtual) {
+        toast({
+          title: "Erro",
+          description: "Card não selecionado.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (!novoCard.title) {
+        toast({
+          title: "Erro",
+          description: "O título do card é obrigatório.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      await atualizarCard(cardAtual.id, {
+        title: novoCard.title,
+        description: novoCard.description || null,
+        due_date: novoCard.due_date || null,
+        labels: novoCard.labels
+      });
+
+      toast({
+        title: "Sucesso",
+        description: "Card atualizado com sucesso!",
+      });
+
+      setShowEditDialog(false);
+      await carregarQuadro();
+    } catch (error) {
+      console.error('Erro ao atualizar card:', error);
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : "Não foi possível atualizar o card.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleDeleteCard = (card: TrelloCard) => {
+    setCardAtual(card);
+    setShowDeleteDialog(true);
+  };
+
+  const handleConfirmDeleteCard = async () => {
+    try {
+      if (!cardAtual) {
+        toast({
+          title: "Erro",
+          description: "Card não selecionado.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      await excluirCard(cardAtual.id);
+
+      toast({
+        title: "Sucesso",
+        description: "Card excluído com sucesso!",
+      });
+
+      setShowDeleteDialog(false);
+      await carregarQuadro();
+    } catch (error) {
+      console.error('Erro ao excluir card:', error);
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : "Não foi possível excluir o card.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleMoveCard = async (card: TrelloCard, novaListaId: number) => {
+    try {
+      await moverCard(card.id, novaListaId);
+      toast({
+        title: "Sucesso",
+        description: "Card movido com sucesso!",
+      });
+      await carregarQuadro();
+    } catch (error) {
+      console.error('Erro ao mover card:', error);
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : "Não foi possível mover o card.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const formatarData = (dataString: string | null) => {
+    if (!dataString) return null;
+    try {
+      return format(new Date(dataString), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+    } catch (error) {
+      return dataString;
+    }
+  };
+
+  return (
+    <div className="container mx-auto px-4 py-6">
+      <div className="flex items-center mb-6">
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          onClick={() => navigate(`/obra/${id}`)}
+          className="mr-2"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <h1 className="text-2xl font-bold">Pendências: {obraNome}</h1>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {board?.lists.map((lista) => (
+            <div key={lista.id} className="bg-muted/30 rounded-lg p-4">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-semibold">{lista.title}</h2>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => handleAddCard(lista.id)}
+                >
+                  <Plus className="h-5 w-5" />
+                </Button>
+              </div>
+              
+              <div className="space-y-3">
+                {lista.cards.map((card) => (
+                  <Card key={card.id} className="shadow-sm">
+                    <CardHeader className="p-4 pb-2">
+                      <CardTitle className="text-base">{card.title}</CardTitle>
+                    </CardHeader>
+                    
+                    {card.description && (
+                      <CardContent className="p-4 pt-0 pb-2">
+                        <p className="text-sm text-muted-foreground line-clamp-3">{card.description}</p>
+                      </CardContent>
+                    )}
+                    
+                    <CardFooter className="p-4 pt-2 flex flex-wrap gap-2 justify-between">
+                      <div className="flex flex-wrap gap-2">
+                        {card.due_date && (
+                          <Badge variant="outline" className="flex items-center gap-1 text-xs">
+                            <Clock className="h-3 w-3" />
+                            {formatarData(card.due_date)}
+                          </Badge>
+                        )}
+                        
+                        {card.labels && card.labels.length > 0 && card.labels.map((label, idx) => (
+                          <Badge key={idx} variant="secondary" className="text-xs">
+                            {label}
+                          </Badge>
+                        ))}
+                      </div>
+                      
+                      <div className="flex gap-1">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-7 w-7" 
+                          onClick={() => handleEditCard(card)}
+                        >
+                          <Edit className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-7 w-7" 
+                          onClick={() => handleDeleteCard(card)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </CardFooter>
+                  </Card>
+                ))}
+                
+                {lista.cards.length === 0 && (
+                  <div className="text-center py-4 text-muted-foreground text-sm">
+                    Nenhum card nesta lista
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Dialog para adicionar card */}
+      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Adicionar Novo Card</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label htmlFor="title" className="text-sm font-medium">Título</label>
+              <Input
+                id="title"
+                value={novoCard.title}
+                onChange={(e) => setNovoCard({...novoCard, title: e.target.value})}
+                placeholder="Título do card"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <label htmlFor="description" className="text-sm font-medium">Descrição</label>
+              <Textarea
+                id="description"
+                value={novoCard.description}
+                onChange={(e) => setNovoCard({...novoCard, description: e.target.value})}
+                placeholder="Descrição do card"
+                rows={4}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <label htmlFor="due_date" className="text-sm font-medium">Data de Vencimento</label>
+              <Input
+                id="due_date"
+                type="date"
+                value={novoCard.due_date}
+                onChange={(e) => setNovoCard({...novoCard, due_date: e.target.value})}
+              />
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancelar</Button>
+            </DialogClose>
+            <Button onClick={handleSaveNewCard}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog para editar card */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Card</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label htmlFor="edit-title" className="text-sm font-medium">Título</label>
+              <Input
+                id="edit-title"
+                value={novoCard.title}
+                onChange={(e) => setNovoCard({...novoCard, title: e.target.value})}
+                placeholder="Título do card"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <label htmlFor="edit-description" className="text-sm font-medium">Descrição</label>
+              <Textarea
+                id="edit-description"
+                value={novoCard.description}
+                onChange={(e) => setNovoCard({...novoCard, description: e.target.value})}
+                placeholder="Descrição do card"
+                rows={4}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <label htmlFor="edit-due_date" className="text-sm font-medium">Data de Vencimento</label>
+              <Input
+                id="edit-due_date"
+                type="date"
+                value={novoCard.due_date}
+                onChange={(e) => setNovoCard({...novoCard, due_date: e.target.value})}
+              />
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancelar</Button>
+            </DialogClose>
+            <Button onClick={handleSaveEditCard}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog para confirmar exclusão */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar Exclusão</DialogTitle>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <p>Tem certeza que deseja excluir o card "{cardAtual?.title}"?</p>
+            <p className="text-sm text-muted-foreground mt-2">Esta ação não pode ser desfeita.</p>
+          </div>
+          
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancelar</Button>
+            </DialogClose>
+            <Button variant="destructive" onClick={handleConfirmDeleteCard}>Excluir</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
+
+export default PendenciasObra; 

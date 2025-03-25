@@ -1,0 +1,37 @@
+{
+  "name": "G-Log - Sistema de Gerenciamento de Obras",
+  "short_name": "G-Log",
+  "description": "Sistema de Gerenciamento de Obras - Acompanhe suas obras com eficiência e praticidade",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1E3A8A",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64",
+      "type": "image/x-icon",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Minhas Obras",
+      "short_name": "Obras",
+      "description": "Ver todas as obras",
+      "url": "/obras"
+    },
+    {
+      "name": "Diário de Obra",
+      "short_name": "Diário",
+      "description": "Acessar o diário de obra",
+      "url": "/diario"
+    }
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false,
+  "categories": ["productivity", "business", "utilities"],
+  "lang": "pt-BR",
+  "dir": "ltr"
+} 

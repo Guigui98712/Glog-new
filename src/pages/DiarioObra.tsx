@@ -246,14 +246,9 @@ const DiarioObra = () => {
             tamanho: foto.size
           });
 
-          // Validar tamanho do arquivo (máximo 10MB)
-          if (foto.size > 10 * 1024 * 1024) {
-            throw new Error(`A foto ${foto.name} é muito grande. O tamanho máximo permitido é 10MB.`);
-          }
-
-          const resultado = await uploadFoto(foto, 'diario');
-          fotosUrls.push(resultado.url);
-          console.log('[DEBUG] Foto processada com sucesso:', resultado.url);
+          const resultado = await uploadFoto(foto);
+          fotosUrls.push(resultado);
+          console.log('[DEBUG] Foto processada com sucesso:', resultado);
         } catch (error) {
           console.error('[DEBUG] Erro ao fazer upload da foto:', error);
           toast({
@@ -261,16 +256,14 @@ const DiarioObra = () => {
             description: error instanceof Error ? error.message : "Não foi possível enviar uma ou mais fotos. Verifique o tamanho e formato das imagens.",
             variant: "destructive"
           });
-          return; // Interrompe o processo se houver erro no upload
+          setSalvando(false);
+          return;
         }
       }
       
       // Formata a data mantendo o dia correto, usando UTC para evitar problemas de fuso horário
       const dataObj = new Date(data);
-      // Garantir que a data seja formatada corretamente no formato ISO
       const dataFormatada = format(new Date(Date.UTC(dataObj.getFullYear(), dataObj.getMonth(), dataObj.getDate(), 12, 0, 0)), 'yyyy-MM-dd');
-      console.log('[DEBUG] Data original:', data);
-      console.log('[DEBUG] Data formatada:', dataFormatada);
       
       // Capitalizar os textos antes de salvar
       const descricaoCapitalizada = capitalizarPrimeiraLetra(descricao);
@@ -317,11 +310,11 @@ const DiarioObra = () => {
           variant: "destructive"
         });
       }
-    } catch (error: any) {
-      console.error('[DEBUG] Erro geral ao salvar:', error);
+    } catch (error) {
+      console.error('[DEBUG] Erro ao salvar registro:', error);
       toast({
-        title: "Erro ao salvar",
-        description: `Não foi possível salvar o registro: ${error.message || 'Erro desconhecido'}. Verifique sua conexão.`,
+        title: "Erro",
+        description: error instanceof Error ? error.message : "Não foi possível salvar o registro.",
         variant: "destructive"
       });
     } finally {
@@ -731,7 +724,7 @@ const DiarioObra = () => {
                 <Input
                   type="file"
                   multiple
-                  accept="image/*"
+                  accept="image/*,.heic,.heif"
                   onChange={(e) => {
                     if (e.target.files) {
                       setFotos([...fotos, ...Array.from(e.target.files)]);
@@ -988,29 +981,31 @@ const DiarioObra = () => {
                     <Input
                       type="file"
                       multiple
-                      accept="image/*"
+                      accept="image/*,.heic,.heif"
                       onChange={async (e) => {
                         if (e.target.files && e.target.files.length > 0) {
                           const novasUrls = [];
                           for (const foto of Array.from(e.target.files)) {
                             try {
                               console.log('[DEBUG] Iniciando upload de nova foto na edição:', foto.name);
-                              const resultado = await uploadFoto(foto, 'diario');
-                              novasUrls.push(resultado.url);
+                              const resultado = await uploadFoto(foto);
+                              novasUrls.push(resultado);
                             } catch (error) {
                               console.error('[DEBUG] Erro ao fazer upload da foto na edição:', error);
                               toast({
                                 title: "Erro no upload de imagens",
-                                description: "Não foi possível enviar uma ou mais fotos. Verifique o tamanho e formato das imagens.",
+                                description: error instanceof Error ? error.message : "Não foi possível enviar uma ou mais fotos. Verifique o tamanho e formato das imagens.",
                                 variant: "destructive"
                               });
                             }
                           }
                           
-                          setRegistroEmEdicao({
-                            ...registroEmEdicao,
-                            fotos: [...(registroEmEdicao.fotos || []), ...novasUrls]
-                          });
+                          if (novasUrls.length > 0) {
+                            setRegistroEmEdicao({
+                              ...registroEmEdicao,
+                              fotos: [...(registroEmEdicao.fotos || []), ...novasUrls]
+                            });
+                          }
                         }
                       }}
                     />

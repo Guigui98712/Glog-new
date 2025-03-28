@@ -6,6 +6,7 @@ import type { RegistroDiario } from '@/types/obra';
 import { createClient } from '@supabase/supabase-js';
 import { differenceInDays } from 'date-fns';
 import { obterQuadroObra } from './trello-local';
+import heic2any from 'heic2any';
 
 const DISABLE_GOOGLE_APIS = false; // Garantir que as APIs estejam habilitadas para permitir a listagem de obras
 
@@ -464,59 +465,48 @@ export const uploadFoto = async (file: File): Promise<string> => {
     });
 
     // Validar se é uma imagem
-    if (!file.type.startsWith('image/')) {
+    if (!file.type.startsWith('image/') && !file.name.toLowerCase().match(/\.(heic|heif)$/)) {
       throw new Error('O arquivo deve ser uma imagem');
     }
 
+    let fileToUpload = file;
+    
     // Verificar se é uma imagem HEIC/HEIF
-    const isHeic = file.type === 'image/heic' || file.type === 'image/heif' || 
+    const isHeic = file.type === 'image/heic' || 
+                   file.type === 'image/heif' || 
                    file.name.toLowerCase().endsWith('.heic') || 
                    file.name.toLowerCase().endsWith('.heif');
 
-    let fileToUpload = file;
-    
     if (isHeic) {
       console.log('[DEBUG] Detectada imagem HEIC/HEIF, convertendo para JPEG...');
       
-      // Criar um canvas para converter a imagem
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Não foi possível criar o contexto do canvas');
+      try {
+        // Converter HEIC para JPEG usando heic2any
+        const blob = await heic2any({
+          blob: file,
+          toType: "image/jpeg",
+          quality: 0.9
+        });
 
-      // Carregar a imagem
-      const img = new Image();
-      const imageUrl = URL.createObjectURL(file);
-      
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = imageUrl;
-      });
+        // Criar um novo arquivo com o mesmo nome mas extensão .jpg
+        const fileName = file.name.replace(/\.(heic|heif)$/i, '.jpg');
+        fileToUpload = new File([blob as Blob], fileName, { type: 'image/jpeg' });
+        
+        console.log('[DEBUG] Conversão HEIC para JPEG concluída:', {
+          nomeOriginal: file.name,
+          nomeConvertido: fileName,
+          tamanhoOriginal: file.size,
+          tamanhoConvertido: fileToUpload.size
+        });
+      } catch (error) {
+        console.error('[DEBUG] Erro na conversão HEIC:', error);
+        throw new Error('Não foi possível converter a imagem HEIC. Por favor, tente converter para JPEG antes de enviar.');
+      }
+    }
 
-      // Configurar o canvas com as dimensões da imagem
-      canvas.width = img.width;
-      canvas.height = img.height;
-
-      // Desenhar a imagem no canvas
-      ctx.drawImage(img, 0, 0);
-
-      // Converter para JPEG
-      const jpegBlob = await new Promise<Blob>((resolve) => {
-        canvas.toBlob((blob) => {
-          if (blob) resolve(blob);
-        }, 'image/jpeg', 0.9);
-      });
-
-      // Criar um novo arquivo com o mesmo nome mas extensão .jpg
-      const fileName = file.name.replace(/\.(heic|heif)$/i, '.jpg');
-      fileToUpload = new File([jpegBlob], fileName, { type: 'image/jpeg' });
-      
-      console.log('[DEBUG] Conversão HEIC para JPEG concluída:', {
-        nomeOriginal: file.name,
-        nomeConvertido: fileName,
-        tamanhoOriginal: file.size,
-        tamanhoConvertido: fileToUpload.size
-      });
+    // Verificar tamanho do arquivo (máximo 10MB)
+    if (fileToUpload.size > 10 * 1024 * 1024) {
+      throw new Error('O arquivo é muito grande. O tamanho máximo permitido é 10MB.');
     }
 
     // Gerar nome único para o arquivo

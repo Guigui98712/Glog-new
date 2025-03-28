@@ -7,6 +7,13 @@ export interface TextareaProps
 
 const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
   ({ className, ...props }, ref) => {
+    const textareaProps = {
+      autoCapitalize: "sentences",
+      autoCorrect: "on",
+      spellCheck: "true",
+      ...props
+    };
+
     return (
       <textarea
         className={cn(
@@ -14,7 +21,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
           className
         )}
         ref={ref}
-        {...props}
+        {...textareaProps}
       />
     )
   }

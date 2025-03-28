@@ -19,6 +19,7 @@ import {
 import { hapticFeedback, HapticType } from '@/lib/haptics';
 import useDevice from '@/hooks/useDevice';
 import { Checkbox } from '@/components/ui/checkbox';
+import { cn } from "@/lib/utils";
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -289,13 +290,16 @@ const Login = () => {
                   spellCheck={true}
                   lang="pt-BR"
                   autoCapitalize="words"
+                  inputMode="text"
+                  autoComplete="name"
                   disabled={isLoading}
+                  className="min-h-[44px]"
                 />
               </div>
             )}
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input
+              <input
                 id="email"
                 type="email"
                 value={email}
@@ -303,8 +307,11 @@ const Login = () => {
                 inputMode="email"
                 autoComplete="email"
                 autoCapitalize="none"
-                spellCheck={false}
+                spellCheck="false"
                 disabled={isLoading}
+                className={cn(
+                  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+                )}
               />
             </div>
             <div className="space-y-2">
@@ -315,7 +322,10 @@ const Login = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete={isRegister ? "new-password" : "current-password"}
+                inputMode="text"
+                spellCheck={false}
                 disabled={isLoading}
+                className="min-h-[44px]"
               />
             </div>
             {isRegister && (
@@ -386,17 +396,20 @@ const Login = () => {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="reset-email">Email</Label>
-              <Input
+              <input
                 id="reset-email"
                 type="email"
+                value={resetEmail}
+                onChange={(e) => setResetEmail(e.target.value)}
                 inputMode="email"
                 autoComplete="email"
                 autoCapitalize="none"
-                value={resetEmail}
-                onChange={(e) => setResetEmail(e.target.value)}
-                placeholder="Digite seu email"
+                spellCheck="false"
                 disabled={isResetting}
-                spellCheck={false}
+                placeholder="Digite seu email"
+                className={cn(
+                  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+                )}
               />
             </div>
           </div>

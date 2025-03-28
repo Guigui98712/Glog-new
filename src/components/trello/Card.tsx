@@ -82,7 +82,9 @@ export function Card({
                   style={{ 
                     backgroundColor: label.color,
                     color: 'white',
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    fontSize: '0.75rem',
+                    padding: '2px 8px'
                   }}
                   onClick={(e) => handleToggleLabel(label.id, e)}
                 >

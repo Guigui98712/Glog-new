@@ -920,36 +920,63 @@ export const excluirAnexo = async (attachmentId: number): Promise<void> => {
 // Função para buscar etiquetas disponíveis
 export const buscarEtiquetas = async (): Promise<TrelloLabel[]> => {
   try {
-    console.log('[DEBUG] Iniciando busca de etiquetas');
-    
-    // Primeiro, buscar todas as etiquetas
-    const { data: labels, error: labelsError } = await supabase
+    // Definir as etiquetas padrão
+    const etiquetasPadrao = [
+      { title: "Urgente", color: "bg-red-500" },
+      { title: "Fazendo", color: "bg-yellow-500" },
+      { title: "Concluído", color: "bg-green-500" }
+    ];
+
+    // Buscar etiquetas existentes
+    const { data: etiquetasExistentes, error: selectError } = await supabase
       .from('trello_labels')
-      .select('*')
-      .order('title');
-
-    if (labelsError) {
-      console.error('[DEBUG] Erro ao buscar etiquetas:', labelsError);
-      throw labelsError;
-    }
-
-    console.log('[DEBUG] Etiquetas encontradas:', labels);
-    
-    // Buscar todas as relações de etiquetas com cards
-    const { data: relations, error: relationsError } = await supabase
-      .from('trello_card_labels')
       .select('*');
 
-    if (relationsError) {
-      console.error('[DEBUG] Erro ao buscar relações de etiquetas:', relationsError);
-      throw relationsError;
+    if (selectError) {
+      console.error('[DEBUG] Erro ao buscar etiquetas:', selectError);
+      throw selectError;
     }
 
-    console.log('[DEBUG] Relações de etiquetas encontradas:', relations);
+    // Se não existem etiquetas, criar as padrão
+    if (!etiquetasExistentes || etiquetasExistentes.length === 0) {
+      const { data: novasEtiquetas, error: insertError } = await supabase
+        .from('trello_labels')
+        .insert(etiquetasPadrao)
+        .select();
 
-    return labels || [];
+      if (insertError) {
+        console.error('[DEBUG] Erro ao criar etiquetas padrão:', insertError);
+        throw insertError;
+      }
+
+      return novasEtiquetas || [];
+    }
+
+    // Verificar quais etiquetas padrão estão faltando
+    const etiquetasFaltantes = etiquetasPadrao.filter(padrao => 
+      !etiquetasExistentes.some(existente => existente.title === padrao.title)
+    );
+
+    // Se faltam algumas etiquetas padrão, criar apenas as que faltam
+    if (etiquetasFaltantes.length > 0) {
+      const { data: novasEtiquetas, error: insertError } = await supabase
+        .from('trello_labels')
+        .insert(etiquetasFaltantes)
+        .select();
+
+      if (insertError) {
+        console.error('[DEBUG] Erro ao criar etiquetas faltantes:', insertError);
+        throw insertError;
+      }
+
+      // Retornar todas as etiquetas (existentes + novas)
+      return [...etiquetasExistentes, ...(novasEtiquetas || [])];
+    }
+
+    // Se todas as etiquetas padrão já existem, retornar as existentes
+    return etiquetasExistentes;
   } catch (error) {
-    console.error('[DEBUG] Erro ao buscar etiquetas:', error);
+    console.error('[DEBUG] Erro ao buscar/criar etiquetas:', error);
     throw error;
   }
 };

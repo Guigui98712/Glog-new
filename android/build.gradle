@@ -12,11 +12,25 @@ buildscript {
 }
 
 apply from: "variables.gradle"
+apply from: "capacitor-plugins.gradle"
 
 allprojects {
     repositories {
         google()
         mavenCentral()
+    }
+    
+    // Configuração global para todos os projetos
+    tasks.withType(JavaCompile) {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+        options.compilerArgs << '-Xlint:unchecked'
+    }
+
+    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).all {
+        kotlinOptions {
+            jvmTarget = '17'
+        }
     }
 }
 

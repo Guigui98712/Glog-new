@@ -4,6 +4,14 @@ import { cn } from "@/lib/utils"
 
 const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
   ({ className, type, ...props }, ref) => {
+    // Adiciona autocorreção e capitalização apenas para inputs de texto
+    const inputProps = type === 'text' ? {
+      autoCapitalize: "sentences",
+      autoCorrect: "on",
+      spellCheck: "true",
+      ...props
+    } : props;
+
     return (
       <input
         type={type}
@@ -12,7 +20,7 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
           className
         )}
         ref={ref}
-        {...props}
+        {...inputProps}
       />
     )
   }

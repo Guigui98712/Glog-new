@@ -19,9 +19,10 @@
     "setup:app-icon": "node setup-app-icon.js"
   },
   "dependencies": {
-    "@capacitor/android": "^7.0.1",
+    "@capacitor/android": "^7.1.0",
     "@capacitor/cli": "^7.0.1",
-    "@capacitor/core": "^7.0.1",
+    "@capacitor/core": "^7.1.0",
+    "@capacitor/ios": "^7.1.0",
     "@google-cloud/local-auth": "^2.1.0",
     "@hookform/resolvers": "^3.9.0",
     "@radix-ui/react-accordion": "^1.2.0",
@@ -59,6 +60,7 @@
     "@reactflow/node-resizer": "^2.2.14",
     "@supabase/supabase-js": "^2.49.1",
     "@tanstack/react-query": "^5.66.9",
+    "@types/react-beautiful-dnd": "^13.1.8",
     "@types/react-router-dom": "^5.3.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -77,6 +79,7 @@
     "lucide-react": "^0.462.0",
     "next-themes": "^0.3.0",
     "react": "^18.3.1",
+    "react-beautiful-dnd": "^13.1.1",
     "react-calendar": "^5.1.0",
     "react-day-picker": "^8.10.1",
     "react-dom": "^18.3.1",

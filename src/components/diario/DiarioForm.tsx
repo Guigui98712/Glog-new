@@ -14,6 +14,18 @@ interface DiarioFormProps {
   onSubmit?: (e: React.FormEvent) => void;
 }
 
+// Função para capitalizar a primeira letra de cada frase
+const capitalizarPrimeiraLetra = (texto: string) => {
+  if (!texto) return texto;
+  const frases = texto.split(/([.!?]\s+)/).filter(Boolean);
+  return frases.map((frase, index) => {
+    if (index % 2 === 0) { // É uma frase
+      return frase.charAt(0).toUpperCase() + frase.slice(1);
+    }
+    return frase; // É um separador (.!? )
+  }).join('');
+};
+
 export const DiarioForm = ({ obraId, date, onDateChange }: DiarioFormProps) => {
   const { toast } = useToast();
   const [descricao, setDescricao] = useState("");
@@ -104,7 +116,12 @@ export const DiarioForm = ({ obraId, date, onDateChange }: DiarioFormProps) => {
           className="min-h-[100px]"
           value={descricao}
           onChange={(e) => setDescricao(e.target.value)}
+          onBlur={(e) => setDescricao(capitalizarPrimeiraLetra(e.target.value))}
           required
+          spellCheck="true"
+          autoCorrect="on"
+          autoCapitalize="sentences"
+          lang="pt-BR"
         />
       </div>
 
@@ -115,6 +132,11 @@ export const DiarioForm = ({ obraId, date, onDateChange }: DiarioFormProps) => {
           className="min-h-[100px]"
           value={observacoes}
           onChange={(e) => setObservacoes(e.target.value)}
+          onBlur={(e) => setObservacoes(capitalizarPrimeiraLetra(e.target.value))}
+          spellCheck="true"
+          autoCorrect="on"
+          autoCapitalize="sentences"
+          lang="pt-BR"
         />
       </div>
       

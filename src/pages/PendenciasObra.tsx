@@ -38,7 +38,8 @@ import {
   excluirChecklist,
   buscarEtiquetas,
   removerEtiqueta,
-  adicionarEtiqueta
+  adicionarEtiqueta,
+  atualizarPosicaoCard
 } from '@/lib/trello-local';
 import { TrelloBoard, TrelloList, TrelloCard, TrelloChecklist, TrelloChecklistItem, TrelloLabel } from '@/types/trello';
 import { Badge } from '@/components/ui/badge';
@@ -58,6 +59,7 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { Label } from '@/components/ui/label';
+import { DragDropContext, Droppable, Draggable, DropResult, DragStart, ResponderProvided } from 'react-beautiful-dnd';
 
 const PendenciasObra = () => {
   const { id } = useParams();
@@ -793,8 +795,66 @@ const PendenciasObra = () => {
     }
   };
 
+  // Função para reordenar os cards
+  const handleDragEnd = async (result: any) => {
+    if (!result.destination || !board) return;
+
+    try {
+      const sourceListId = parseInt(result.source.droppableId);
+      const destListId = parseInt(result.destination.droppableId);
+      const cardId = parseInt(result.draggableId);
+
+      // Criar uma cópia do board para atualizar o estado
+      const newBoard = JSON.parse(JSON.stringify(board));
+      const sourceListIndex = newBoard.lists.findIndex((l: any) => l.id === sourceListId);
+      const destListIndex = newBoard.lists.findIndex((l: any) => l.id === destListId);
+
+      if (sourceListIndex === -1 || destListIndex === -1) return;
+
+      // Remover o card da lista de origem
+      const [movedCard] = newBoard.lists[sourceListIndex].cards.splice(result.source.index, 1);
+
+      // Adicionar o card na lista de destino
+      newBoard.lists[destListIndex].cards.splice(result.destination.index, 0, movedCard);
+
+      // Atualizar o estado local imediatamente para feedback visual
+      setBoard(newBoard);
+
+      // Atualizar no backend
+      await moverCard(cardId, destListId);
+
+      // Atualizar a posição no backend
+      const destList = board.lists.find(l => l.id === destListId);
+      if (destList) {
+        const prevCard = result.destination.index > 0 
+          ? destList.cards[result.destination.index - 1]?.position || 0 
+          : 0;
+        const nextCard = result.destination.index < destList.cards.length 
+          ? destList.cards[result.destination.index]?.position || prevCard + 2000 
+          : prevCard + 2000;
+        const novaPosicao = (prevCard + nextCard) / 2;
+
+        await atualizarPosicaoCard(cardId, destListId, novaPosicao);
+      }
+
+      toast({
+        title: "Sucesso",
+        description: "Card movido com sucesso!",
+      });
+    } catch (error) {
+      console.error('Erro ao mover card:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível mover o card. Tentando recarregar...",
+        variant: "destructive"
+      });
+      // Recarregar o quadro em caso de erro
+      await carregarQuadro();
+    }
+  };
+
   return (
-    <div className="container mx-auto px-4 py-6">
+    <div className="container py-6 space-y-6">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center">
           <Button 
@@ -820,109 +880,147 @@ const PendenciasObra = () => {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {board?.lists.map((lista) => (
-            <div key={lista.id} className="bg-muted/30 rounded-lg p-4">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold">{lista.title || (lista as any).nome}</h2>
-                <div className="flex items-center gap-2">
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    onClick={() => handleAddCard(lista)}
-                    title="Adicionar Card"
-                  >
-                    <Plus className="h-5 w-5" />
-                  </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon">
-                        <MoreHorizontal className="h-5 w-5" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleEditList(lista)}>
-                        <Edit className="h-4 w-4 mr-2" />
-                        Editar Seção
-                      </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        onClick={() => handleDeleteList(lista)}
-                        className="text-red-600"
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Excluir Seção
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-              
-              <div className="space-y-3">
-                {lista.cards.map((card) => (
-                  <Card 
-                    key={card.id} 
-                    className="shadow-sm cursor-pointer hover:shadow-md transition-shadow"
-                    onClick={() => handleViewCardDetails(card)}
-                  >
-                    <CardHeader className="p-4 pb-2">
-                      <CardTitle className="text-base">{card.title}</CardTitle>
-                    </CardHeader>
-                    
-                    {card.description && (
-                      <CardContent className="p-4 pt-0 pb-2">
-                        <p className="text-sm text-muted-foreground line-clamp-3">{card.description}</p>
-                      </CardContent>
-                    )}
-                    
-                    <CardFooter className="p-4 pt-2 flex flex-wrap gap-2 justify-between">
-                      <div className="flex flex-wrap gap-2">
-                        {card.due_date && (
-                          <Badge variant="outline" className="flex items-center gap-1 text-xs">
-                            <Clock className="h-3 w-3" />
-                            {formatarData(card.due_date)}
-                          </Badge>
-                        )}
-                        
-                        {renderizarLabels(card.labels)}
-                        
-                        {card.checklists && card.checklists.length > 0 && (
-                          <Badge variant="outline" className="flex items-center gap-1 text-xs">
-                            <CheckSquare className="h-3 w-3" />
-                            {card.checklists.reduce((total, checklist) => 
-                              total + checklist.items.filter(item => item.checked).length, 0
-                            )} / {card.checklists.reduce((total, checklist) => 
-                              total + checklist.items.length, 0
-                            )}
-                          </Badge>
-                        )}
+        <DragDropContext
+          onDragEnd={handleDragEnd}
+          enableDefaultSensors={false}
+        >
+          <DndSensors>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {board?.lists.map((lista) => (
+                <Droppable key={lista.id} droppableId={lista.id.toString()}>
+                  {(provided, snapshot) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      className={`bg-muted/30 rounded-lg p-4 min-h-[200px] ${
+                        snapshot.isDraggingOver ? 'bg-muted/50' : ''
+                      }`}
+                    >
+                      <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-lg font-semibold">{lista.title || (lista as any).nome}</h2>
+                        <div className="flex items-center gap-2">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={() => handleAddCard(lista)}
+                            title="Adicionar Card"
+                          >
+                            <Plus className="h-5 w-5" />
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <MoreHorizontal className="h-5 w-5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleEditList(lista)}>
+                                <Edit className="h-4 w-4 mr-2" />
+                                Editar Seção
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={() => handleDeleteList(lista)}
+                                className="text-red-600"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Excluir Seção
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </div>
                       
-                      <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-7 w-7" 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteCard(card);
-                          }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                      <div className="space-y-3">
+                        {lista.cards.map((card, index) => (
+                          <Draggable
+                            key={card.id}
+                            draggableId={card.id.toString()}
+                            index={index}
+                          >
+                            {(provided, snapshot) => (
+                              <div
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                {...provided.dragHandleProps}
+                                data-drag-handle
+                                className={`touch-none ${
+                                  snapshot.isDragging ? 'opacity-50' : ''
+                                }`}
+                              >
+                                <Card 
+                                  className={`shadow-sm hover:shadow-md transition-all ${
+                                    snapshot.isDragging
+                                      ? 'shadow-lg ring-2 ring-primary'
+                                      : ''
+                                  }`}
+                                  onClick={() => handleViewCardDetails(card)}
+                                >
+                                  <CardHeader className="p-4 pb-2">
+                                    <CardTitle className="text-base">{card.title}</CardTitle>
+                                  </CardHeader>
+                                  
+                                  {card.description && (
+                                    <CardContent className="p-4 pt-0 pb-2">
+                                      <p className="text-sm text-muted-foreground line-clamp-3">{card.description}</p>
+                                    </CardContent>
+                                  )}
+                                  
+                                  <CardFooter className="p-4 pt-2 flex flex-wrap gap-2 justify-between">
+                                    <div className="flex flex-wrap gap-2">
+                                      {card.due_date && (
+                                        <Badge variant="outline" className="flex items-center gap-1 text-xs">
+                                          <Clock className="h-3 w-3" />
+                                          {formatarData(card.due_date)}
+                                        </Badge>
+                                      )}
+                                      
+                                      {renderizarLabels(card.labels)}
+                                      
+                                      {card.checklists && card.checklists.length > 0 && (
+                                        <Badge variant="outline" className="flex items-center gap-1 text-xs">
+                                          <CheckSquare className="h-3 w-3" />
+                                          {card.checklists.reduce((total, checklist) => 
+                                            total + checklist.items.filter(item => item.checked).length, 0
+                                          )} / {card.checklists.reduce((total, checklist) => 
+                                            total + checklist.items.length, 0
+                                          )}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    
+                                    <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                                      <Button 
+                                        variant="ghost" 
+                                        size="icon" 
+                                        className="h-7 w-7" 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteCard(card);
+                                        }}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </div>
+                                  </CardFooter>
+                                </Card>
+                              </div>
+                            )}
+                          </Draggable>
+                        ))}
+                        {provided.placeholder}
+                        {lista.cards.length === 0 && (
+                          <div className="text-center py-4 text-muted-foreground text-sm">
+                            Nenhum card nesta seção
+                          </div>
+                        )}
                       </div>
-                    </CardFooter>
-                  </Card>
-                ))}
-                
-                {lista.cards.length === 0 && (
-                  <div className="text-center py-4 text-muted-foreground text-sm">
-                    Nenhum card nesta seção
-                  </div>
-                )}
-              </div>
+                    </div>
+                  )}
+                </Droppable>
+              ))}
             </div>
-          ))}
-        </div>
+          </DndSensors>
+        </DragDropContext>
       )}
 
       {/* Dialog para adicionar seção */}
@@ -941,7 +1039,9 @@ const PendenciasObra = () => {
                 onChange={(e) => setNovaListaNome(e.target.value)}
                 onBlur={(e) => setNovaListaNome(capitalizarPrimeiraLetra(e.target.value))}
                 placeholder="Nome da seção"
-                spellCheck={true}
+                spellCheck="true"
+                autoCorrect="on"
+                autoCapitalize="sentences"
                 lang="pt-BR"
               />
             </div>
@@ -972,7 +1072,9 @@ const PendenciasObra = () => {
                 onChange={(e) => setNovaListaNome(e.target.value)}
                 onBlur={(e) => setNovaListaNome(capitalizarPrimeiraLetra(e.target.value))}
                 placeholder="Nome da seção"
-                spellCheck={true}
+                spellCheck="true"
+                autoCorrect="on"
+                autoCapitalize="sentences"
                 lang="pt-BR"
               />
             </div>
@@ -1024,7 +1126,9 @@ const PendenciasObra = () => {
                 onChange={(e) => setNovoCard({...novoCard, title: e.target.value})}
                 onBlur={(e) => setNovoCard({...novoCard, title: capitalizarPrimeiraLetra(e.target.value)})}
                 placeholder="Título do card"
-                spellCheck={true}
+                spellCheck="true"
+                autoCorrect="on"
+                autoCapitalize="sentences"
                 lang="pt-BR"
               />
             </div>
@@ -1036,8 +1140,11 @@ const PendenciasObra = () => {
                 onChange={(e) => setNovoCard({...novoCard, description: e.target.value})}
                 onBlur={(e) => setNovoCard({...novoCard, description: capitalizarPrimeiraLetra(e.target.value)})}
                 placeholder="Descrição do card"
-                spellCheck={true}
+                spellCheck="true"
+                autoCorrect="on"
+                autoCapitalize="sentences"
                 lang="pt-BR"
+                className="min-h-[100px]"
               />
             </div>
           </div>
@@ -1223,6 +1330,8 @@ const PendenciasObra = () => {
                           placeholder="Novo item da checklist"
                           className="flex-1"
                           spellCheck={true}
+                          autoCorrect="on"
+                          autoCapitalize="sentences"
                           lang="pt-BR"
                         />
                         <Button 
@@ -1267,6 +1376,67 @@ const PendenciasObra = () => {
       </Dialog>
     </div>
   );
+};
+
+// Componente para customizar os sensores do drag and drop
+const DndSensors = ({ children }: { children: React.ReactNode }) => {
+  useEffect(() => {
+    let pressTimer: NodeJS.Timeout;
+    let isDragging = false;
+    let dragElement: HTMLElement | null = null;
+
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const dragHandle = target.closest('[data-drag-handle]');
+      
+      if (!dragHandle) return;
+      
+      dragElement = dragHandle as HTMLElement;
+      
+      pressTimer = setTimeout(() => {
+        isDragging = true;
+        dragElement?.setAttribute('draggable', 'true');
+        
+        // Adiciona feedback visual
+        const card = dragElement.querySelector('.card');
+        if (card) {
+          card.classList.add('ring-2', 'ring-primary', 'opacity-90');
+        }
+      }, 300); // Tempo que precisa segurar para começar o drag
+    };
+
+    const handleMouseUp = () => {
+      clearTimeout(pressTimer);
+      if (dragElement) {
+        dragElement.setAttribute('draggable', 'false');
+        const card = dragElement.querySelector('.card');
+        if (card) {
+          card.classList.remove('ring-2', 'ring-primary', 'opacity-90');
+        }
+      }
+      isDragging = false;
+      dragElement = null;
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging) {
+        clearTimeout(pressTimer);
+      }
+    };
+
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('mousemove', handleMouseMove);
+
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('mousemove', handleMouseMove);
+      clearTimeout(pressTimer);
+    };
+  }, []);
+
+  return <>{children}</>;
 };
 
 export default PendenciasObra; 

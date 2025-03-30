@@ -3,16 +3,19 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 export interface TextareaProps
-  extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}
+  extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+  enableSpellCheck?: boolean;
+}
 
 const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ className, ...props }, ref) => {
-    const textareaProps = {
+  ({ className, enableSpellCheck = true, ...props }, ref) => {
+    const textareaProps = enableSpellCheck ? {
       autoCapitalize: "sentences",
       autoCorrect: "on",
       spellCheck: "true",
+      lang: "pt-BR",
       ...props
-    };
+    } : props;
 
     return (
       <textarea

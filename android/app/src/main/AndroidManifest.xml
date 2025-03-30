@@ -23,7 +23,8 @@
             android:exported="true"
             android:screenOrientation="portrait"
             android:hardwareAccelerated="true"
-            android:windowSoftInputMode="adjustResize">
+            android:windowSoftInputMode="adjustResize|stateVisible"
+            android:imeOptions="actionDone|flagNoExtractUi">
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

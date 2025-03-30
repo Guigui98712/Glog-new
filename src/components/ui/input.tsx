@@ -2,13 +2,18 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
-  ({ className, type, ...props }, ref) => {
+export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  enableSpellCheck?: boolean;
+}
+
+const Input = React.forwardRef<HTMLInputElement, InputProps>(
+  ({ className, type, enableSpellCheck = true, ...props }, ref) => {
     // Adiciona autocorreção e capitalização apenas para inputs de texto
-    const inputProps = type === 'text' ? {
+    const inputProps = (type === 'text' && enableSpellCheck) ? {
       autoCapitalize: "sentences",
       autoCorrect: "on",
       spellCheck: "true",
+      lang: "pt-BR",
       ...props
     } : props;
 

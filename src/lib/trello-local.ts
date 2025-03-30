@@ -1374,4 +1374,32 @@ export const renomearLista = async (
     console.error('[DEBUG] Erro detalhado ao renomear lista:', error);
     throw error;
   }
+};
+
+// Função para atualizar a posição de um card
+export const atualizarPosicaoCard = async (
+  cardId: number,
+  novaListaId: number,
+  novaPosicao: number
+): Promise<void> => {
+  try {
+    console.log('[DEBUG] Atualizando posição do card:', { cardId, novaListaId, novaPosicao });
+
+    const { error } = await supabase
+      .from('trello_cards')
+      .update({
+        list_id: novaListaId,
+        position: novaPosicao,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', cardId);
+
+    if (error) {
+      console.error('[DEBUG] Erro ao atualizar posição do card:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('[DEBUG] Erro ao atualizar posição do card:', error);
+    throw error;
+  }
 }; 

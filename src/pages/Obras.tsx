@@ -36,6 +36,18 @@ interface ObraComProgresso extends Obra {
   progressoCalculado?: number;
 }
 
+// Função para capitalizar a primeira letra de cada frase
+const capitalizarPrimeiraLetra = (texto: string) => {
+  if (!texto) return texto;
+  const frases = texto.split(/([.!?]\s+)/).filter(Boolean);
+  return frases.map((frase, index) => {
+    if (index % 2 === 0) { // É uma frase
+      return frase.charAt(0).toUpperCase() + frase.slice(1);
+    }
+    return frase; // É um separador (.!? )
+  }).join('');
+};
+
 const Obras = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -343,65 +355,82 @@ const Obras = () => {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Adicionar Nova Obra</DialogTitle>
+              <DialogTitle>Nova Obra</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Nome da Obra *</label>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">Nome da Obra</label>
                 <Input
-                  placeholder="Digite o nome da obra"
                   value={novaObra.nome}
                   onChange={(e) => setNovaObra({ ...novaObra, nome: e.target.value })}
+                  onBlur={(e) => setNovaObra({ ...novaObra, nome: capitalizarPrimeiraLetra(e.target.value) })}
+                  placeholder="Digite o nome da obra"
+                  spellCheck="true"
+                  autoCorrect="on"
+                  autoCapitalize="sentences"
+                  lang="pt-BR"
                 />
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Endereço *</label>
+              <div>
+                <label className="text-sm font-medium">Endereço</label>
                 <Input
-                  placeholder="Digite o endereço da obra"
                   value={novaObra.endereco}
                   onChange={(e) => setNovaObra({ ...novaObra, endereco: e.target.value })}
+                  onBlur={(e) => setNovaObra({ ...novaObra, endereco: capitalizarPrimeiraLetra(e.target.value) })}
+                  placeholder="Digite o endereço da obra"
+                  spellCheck="true"
+                  autoCorrect="on"
+                  autoCapitalize="sentences"
+                  lang="pt-BR"
                 />
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Custo Previsto (R$) *</label>
-                <Input
-                  type="number"
-                  placeholder="Digite o custo previsto"
-                  value={novaObra.custo_previsto || ''}
-                  onChange={(e) => setNovaObra({ ...novaObra, custo_previsto: parseFloat(e.target.value) || 0 })}
-                />
-              </div>
-              <div className="space-y-2">
+              <div>
                 <label className="text-sm font-medium">Cliente</label>
                 <Input
-                  placeholder="Digite o nome do cliente"
-                  value={novaObra.cliente || ''}
+                  value={novaObra.cliente}
                   onChange={(e) => setNovaObra({ ...novaObra, cliente: e.target.value })}
+                  onBlur={(e) => setNovaObra({ ...novaObra, cliente: capitalizarPrimeiraLetra(e.target.value) })}
+                  placeholder="Digite o nome do cliente"
+                  spellCheck="true"
+                  autoCorrect="on"
+                  autoCapitalize="sentences"
+                  lang="pt-BR"
                 />
               </div>
-              <div className="space-y-2">
+              <div>
                 <label className="text-sm font-medium">Responsável</label>
                 <Input
-                  placeholder="Digite o nome do responsável"
-                  value={novaObra.responsavel || ''}
+                  value={novaObra.responsavel}
                   onChange={(e) => setNovaObra({ ...novaObra, responsavel: e.target.value })}
+                  onBlur={(e) => setNovaObra({ ...novaObra, responsavel: capitalizarPrimeiraLetra(e.target.value) })}
+                  placeholder="Digite o nome do responsável"
+                  spellCheck="true"
+                  autoCorrect="on"
+                  autoCapitalize="sentences"
+                  lang="pt-BR"
                 />
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Previsão de Término</label>
+              <div>
+                <label className="text-sm font-medium">Custo Previsto</label>
                 <Input
-                  type="month"
-                  value={novaObra.data_previsao_fim || ''}
+                  type="number"
+                  value={novaObra.custo_previsto}
+                  onChange={(e) => setNovaObra({ ...novaObra, custo_previsto: parseFloat(e.target.value) || 0 })}
+                  placeholder="Digite o custo previsto"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Data Prevista de Conclusão</label>
+                <Input
+                  type="date"
+                  value={novaObra.data_previsao_fim}
                   onChange={(e) => setNovaObra({ ...novaObra, data_previsao_fim: e.target.value })}
                 />
               </div>
-
-              <Button 
-                onClick={handleNovaObra} 
-                className="w-full"
-              >
-                Criar Obra
-              </Button>
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="outline" onClick={() => setShowDialog(false)}>Cancelar</Button>
+              <Button onClick={handleNovaObra}>Criar Obra</Button>
             </div>
           </DialogContent>
         </Dialog>
@@ -497,53 +526,56 @@ const Obras = () => {
           </DialogHeader>
           {obraEmEdicao && (
             <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Nome da Obra *</label>
+              <div>
+                <label className="text-sm font-medium">Nome da Obra</label>
                 <Input
-                  placeholder="Digite o nome da obra"
                   value={obraEmEdicao.nome}
-                  onChange={(e) => setObraEmEdicao({ ...obraEmEdicao, nome: e.target.value })}
+                  onChange={(e) => setObraEmEdicao(prev => prev ? { ...prev, nome: e.target.value } : null)}
+                  onBlur={(e) => setObraEmEdicao(prev => prev ? { ...prev, nome: capitalizarPrimeiraLetra(e.target.value) } : null)}
+                  placeholder="Digite o nome da obra"
+                  spellCheck="true"
+                  autoCorrect="on"
+                  autoCapitalize="sentences"
+                  lang="pt-BR"
                 />
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Endereço *</label>
+              <div>
+                <label className="text-sm font-medium">Endereço</label>
                 <Input
-                  placeholder="Digite o endereço da obra"
                   value={obraEmEdicao.endereco}
-                  onChange={(e) => setObraEmEdicao({ ...obraEmEdicao, endereco: e.target.value })}
+                  onChange={(e) => setObraEmEdicao(prev => prev ? { ...prev, endereco: e.target.value } : null)}
+                  onBlur={(e) => setObraEmEdicao(prev => prev ? { ...prev, endereco: capitalizarPrimeiraLetra(e.target.value) } : null)}
+                  placeholder="Digite o endereço da obra"
+                  spellCheck="true"
+                  autoCorrect="on"
+                  autoCapitalize="sentences"
+                  lang="pt-BR"
                 />
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Custo Previsto (R$) *</label>
-                <Input
-                  type="number"
-                  placeholder="Digite o custo previsto"
-                  value={obraEmEdicao.custo_previsto || ''}
-                  onChange={(e) => setObraEmEdicao({ ...obraEmEdicao, custo_previsto: parseFloat(e.target.value) || 0 })}
-                />
-              </div>
-              <div className="space-y-2">
+              <div>
                 <label className="text-sm font-medium">Cliente</label>
                 <Input
-                  placeholder="Digite o nome do cliente"
                   value={obraEmEdicao.cliente || ''}
-                  onChange={(e) => setObraEmEdicao({ ...obraEmEdicao, cliente: e.target.value })}
+                  onChange={(e) => setObraEmEdicao(prev => prev ? { ...prev, cliente: e.target.value } : null)}
+                  onBlur={(e) => setObraEmEdicao(prev => prev ? { ...prev, cliente: capitalizarPrimeiraLetra(e.target.value) } : null)}
+                  placeholder="Digite o nome do cliente"
+                  spellCheck="true"
+                  autoCorrect="on"
+                  autoCapitalize="sentences"
+                  lang="pt-BR"
                 />
               </div>
-              <div className="space-y-2">
+              <div>
                 <label className="text-sm font-medium">Responsável</label>
                 <Input
-                  placeholder="Digite o nome do responsável"
                   value={obraEmEdicao.responsavel || ''}
-                  onChange={(e) => setObraEmEdicao({ ...obraEmEdicao, responsavel: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Previsão de Término</label>
-                <Input
-                  type="month"
-                  value={obraEmEdicao.data_previsao_fim ? obraEmEdicao.data_previsao_fim.substring(0, 7) : ''}
-                  onChange={(e) => setObraEmEdicao({ ...obraEmEdicao, data_previsao_fim: e.target.value })}
+                  onChange={(e) => setObraEmEdicao(prev => prev ? { ...prev, responsavel: e.target.value } : null)}
+                  onBlur={(e) => setObraEmEdicao(prev => prev ? { ...prev, responsavel: capitalizarPrimeiraLetra(e.target.value) } : null)}
+                  placeholder="Digite o nome do responsável"
+                  spellCheck="true"
+                  autoCorrect="on"
+                  autoCapitalize="sentences"
+                  lang="pt-BR"
                 />
               </div>
               <div className="space-y-2">

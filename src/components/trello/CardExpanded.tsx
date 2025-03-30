@@ -32,6 +32,18 @@ import {
   excluirComentario
 } from '@/lib/trello-local';
 
+// Função para capitalizar a primeira letra de cada frase
+const capitalizarPrimeiraLetra = (texto: string) => {
+  if (!texto) return texto;
+  const frases = texto.split(/([.!?]\s+)/).filter(Boolean);
+  return frases.map((frase, index) => {
+    if (index % 2 === 0) { // É uma frase
+      return frase.charAt(0).toUpperCase() + frase.slice(1);
+    }
+    return frase; // É um separador (.!? )
+  }).join('');
+};
+
 interface CardExpandedProps {
   card: TrelloCard;
   open: boolean;
@@ -187,8 +199,13 @@ export function CardExpanded({
             <Textarea
               value={card.description || ''}
               onChange={(e) => onUpdate(card.id, { description: e.target.value })}
+              onBlur={(e) => onUpdate(card.id, { description: capitalizarPrimeiraLetra(e.target.value) })}
               placeholder="Adicione uma descrição mais detalhada..."
               className="min-h-[100px]"
+              spellCheck="true"
+              autoCorrect="on"
+              autoCapitalize="sentences"
+              lang="pt-BR"
             />
           </div>
 
@@ -411,12 +428,22 @@ export function CardExpanded({
             {/* Comentários */}
             <TabsContent value="comments" className="space-y-4">
               <div className="space-y-2">
-                <Textarea
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Escreva um comentário..."
-                />
-                <Button onClick={handleAddComment}>Comentar</Button>
+                <div className="flex gap-2">
+                  <Textarea
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    onBlur={(e) => setNewComment(capitalizarPrimeiraLetra(e.target.value))}
+                    placeholder="Adicione um comentário..."
+                    className="flex-1"
+                    spellCheck="true"
+                    autoCorrect="on"
+                    autoCapitalize="sentences"
+                    lang="pt-BR"
+                  />
+                  <Button onClick={handleAddComment}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
 
               <div className="space-y-4">

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Plus, Edit, Trash2, Clock, Tag, CheckSquare, MessageSquare, Paperclip, MoreHorizontal, Check, X } from 'lucide-react';
+import { ArrowLeft, Plus, Edit, Trash2, Clock, Tag, CheckSquare, MessageSquare, Paperclip, MoreHorizontal, Check, X, FileText, Share as ShareIcon } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { buscarObra } from '@/lib/api';
 import { Input } from '@/components/ui/input';
@@ -60,6 +60,8 @@ import {
 } from "@/components/ui/tabs";
 import { Label } from '@/components/ui/label';
 import { DragDropContext, Droppable, Draggable, DropResult, DragStart, ResponderProvided } from 'react-beautiful-dnd';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 const PendenciasObra = () => {
   const { id } = useParams();
@@ -95,6 +97,8 @@ const PendenciasObra = () => {
   const [novoChecklistNome, setNovoChecklistNome] = useState('');
   const [novoChecklistItem, setNovoChecklistItem] = useState('');
   const [checklistAtual, setChecklistAtual] = useState<TrelloChecklist | null>(null);
+
+  const boardRef = useRef<HTMLDivElement>(null);
 
   // Função para capitalizar a primeira letra de cada frase
   const capitalizarPrimeiraLetra = (texto: string) => {
@@ -853,22 +857,554 @@ const PendenciasObra = () => {
     }
   };
 
+  // Função para gerar o PDF
+  const gerarPDF = async () => {
+    if (!boardRef.current || !board) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível gerar o PDF. Conteúdo não encontrado.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      toast({
+        title: "Processando",
+        description: "Gerando PDF, por favor aguarde...",
+      });
+
+      // Verificar se estamos no ambiente mobile (Capacitor)
+      const isCapacitor = !!(window as any).Capacitor?.isNativePlatform();
+      
+      // Obter a data atual formatada
+      const dataAtual = new Date().toLocaleDateString('pt-BR');
+      const fileName = `Pendencias_${dataAtual.replace(/\//g, '-')}.pdf`;
+
+      // Conteúdo HTML do relatório
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Relatório de Pendências - ${obraNome}</title>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            @page {
+              size: A4;
+              margin: 15mm;
+            }
+            body { 
+              font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+              margin: 0;
+              padding: 20px;
+              background-color: white;
+              font-size: 12pt;
+              line-height: 1.4;
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 20px;
+              padding-bottom: 10px;
+              border-bottom: 1px solid #eee;
+              page-break-after: avoid;
+            }
+            .header h1 {
+              margin: 0;
+              color: #2c3e50;
+              font-size: 24px;
+            }
+            .header p {
+              margin: 5px 0 0 0;
+              color: #666;
+            }
+            .lista {
+              margin-bottom: 20px;
+              page-break-inside: avoid;
+            }
+            .lista-titulo {
+              background-color: #f8f9fa !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+              padding: 10px;
+              margin-bottom: 10px;
+              border-radius: 4px;
+              font-weight: bold;
+              color: #2c3e50;
+            }
+            .card {
+              background-color: white;
+              border: 1px solid #eee;
+              border-radius: 4px;
+              padding: 10px;
+              margin-bottom: 10px;
+              page-break-inside: avoid;
+            }
+            .card-titulo {
+              font-weight: 500;
+              margin-bottom: 5px;
+              color: #2c3e50;
+            }
+            .card-descricao {
+              color: #666;
+              font-size: 0.9em;
+              margin: 5px 0;
+            }
+            .card-labels {
+              margin-top: 5px;
+              display: flex;
+              gap: 5px;
+              flex-wrap: wrap;
+            }
+            .label {
+              padding: 2px 6px;
+              border-radius: 4px;
+              font-size: 0.8em;
+              color: white;
+              display: inline-block;
+              margin: 2px;
+            }
+            .footer {
+              text-align: center;
+              margin-top: 20px;
+              padding-top: 10px;
+              border-top: 1px solid #eee;
+              color: #666;
+              font-size: 0.9em;
+              page-break-before: avoid;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>Relatório de Pendências</h1>
+            <p>Obra: ${obraNome}</p>
+            <p>Data: ${dataAtual}</p>
+          </div>
+
+          ${board.lists.map(lista => `
+            <div class="lista">
+              <div class="lista-titulo">${lista.title}</div>
+              ${lista.cards.map(card => `
+                <div class="card">
+                  <div class="card-titulo">${card.title}</div>
+                  ${card.description ? `<div class="card-descricao">${card.description}</div>` : ''}
+                  ${card.labels && card.labels.length > 0 ? `
+                    <div class="card-labels">
+                      ${card.labels.map(label => {
+                        const labelText = typeof label === 'string' ? label : (label.title || label.toString());
+                        let bgColor = '';
+                        
+                        if (labelText === 'Urgente') bgColor = '#ef4444';
+                        else if (labelText === 'Fazendo') bgColor = '#eab308';
+                        else if (labelText === 'Feito') bgColor = '#22c55e';
+                        
+                        return `<span class="label" style="background-color: ${bgColor || '#6b7280'} !important;">${labelText}</span>`;
+                      }).join('')}
+                    </div>
+                  ` : ''}
+                </div>
+              `).join('')}
+            </div>
+          `).join('')}
+
+          <div class="footer">
+            <p>Relatório gerado em ${dataAtual}</p>
+          </div>
+        </body>
+        </html>
+      `;
+
+      if (isCapacitor) {
+        try {
+          const { Filesystem } = await import('@capacitor/filesystem');
+          const html2canvas = (await import('html2canvas')).default;
+          const jsPDF = (await import('jspdf')).default;
+
+          // Criar um elemento temporário para renderizar o HTML
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = htmlContent; // htmlContent é mantido como estava
+          tempDiv.style.position = 'absolute';
+          tempDiv.style.left = '-9999px';
+          document.body.appendChild(tempDiv);
+
+          try {
+            // Converter HTML para canvas
+            const canvas = await html2canvas(tempDiv, {
+              scale: 2,
+              useCORS: true,
+              logging: false,
+              allowTaint: true,
+              backgroundColor: '#ffffff',
+            });
+
+            // Criar PDF
+            const pdf = new jsPDF({
+              orientation: 'portrait',
+              unit: 'mm',
+              format: 'a4'
+            });
+
+            const imgData = canvas.toDataURL('image/png');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+            const imgWidth = canvas.width;
+            const imgHeight = canvas.height;
+            const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+            const imgX = (pdfWidth - imgWidth * ratio) / 2;
+            const imgY = 20;
+
+            // Adicionar título
+            pdf.setFontSize(16);
+            pdf.text('Relatório de Pendências', pdfWidth / 2, 10, { align: 'center' });
+
+            // Adicionar data
+            pdf.setFontSize(10);
+            pdf.text(`Data: ${dataAtual}`, 10, 10);
+
+            // Adicionar imagem do conteúdo
+            pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
+
+            // Gerar o PDF como base64
+            const pdfBase64 = pdf.output('datauristring').split(',')[1];
+
+            // Salvar o arquivo no sistema de arquivos
+            await Filesystem.writeFile({
+              path: fileName,
+              data: pdfBase64,
+              directory: 'CACHE'
+            });
+
+            // Verificar se o arquivo foi criado corretamente
+            const fileCheck = await Filesystem.stat({
+              path: fileName,
+              directory: 'CACHE'
+            });
+
+            if (!fileCheck || !fileCheck.uri) {
+              throw new Error('Arquivo PDF não foi gerado corretamente');
+            }
+
+            // Obter o caminho do arquivo salvo
+            const fileInfo = await Filesystem.getUri({
+              path: fileName,
+              directory: 'CACHE'
+            });
+
+            // Abrir o PDF usando o visualizador nativo
+            const { Browser } = await import('@capacitor/browser');
+            await Browser.open({
+              url: fileInfo.uri,
+              presentationStyle: 'popover',
+              toolbarColor: '#ffffff',
+              backgroundColor: '#ffffff',
+              windowName: 'PDF Viewer',
+              fullscreen: false,
+              hidden: false
+            });
+
+            toast({
+              title: "Sucesso",
+              description: "PDF gerado com sucesso!",
+            });
+
+            // Limpar arquivos temporários após 5 segundos
+            setTimeout(async () => {
+              try {
+                await Filesystem.deleteFile({
+                  path: fileName,
+                  directory: 'CACHE'
+                });
+                document.body.removeChild(tempDiv);
+              } catch (error) {
+                console.error('Erro ao limpar arquivos temporários:', error);
+              }
+            }, 5000);
+
+          } finally {
+            // Garantir que o elemento temporário seja removido
+            if (document.body.contains(tempDiv)) {
+              document.body.removeChild(tempDiv);
+            }
+          }
+        } catch (error) {
+          console.error('Erro ao gerar PDF:', error);
+          toast({
+            title: "Erro",
+            description: "Não foi possível gerar o PDF. Tente novamente.",
+            variant: "destructive"
+          });
+        }
+      } else {
+        // No ambiente web, abrir em nova aba
+        const printWindow = window.open('', '_blank');
+        
+        if (!printWindow) {
+          throw new Error('Não foi possível abrir uma nova janela. Verifique se o bloqueador de pop-ups está desativado.');
+        }
+        
+        // Escrever o conteúdo HTML na nova janela
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
+
+        toast({
+          title: "Sucesso",
+          description: "Relatório aberto em nova janela. Clique no botão 'Salvar como PDF' para baixar o arquivo.",
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível gerar o PDF. Tente novamente.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Função para compartilhar PDF
+  const compartilharPDF = async () => {
+    if (!boardRef.current || !board) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível compartilhar. Conteúdo não encontrado.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      toast({
+        title: "Processando",
+        description: "Preparando arquivo para compartilhar...",
+      });
+
+      const dataAtual = new Date().toLocaleDateString('pt-BR');
+      const fileName = `Pendencias_${dataAtual.replace(/\//g, '-')}.pdf`;
+
+      // Gerar o conteúdo HTML
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Relatório de Pendências - ${obraNome}</title>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            @page {
+              size: A4;
+              margin: 15mm;
+            }
+            body { 
+              font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+              margin: 0;
+              padding: 20px;
+              background-color: white;
+              font-size: 12pt;
+              line-height: 1.4;
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 20px;
+              padding-bottom: 10px;
+              border-bottom: 1px solid #eee;
+              page-break-after: avoid;
+            }
+            .header h1 {
+              margin: 0;
+              color: #2c3e50;
+              font-size: 24px;
+            }
+            .header p {
+              margin: 5px 0 0 0;
+              color: #666;
+            }
+            .lista {
+              margin-bottom: 20px;
+              page-break-inside: avoid;
+            }
+            .lista-titulo {
+              background-color: #f8f9fa !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+              padding: 10px;
+              margin-bottom: 10px;
+              border-radius: 4px;
+              font-weight: bold;
+              color: #2c3e50;
+            }
+            .card {
+              background-color: white;
+              border: 1px solid #eee;
+              border-radius: 4px;
+              padding: 10px;
+              margin-bottom: 10px;
+              page-break-inside: avoid;
+            }
+            .card-titulo {
+              font-weight: 500;
+              margin-bottom: 5px;
+              color: #2c3e50;
+            }
+            .card-descricao {
+              color: #666;
+              font-size: 0.9em;
+              margin: 5px 0;
+            }
+            .card-labels {
+              margin-top: 5px;
+              display: flex;
+              gap: 5px;
+              flex-wrap: wrap;
+            }
+            .label {
+              padding: 2px 6px;
+              border-radius: 4px;
+              font-size: 0.8em;
+              color: white;
+              display: inline-block;
+              margin: 2px;
+            }
+            .footer {
+              text-align: center;
+              margin-top: 20px;
+              padding-top: 10px;
+              border-top: 1px solid #eee;
+              color: #666;
+              font-size: 0.9em;
+              page-break-before: avoid;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>Relatório de Pendências</h1>
+            <p>Obra: ${obraNome}</p>
+            <p>Data: ${dataAtual}</p>
+          </div>
+
+          ${board.lists.map(lista => `
+            <div class="lista">
+              <div class="lista-titulo">${lista.title}</div>
+              ${lista.cards.map(card => `
+                <div class="card">
+                  <div class="card-titulo">${card.title}</div>
+                  ${card.description ? `<div class="card-descricao">${card.description}</div>` : ''}
+                  ${card.labels && card.labels.length > 0 ? `
+                    <div class="card-labels">
+                      ${card.labels.map(label => {
+                        const labelText = typeof label === 'string' ? label : (label.title || label.toString());
+                        let bgColor = '';
+                        
+                        if (labelText === 'Urgente') bgColor = '#ef4444';
+                        else if (labelText === 'Fazendo') bgColor = '#eab308';
+                        else if (labelText === 'Feito') bgColor = '#22c55e';
+                        
+                        return `<span class="label" style="background-color: ${bgColor || '#6b7280'} !important;">${labelText}</span>`;
+                      }).join('')}
+                    </div>
+                  ` : ''}
+                </div>
+              `).join('')}
+            </div>
+          `).join('')}
+
+          <div class="footer">
+            <p>Relatório gerado em ${dataAtual}</p>
+          </div>
+        </body>
+        </html>
+      `;
+
+      try {
+        const { Filesystem } = await import('@capacitor/filesystem');
+        const { Share } = await import('@capacitor/share');
+        
+        // Criar um Blob com o conteúdo HTML
+        const blob = new Blob([htmlContent], { type: 'text/html' });
+        const reader = new FileReader();
+        
+        reader.onload = async () => {
+          try {
+            // Salvar o arquivo temporariamente
+            await Filesystem.writeFile({
+              path: fileName,
+              data: reader.result as string,
+              directory: 'CACHE'
+            });
+            
+            // Compartilhar o arquivo
+            await Share.share({
+              title: 'Relatório de Pendências',
+              text: 'Relatório de pendências da obra',
+              url: fileName,
+              dialogTitle: 'Compartilhar relatório'
+            });
+            
+            // Limpar o arquivo temporário
+            await Filesystem.deleteFile({
+              path: fileName,
+              directory: 'CACHE'
+            });
+            
+            toast({
+              title: "Sucesso",
+              description: "Arquivo pronto para compartilhar!",
+            });
+          } catch (error) {
+            console.error('Erro ao compartilhar:', error);
+            toast({
+              title: "Erro",
+              description: "Não foi possível compartilhar o arquivo. Tente novamente.",
+              variant: "destructive"
+            });
+          }
+        };
+        
+        reader.readAsDataURL(blob);
+      } catch (error) {
+        console.error('Erro ao preparar arquivo para compartilhamento:', error);
+        toast({
+          title: "Erro",
+          description: "Não foi possível preparar o arquivo para compartilhamento. Tente novamente.",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao compartilhar:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível compartilhar o arquivo. Tente novamente.",
+        variant: "destructive"
+      });
+    }
+  };
+
   return (
-    <div className="container py-6 space-y-6">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center">
+    <div className="container mx-auto px-4 py-6 space-y-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
           <Button 
             variant="ghost" 
             size="icon" 
             onClick={() => navigate(`/obras/${id}`)}
-            className="mr-2"
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <h1 className="text-2xl font-bold">Pendências: {obraNome}</h1>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={handleAddList} className="flex items-center gap-2">
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+          <Button onClick={gerarPDF} className="flex-1 sm:flex-none flex items-center gap-2">
+            <FileText className="w-4 h-4" />
+            Gerar PDF
+          </Button>
+          {!!(window as any).Capacitor?.isNativePlatform() && (
+            <Button onClick={compartilharPDF} className="flex-1 sm:flex-none flex items-center gap-2">
+              <ShareIcon className="w-4 h-4" />
+              Compartilhar
+            </Button>
+          )}
+          <Button onClick={handleAddList} className="flex-1 sm:flex-none flex items-center gap-2">
             <Plus className="h-4 w-4" />
             Nova Seção
           </Button>
@@ -880,147 +1416,149 @@ const PendenciasObra = () => {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
         </div>
       ) : (
-        <DragDropContext
-          onDragEnd={handleDragEnd}
-          enableDefaultSensors={false}
-        >
-          <DndSensors>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {board?.lists.map((lista) => (
-                <Droppable key={lista.id} droppableId={lista.id.toString()}>
-                  {(provided, snapshot) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.droppableProps}
-                      className={`bg-muted/30 rounded-lg p-4 min-h-[200px] ${
-                        snapshot.isDraggingOver ? 'bg-muted/50' : ''
-                      }`}
-                    >
-                      <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-lg font-semibold">{lista.title || (lista as any).nome}</h2>
-                        <div className="flex items-center gap-2">
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            onClick={() => handleAddCard(lista)}
-                            title="Adicionar Card"
-                          >
-                            <Plus className="h-5 w-5" />
-                          </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <MoreHorizontal className="h-5 w-5" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleEditList(lista)}>
-                                <Edit className="h-4 w-4 mr-2" />
-                                Editar Seção
-                              </DropdownMenuItem>
-                              <DropdownMenuItem 
-                                onClick={() => handleDeleteList(lista)}
-                                className="text-red-600"
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Excluir Seção
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+        <div ref={boardRef} className="w-full">
+          <DragDropContext
+            onDragEnd={handleDragEnd}
+            enableDefaultSensors={false}
+          >
+            <DndSensors>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {board?.lists.map((lista) => (
+                  <Droppable key={lista.id} droppableId={lista.id.toString()}>
+                    {(provided, snapshot) => (
+                      <div
+                        ref={provided.innerRef}
+                        {...provided.droppableProps}
+                        className={`bg-muted/30 rounded-lg p-4 min-h-[200px] ${
+                          snapshot.isDraggingOver ? 'bg-muted/50' : ''
+                        }`}
+                      >
+                        <div className="flex justify-between items-center mb-4">
+                          <h2 className="text-lg font-semibold">{lista.title || (lista as any).nome}</h2>
+                          <div className="flex items-center gap-2">
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              onClick={() => handleAddCard(lista)}
+                              title="Adicionar Card"
+                            >
+                              <Plus className="h-5 w-5" />
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreHorizontal className="h-5 w-5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleEditList(lista)}>
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  Editar Seção
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  onClick={() => handleDeleteList(lista)}
+                                  className="text-red-600"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Excluir Seção
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-3">
+                          {lista.cards.map((card, index) => (
+                            <Draggable
+                              key={card.id}
+                              draggableId={card.id.toString()}
+                              index={index}
+                            >
+                              {(provided, snapshot) => (
+                                <div
+                                  ref={provided.innerRef}
+                                  {...provided.draggableProps}
+                                  {...provided.dragHandleProps}
+                                  data-drag-handle
+                                  className={`touch-none ${
+                                    snapshot.isDragging ? 'opacity-50' : ''
+                                  }`}
+                                >
+                                  <Card 
+                                    className={`shadow-sm hover:shadow-md transition-all ${
+                                      snapshot.isDragging
+                                        ? 'shadow-lg ring-2 ring-primary'
+                                        : ''
+                                    }`}
+                                    onClick={() => handleViewCardDetails(card)}
+                                  >
+                                    <CardHeader className="p-4 pb-2">
+                                      <CardTitle className="text-base">{card.title}</CardTitle>
+                                    </CardHeader>
+                                    
+                                    {card.description && (
+                                      <CardContent className="p-4 pt-0 pb-2">
+                                        <p className="text-sm text-muted-foreground line-clamp-3">{card.description}</p>
+                                      </CardContent>
+                                    )}
+                                    
+                                    <CardFooter className="p-4 pt-2 flex flex-wrap gap-2 justify-between">
+                                      <div className="flex flex-wrap gap-2">
+                                        {card.due_date && (
+                                          <Badge variant="outline" className="flex items-center gap-1 text-xs">
+                                            <Clock className="h-3 w-3" />
+                                            {formatarData(card.due_date)}
+                                          </Badge>
+                                        )}
+                                        
+                                        {renderizarLabels(card.labels)}
+                                        
+                                        {card.checklists && card.checklists.length > 0 && (
+                                          <Badge variant="outline" className="flex items-center gap-1 text-xs">
+                                            <CheckSquare className="h-3 w-3" />
+                                            {card.checklists.reduce((total, checklist) => 
+                                              total + checklist.items.filter(item => item.checked).length, 0
+                                            )} / {card.checklists.reduce((total, checklist) => 
+                                              total + checklist.items.length, 0
+                                            )}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                      
+                                      <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                                        <Button 
+                                          variant="ghost" 
+                                          size="icon" 
+                                          className="h-7 w-7" 
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteCard(card);
+                                          }}
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </Button>
+                                      </div>
+                                    </CardFooter>
+                                  </Card>
+                                </div>
+                              )}
+                            </Draggable>
+                          ))}
+                          {provided.placeholder}
+                          {lista.cards.length === 0 && (
+                            <div className="text-center py-4 text-muted-foreground text-sm">
+                              Nenhum card nesta seção
+                            </div>
+                          )}
                         </div>
                       </div>
-                      
-                      <div className="space-y-3">
-                        {lista.cards.map((card, index) => (
-                          <Draggable
-                            key={card.id}
-                            draggableId={card.id.toString()}
-                            index={index}
-                          >
-                            {(provided, snapshot) => (
-                              <div
-                                ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                {...provided.dragHandleProps}
-                                data-drag-handle
-                                className={`touch-none ${
-                                  snapshot.isDragging ? 'opacity-50' : ''
-                                }`}
-                              >
-                                <Card 
-                                  className={`shadow-sm hover:shadow-md transition-all ${
-                                    snapshot.isDragging
-                                      ? 'shadow-lg ring-2 ring-primary'
-                                      : ''
-                                  }`}
-                                  onClick={() => handleViewCardDetails(card)}
-                                >
-                                  <CardHeader className="p-4 pb-2">
-                                    <CardTitle className="text-base">{card.title}</CardTitle>
-                                  </CardHeader>
-                                  
-                                  {card.description && (
-                                    <CardContent className="p-4 pt-0 pb-2">
-                                      <p className="text-sm text-muted-foreground line-clamp-3">{card.description}</p>
-                                    </CardContent>
-                                  )}
-                                  
-                                  <CardFooter className="p-4 pt-2 flex flex-wrap gap-2 justify-between">
-                                    <div className="flex flex-wrap gap-2">
-                                      {card.due_date && (
-                                        <Badge variant="outline" className="flex items-center gap-1 text-xs">
-                                          <Clock className="h-3 w-3" />
-                                          {formatarData(card.due_date)}
-                                        </Badge>
-                                      )}
-                                      
-                                      {renderizarLabels(card.labels)}
-                                      
-                                      {card.checklists && card.checklists.length > 0 && (
-                                        <Badge variant="outline" className="flex items-center gap-1 text-xs">
-                                          <CheckSquare className="h-3 w-3" />
-                                          {card.checklists.reduce((total, checklist) => 
-                                            total + checklist.items.filter(item => item.checked).length, 0
-                                          )} / {card.checklists.reduce((total, checklist) => 
-                                            total + checklist.items.length, 0
-                                          )}
-                                        </Badge>
-                                      )}
-                                    </div>
-                                    
-                                    <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                                      <Button 
-                                        variant="ghost" 
-                                        size="icon" 
-                                        className="h-7 w-7" 
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleDeleteCard(card);
-                                        }}
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      </Button>
-                                    </div>
-                                  </CardFooter>
-                                </Card>
-                              </div>
-                            )}
-                          </Draggable>
-                        ))}
-                        {provided.placeholder}
-                        {lista.cards.length === 0 && (
-                          <div className="text-center py-4 text-muted-foreground text-sm">
-                            Nenhum card nesta seção
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </Droppable>
-              ))}
-            </div>
-          </DndSensors>
-        </DragDropContext>
+                    )}
+                  </Droppable>
+                ))}
+              </div>
+            </DndSensors>
+          </DragDropContext>
+        </div>
       )}
 
       {/* Dialog para adicionar seção */}
@@ -1439,4 +1977,4 @@ const DndSensors = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
-export default PendenciasObra; 
+export default PendenciasObra;

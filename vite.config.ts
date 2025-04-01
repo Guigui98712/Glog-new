@@ -24,10 +24,19 @@ export default defineConfig({
   build: {
     rollupOptions: {
       external: ['batch', 'emitter']
-    }
+    },
+    outDir: 'dist',
+    sourcemap: true,
+    minify: 'terser',
+    chunkSizeWarningLimit: 1000,
+    target: 'esnext',
+    assetsDir: 'assets',
+    emptyOutDir: true
   },
   define: {
-    'process.env': {},
-    global: {},
+    'process.env': process.env,
+    global: 'globalThis',
   },
+  base: './',
+  publicDir: 'public',
 });

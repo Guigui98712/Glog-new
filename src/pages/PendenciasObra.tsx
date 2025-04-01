@@ -1023,7 +1023,7 @@ const PendenciasObra = () => {
 
           // Criar um elemento temporário para renderizar o HTML
           const tempDiv = document.createElement('div');
-          tempDiv.innerHTML = htmlContent; // htmlContent é mantido como estava
+          tempDiv.innerHTML = htmlContent;
           tempDiv.style.position = 'absolute';
           tempDiv.style.left = '-9999px';
           document.body.appendChild(tempDiv);
@@ -1074,16 +1074,6 @@ const PendenciasObra = () => {
               data: pdfBase64,
               directory: 'CACHE'
             });
-
-            // Verificar se o arquivo foi criado corretamente
-            const fileCheck = await Filesystem.stat({
-              path: fileName,
-              directory: 'CACHE'
-            });
-
-            if (!fileCheck || !fileCheck.uri) {
-              throw new Error('Arquivo PDF não foi gerado corretamente');
-            }
 
             // Obter o caminho do arquivo salvo
             const fileInfo = await Filesystem.getUri({
@@ -1136,21 +1126,67 @@ const PendenciasObra = () => {
           });
         }
       } else {
-        // No ambiente web, abrir em nova aba
-        const printWindow = window.open('', '_blank');
-        
-        if (!printWindow) {
-          throw new Error('Não foi possível abrir uma nova janela. Verifique se o bloqueador de pop-ups está desativado.');
-        }
-        
-        // Escrever o conteúdo HTML na nova janela
-        printWindow.document.write(htmlContent);
-        printWindow.document.close();
+        // Código para ambiente web
+        const html2canvas = (await import('html2canvas')).default;
+        const jsPDF = (await import('jspdf')).default;
 
-        toast({
-          title: "Sucesso",
-          description: "Relatório aberto em nova janela. Clique no botão 'Salvar como PDF' para baixar o arquivo.",
-        });
+        // Criar um elemento temporário para renderizar o HTML
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = htmlContent;
+        tempDiv.style.position = 'absolute';
+        tempDiv.style.left = '-9999px';
+        document.body.appendChild(tempDiv);
+
+        try {
+          // Converter HTML para canvas
+          const canvas = await html2canvas(tempDiv, {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            allowTaint: true,
+            backgroundColor: '#ffffff',
+          });
+
+          // Criar PDF
+          const pdf = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: 'a4'
+          });
+
+          const imgData = canvas.toDataURL('image/png');
+          const pdfWidth = pdf.internal.pageSize.getWidth();
+          const pdfHeight = pdf.internal.pageSize.getHeight();
+          const imgWidth = canvas.width;
+          const imgHeight = canvas.height;
+          const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+          const imgX = (pdfWidth - imgWidth * ratio) / 2;
+          const imgY = 20;
+
+          // Adicionar título
+          pdf.setFontSize(16);
+          pdf.text('Relatório de Pendências', pdfWidth / 2, 10, { align: 'center' });
+
+          // Adicionar data
+          pdf.setFontSize(10);
+          pdf.text(`Data: ${dataAtual}`, 10, 10);
+
+          // Adicionar imagem do conteúdo
+          pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
+
+          // Salvar o PDF
+          pdf.save(fileName);
+
+          toast({
+            title: "Sucesso",
+            description: "PDF gerado com sucesso!",
+          });
+        } finally {
+          // Garantir que o elemento temporário seja removido
+          if (document.body.contains(tempDiv)) {
+            document.body.removeChild(tempDiv);
+          }
+        }
       }
     } catch (error) {
       console.error('Erro ao gerar PDF:', error);

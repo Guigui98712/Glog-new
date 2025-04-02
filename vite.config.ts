@@ -3,8 +3,8 @@ import react from "@vitejs/plugin-react-swc";
 import path from "path";
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => {
-  // Carregar variáveis de ambiente
+export default defineConfig(({ command, mode }) => {
+  // Carregar variáveis de ambiente com base no modo (development/production)
   const env = loadEnv(mode, process.cwd(), '');
   
   return {
@@ -38,11 +38,11 @@ export default defineConfig(({ mode }) => {
       emptyOutDir: true
     },
     define: {
-      'process.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL),
-      'process.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY),
-      'process.env.VITE_API_URL': JSON.stringify(env.VITE_API_URL),
-      'process.env.VITE_APP_ENV': JSON.stringify(env.VITE_APP_ENV),
-      'process.env.VITE_APP_VERSION': JSON.stringify(env.VITE_APP_VERSION),
+      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL),
+      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY),
+      'import.meta.env.VITE_API_URL': JSON.stringify(env.VITE_API_URL),
+      'import.meta.env.VITE_APP_ENV': JSON.stringify(env.VITE_APP_ENV),
+      'import.meta.env.VITE_APP_VERSION': JSON.stringify(env.VITE_APP_VERSION),
       global: 'globalThis',
     },
     base: './',

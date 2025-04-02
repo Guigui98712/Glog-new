@@ -881,246 +881,124 @@ const PendenciasObra = () => {
       const dataAtual = new Date().toLocaleDateString('pt-BR');
       const fileName = `Pendencias_${dataAtual.replace(/\//g, '-')}.pdf`;
 
-      // Conteúdo HTML do relatório
-      const htmlContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Relatório de Pendências - ${obraNome}</title>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            @page {
-              size: A4;
-              margin: 15mm;
-            }
-            body { 
-              font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
-              margin: 0;
-              padding: 20px;
-              background-color: white;
-              font-size: 12pt;
-              line-height: 1.4;
-            }
-            .header {
-              text-align: center;
-              margin-bottom: 20px;
-              padding-bottom: 10px;
-              border-bottom: 1px solid #eee;
-              page-break-after: avoid;
-            }
-            .header h1 {
-              margin: 0;
-              color: #2c3e50;
-              font-size: 24px;
-            }
-            .header p {
-              margin: 5px 0 0 0;
-              color: #666;
-            }
-            .lista {
-              margin-bottom: 20px;
-              page-break-inside: avoid;
-            }
-            .lista-titulo {
-              background-color: #f8f9fa !important;
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
-              padding: 10px;
-              margin-bottom: 10px;
-              border-radius: 4px;
-              font-weight: bold;
-              color: #2c3e50;
-            }
-            .card {
-              background-color: white;
-              border: 1px solid #eee;
-              border-radius: 4px;
-              padding: 10px;
-              margin-bottom: 10px;
-              page-break-inside: avoid;
-            }
-            .card-titulo {
-              font-weight: 500;
-              margin-bottom: 5px;
-              color: #2c3e50;
-            }
-            .card-descricao {
-              color: #666;
-              font-size: 0.9em;
-              margin: 5px 0;
-            }
-            .card-labels {
-              margin-top: 5px;
-              display: flex;
-              gap: 5px;
-              flex-wrap: wrap;
-            }
-            .label {
-              padding: 2px 6px;
-              border-radius: 4px;
-              font-size: 0.8em;
-              color: white;
-              display: inline-block;
-              margin: 2px;
-            }
-            .footer {
-              text-align: center;
-              margin-top: 20px;
-              padding-top: 10px;
-              border-top: 1px solid #eee;
-              color: #666;
-              font-size: 0.9em;
-              page-break-before: avoid;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>Relatório de Pendências</h1>
-            <p>Obra: ${obraNome}</p>
-            <p>Data: ${dataAtual}</p>
-          </div>
+      // Criar PDF
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
 
-          ${board.lists.map(lista => `
-            <div class="lista">
-              <div class="lista-titulo">${lista.title}</div>
-              ${lista.cards.map(card => `
-                <div class="card">
-                  <div class="card-titulo">${card.title}</div>
-                  ${card.description ? `<div class="card-descricao">${card.description}</div>` : ''}
-                  ${card.labels && card.labels.length > 0 ? `
-                    <div class="card-labels">
-                      ${card.labels.map(label => {
-                        const labelText = typeof label === 'string' ? label : (label.title || label.toString());
-                        let bgColor = '';
-                        
-                        if (labelText === 'Urgente') bgColor = '#ef4444';
-                        else if (labelText === 'Fazendo') bgColor = '#eab308';
-                        else if (labelText === 'Feito') bgColor = '#22c55e';
-                        
-                        return `<span class="label" style="background-color: ${bgColor || '#6b7280'} !important;">${labelText}</span>`;
-                      }).join('')}
-                    </div>
-                  ` : ''}
-                </div>
-              `).join('')}
-            </div>
-          `).join('')}
+      // Adicionar título
+      pdf.setFontSize(16);
+      pdf.text('Relatório de Pendências', pdf.internal.pageSize.getWidth() / 2, 10, { align: 'center' });
 
-          <div class="footer">
-            <p>Relatório gerado em ${dataAtual}</p>
-          </div>
-        </body>
-        </html>
-      `;
+      // Adicionar data
+      pdf.setFontSize(10);
+      pdf.text(`Data: ${dataAtual}`, 10, 20);
 
-      // Criar um elemento temporário para renderizar o HTML
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = htmlContent;
-      tempDiv.style.position = 'absolute';
-      tempDiv.style.left = '-9999px';
-      document.body.appendChild(tempDiv);
+      let yPos = 30;
+      const pageHeight = pdf.internal.pageSize.height;
 
-      try {
-        // Converter HTML para canvas
-        const canvas = await html2canvas(tempDiv, {
-          scale: 2,
-          useCORS: true,
-          logging: false,
-          allowTaint: true,
-          backgroundColor: '#ffffff',
-        });
+      // Adicionar cada lista e seus cards
+      for (const lista of board.lists) {
+        // Adicionar título da lista
+        pdf.setFontSize(12);
+        pdf.setTextColor(0, 0, 0);
+        pdf.text(lista.title, 10, yPos);
+        yPos += 10;
 
-        // Criar PDF
-        const pdf = new jsPDF({
-          orientation: 'portrait',
-          unit: 'mm',
-          format: 'a4'
-        });
-
-        const imgData = canvas.toDataURL('image/png');
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = pdf.internal.pageSize.getHeight();
-        const imgWidth = canvas.width;
-        const imgHeight = canvas.height;
-        const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-        const imgX = (pdfWidth - imgWidth * ratio) / 2;
-        const imgY = 20;
-
-        // Adicionar título
-        pdf.setFontSize(16);
-        pdf.text('Relatório de Pendências', pdfWidth / 2, 10, { align: 'center' });
-
-        // Adicionar data
-        pdf.setFontSize(10);
-        pdf.text(`Data: ${dataAtual}`, 10, 10);
-
-        // Adicionar imagem do conteúdo
-        pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
-
-        if (isCapacitor) {
-          try {
-            const { Filesystem } = await import('@capacitor/filesystem');
-            const { Browser } = await import('@capacitor/browser');
-
-            // Gerar o PDF como base64
-            const pdfBase64 = pdf.output('datauristring').split(',')[1];
-
-            // Salvar o arquivo no sistema de arquivos
-            await Filesystem.writeFile({
-              path: fileName,
-              data: pdfBase64,
-              directory: 'CACHE'
-            });
-
-            // Obter o caminho do arquivo salvo
-            const fileInfo = await Filesystem.getUri({
-              path: fileName,
-              directory: 'CACHE'
-            });
-
-            // Abrir o PDF usando o visualizador nativo
-            await Browser.open({
-              url: fileInfo.uri,
-              presentationStyle: 'popover',
-              toolbarColor: '#ffffff',
-              backgroundColor: '#ffffff',
-              windowName: 'PDF Viewer',
-              fullscreen: false,
-              hidden: false
-            });
-
-            // Limpar arquivos temporários após 5 segundos
-            setTimeout(async () => {
-              try {
-                await Filesystem.deleteFile({
-                  path: fileName,
-                  directory: 'CACHE'
-                });
-              } catch (error) {
-                console.error('Erro ao limpar arquivos temporários:', error);
-              }
-            }, 5000);
-          } catch (error) {
-            console.error('Erro ao usar Capacitor:', error);
-            // Fallback para download direto
-            pdf.save(fileName);
+        // Adicionar cards
+        for (const card of lista.cards) {
+          // Verificar se precisa de nova página
+          if (yPos > pageHeight - 20) {
+            pdf.addPage();
+            yPos = 20;
           }
-        } else {
-          // Download direto no navegador
-          pdf.save(fileName);
+
+          pdf.setFontSize(10);
+          pdf.text(card.title, 15, yPos);
+          yPos += 5;
+
+          if (card.description) {
+            pdf.setFontSize(8);
+            pdf.text(card.description, 20, yPos);
+            yPos += 5;
+          }
+
+          if (card.labels && card.labels.length > 0) {
+            pdf.setFontSize(8);
+            const labels = card.labels.map((label: any) => 
+              typeof label === 'string' ? label : (label.title || label.nome || label.toString())
+            ).join(', ');
+            pdf.text(`Etiquetas: ${labels}`, 20, yPos);
+            yPos += 8;
+          }
         }
 
+        yPos += 5;
+      }
+
+      if (isCapacitor) {
+        try {
+          const { Filesystem } = await import('@capacitor/filesystem');
+          const { Browser } = await import('@capacitor/browser');
+
+          // Converter PDF para base64
+          const pdfBase64 = pdf.output('datauristring');
+
+          // Salvar o arquivo no sistema de arquivos
+          await Filesystem.writeFile({
+            path: fileName,
+            data: pdfBase64,
+            directory: 'CACHE',
+            recursive: true
+          });
+
+          // Obter o caminho do arquivo salvo
+          const fileInfo = await Filesystem.getUri({
+            path: fileName,
+            directory: 'CACHE'
+          });
+
+          // Abrir o PDF usando o visualizador nativo
+          await Browser.open({
+            url: fileInfo.uri,
+            presentationStyle: 'fullscreen',
+            toolbarColor: '#ffffff'
+          });
+
+          toast({
+            title: "Sucesso",
+            description: "PDF gerado e aberto com sucesso!",
+          });
+
+          // Limpar arquivo temporário após 5 segundos
+          setTimeout(async () => {
+            try {
+              await Filesystem.deleteFile({
+                path: fileName,
+                directory: 'CACHE'
+              });
+            } catch (error) {
+              console.error('Erro ao limpar arquivo temporário:', error);
+            }
+          }, 5000);
+        } catch (error) {
+          console.error('Erro ao usar Capacitor:', error);
+          // Fallback para download direto
+          pdf.save(fileName);
+          toast({
+            title: "Atenção",
+            description: "PDF gerado com método alternativo.",
+          });
+        }
+      } else {
+        // Download direto no navegador
+        pdf.save(fileName);
         toast({
           title: "Sucesso",
           description: "PDF gerado com sucesso!",
         });
-      } finally {
-        // Garantir que o elemento temporário seja removido
-        if (document.body.contains(tempDiv)) {
-          document.body.removeChild(tempDiv);
-        }
       }
     } catch (error) {
       console.error('Erro ao gerar PDF:', error);

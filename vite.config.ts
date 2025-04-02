@@ -1,5 +1,5 @@
 import { defineConfig, loadEnv } from "vite";
-import react from "@vitejs/plugin-react-swc";
+import react from "@vitejs/plugin-react";
 import path from "path";
 
 // https://vitejs.dev/config/
@@ -23,26 +23,24 @@ export default defineConfig(({ command, mode }) => {
       },
     },
     optimizeDeps: {
-      exclude: ['batch', 'emitter']
+      exclude: ['@capacitor-community/barcode-scanner']
     },
     build: {
-      rollupOptions: {
-        external: ['batch', 'emitter']
-      },
       outDir: 'dist',
       sourcemap: true,
-      minify: 'terser',
-      chunkSizeWarningLimit: 1000,
-      target: 'esnext',
-      assetsDir: 'assets',
-      emptyOutDir: true
+      commonjsOptions: {
+        include: []
+      }
     },
     define: {
-      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL),
-      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY),
-      'import.meta.env.VITE_API_URL': JSON.stringify(env.VITE_API_URL),
-      'import.meta.env.VITE_APP_ENV': JSON.stringify(env.VITE_APP_ENV),
-      'import.meta.env.VITE_APP_VERSION': JSON.stringify(env.VITE_APP_VERSION),
+      'process.env': {},
+      // Definir explicitamente as variáveis do Supabase
+      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify('https://ionichwiclbqlfcsmhhy.supabase.co'),
+      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlvbmljaHdpY2xicWxmY3NtaGh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDk5OTY5NzAsImV4cCI6MjAyNTU3Mjk3MH0.mYxr5ybj-zJi9wh0g1LQE7lG_4FN2p89UCxXKqgwKGE'),
+      // Outras variáveis de ambiente
+      'import.meta.env.VITE_API_URL': JSON.stringify(env.VITE_API_URL || ''),
+      'import.meta.env.VITE_APP_ENV': JSON.stringify(env.VITE_APP_ENV || 'production'),
+      'import.meta.env.VITE_APP_VERSION': JSON.stringify(env.VITE_APP_VERSION || '1.0.0'),
       global: 'globalThis',
     },
     base: './',

@@ -888,55 +888,186 @@ const PendenciasObra = () => {
         format: 'a4'
       });
 
-      // Adicionar título
+      // Configurações de estilo
+      const corPrimaria = [3, 105, 161];  // #0369a1
+      const corSecundaria = [71, 85, 105]; // #475569
+      const corTexto = [15, 23, 42]; // #0f172a
+      
+      // Adicionar cabeçalho com estilo
+      pdf.setFillColor(...corPrimaria);
+      pdf.rect(0, 0, pdf.internal.pageSize.getWidth(), 30, 'F');
+      
+      pdf.setTextColor(255, 255, 255);
       pdf.setFontSize(16);
-      pdf.text('Relatório de Pendências', pdf.internal.pageSize.getWidth() / 2, 10, { align: 'center' });
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Relatório de Pendências', pdf.internal.pageSize.getWidth() / 2, 15, { align: 'center' });
+      
+      // Adicionar nome da obra
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(obraNome, pdf.internal.pageSize.getWidth() / 2, 25, { align: 'center' });
 
       // Adicionar data
+      pdf.setTextColor(...corSecundaria);
       pdf.setFontSize(10);
-      pdf.text(`Data: ${dataAtual}`, 10, 20);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(`Data: ${dataAtual}`, 10, 45);
 
-      let yPos = 30;
+      let yPos = 55;
       const pageHeight = pdf.internal.pageSize.height;
+      const margemEsquerda = 10;
 
       // Adicionar cada lista e seus cards
       for (const lista of board.lists) {
-        // Adicionar título da lista
+        // Adicionar título da lista com estilo
+        pdf.setFillColor(247, 248, 250); // #f7f8fa
+        pdf.rect(margemEsquerda, yPos - 5, pdf.internal.pageSize.getWidth() - 20, 10, 'F');
+        
+        pdf.setTextColor(...corPrimaria);
         pdf.setFontSize(12);
-        pdf.setTextColor(0, 0, 0);
-        pdf.text(lista.title, 10, yPos);
-        yPos += 10;
+        pdf.setFont('helvetica', 'bold');
+        pdf.text(lista.title, margemEsquerda + 2, yPos);
+        yPos += 12;
 
         // Adicionar cards
         for (const card of lista.cards) {
           // Verificar se precisa de nova página
-          if (yPos > pageHeight - 20) {
+          if (yPos > pageHeight - 30) {
             pdf.addPage();
             yPos = 20;
           }
 
-          pdf.setFontSize(10);
-          pdf.text(card.title, 15, yPos);
-          yPos += 5;
+          // Desenhar borda do card
+          pdf.setDrawColor(229, 231, 235); // #e5e7eb
+          pdf.setLineWidth(0.1);
+          pdf.rect(margemEsquerda, yPos - 4, pdf.internal.pageSize.getWidth() - 20, 2 + (card.description ? 8 : 0) + (card.checklists?.length ? card.checklists.reduce((acc, cl) => acc + 4 + (cl.items.length * 4), 0) : 0) + (card.labels?.length ? 6 : 0), 'D');
 
+          // Título do card
+          pdf.setTextColor(...corTexto);
+          pdf.setFontSize(11);
+          pdf.setFont('helvetica', 'bold');
+          pdf.text(card.title, margemEsquerda + 2, yPos);
+          yPos += 6;
+
+          // Descrição do card
           if (card.description) {
-            pdf.setFontSize(8);
-            pdf.text(card.description, 20, yPos);
-            yPos += 5;
+            pdf.setTextColor(...corSecundaria);
+            pdf.setFontSize(9);
+            pdf.setFont('helvetica', 'normal');
+            pdf.text(card.description, margemEsquerda + 2, yPos);
+            yPos += 6;
           }
 
-          if (card.labels && card.labels.length > 0) {
-            pdf.setFontSize(8);
-            const labels = card.labels.map((label: any) => 
-              typeof label === 'string' ? label : (label.title || label.nome || label.toString())
-            ).join(', ');
-            pdf.text(`Etiquetas: ${labels}`, 20, yPos);
-            yPos += 8;
+          // Adicionar checklists com estilo
+          if (card.checklists && card.checklists.length > 0) {
+            yPos += 2;
+            
+            for (const checklist of card.checklists) {
+              // Verificar se precisa de nova página para o título da checklist
+              if (yPos > pageHeight - 30) {
+                pdf.addPage();
+                yPos = 20;
+              }
+
+              pdf.setTextColor(...corPrimaria);
+              pdf.setFontSize(9);
+              pdf.setFont('helvetica', 'bold');
+              pdf.text(checklist.title || 'Checklist', margemEsquerda + 2, yPos);
+              yPos += 5;
+
+              pdf.setTextColor(...corTexto);
+              pdf.setFontSize(9);
+              pdf.setFont('helvetica', 'normal');
+              
+              for (const item of checklist.items) {
+                // Verificar se precisa de nova página para cada item
+                if (yPos > pageHeight - 15) {
+                  pdf.addPage();
+                  yPos = 20;
+                }
+
+                // Remover o caractere '&' do título do item e adicionar um marcador simples
+                const itemTitle = item.title.replace(/^[&\s]+/, '').trim();
+                
+                // Usar caracteres simples para os checkboxes
+                pdf.setTextColor(...corTexto);
+                const bulletPoint = '- ';
+                const status = item.checked ? '[x] ' : '[ ] ';
+                const itemText = `${bulletPoint}${status}${itemTitle}`;
+                
+                // Calcular largura disponível para o texto
+                const maxWidth = pdf.internal.pageSize.getWidth() - (margemEsquerda + 15);
+                
+                // Dividir o texto em linhas se necessário
+                const lines = pdf.splitTextToSize(itemText, maxWidth);
+                
+                // Adicionar cada linha
+                lines.forEach((line: string) => {
+                  if (yPos > pageHeight - 15) {
+                    pdf.addPage();
+                    yPos = 20;
+                  }
+                  pdf.text(line, margemEsquerda + 2, yPos);
+                  yPos += 4;
+                });
+              }
+              yPos += 3;
+            }
           }
+
+          // Adicionar etiquetas com estilo
+          if (card.labels && card.labels.length > 0) {
+            yPos += 2;
+            let xPos = margemEsquerda + 2;
+            const maxWidth = pdf.internal.pageSize.getWidth() - 20;
+            
+            card.labels.forEach((label: any) => {
+              const labelText = typeof label === 'string' ? label : (label.title || label.nome || label.toString());
+              let bgColor = [107, 114, 128]; // Cor padrão (gray-500)
+              
+              // Definir cores das etiquetas
+              if (labelText === 'Urgente') bgColor = [239, 68, 68]; // red-500
+              else if (labelText === 'Fazendo') bgColor = [234, 179, 8]; // yellow-500
+              else if (labelText === 'Concluído') bgColor = [34, 197, 94]; // green-500
+
+              // Calcular largura do texto
+              pdf.setFontSize(8);
+              const textWidth = pdf.getTextWidth(labelText) + 4;
+              
+              // Verificar se precisa ir para próxima linha
+              if (xPos + textWidth > maxWidth) {
+                xPos = margemEsquerda + 2;
+                yPos += 6;
+              }
+
+              // Desenhar fundo da etiqueta
+              pdf.setFillColor(...bgColor);
+              pdf.roundedRect(xPos, yPos - 3, textWidth + 4, 5, 1, 1, 'F');
+              
+              // Adicionar texto da etiqueta
+              pdf.setTextColor(255, 255, 255);
+              pdf.setFont('helvetica', 'normal');
+              pdf.text(labelText, xPos + 2, yPos);
+              
+              xPos += textWidth + 6;
+            });
+            yPos += 6;
+          }
+
+          yPos += 4; // Espaçamento entre cards
         }
 
-        yPos += 5;
+        yPos += 8; // Espaçamento entre listas
       }
+
+      // Adicionar rodapé
+      pdf.setFillColor(247, 248, 250);
+      pdf.rect(0, pageHeight - 15, pdf.internal.pageSize.getWidth(), 15, 'F');
+      
+      pdf.setTextColor(...corSecundaria);
+      pdf.setFontSize(8);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(`Gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm")}`, pdf.internal.pageSize.getWidth() - 15, pageHeight - 5, { align: 'right' });
 
       if (isCapacitor) {
         try {

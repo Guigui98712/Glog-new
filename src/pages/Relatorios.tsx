@@ -479,65 +479,59 @@ const Relatorios = () => {
 
   const handleVisualizarRelatorio = (relatorio: any) => {
     try {
-      console.log('[DEBUG] Visualizando relatório:', relatorio);
+      console.log('[DEBUG] Iniciando visualização do relatório:', relatorio);
       
-      // Criar um iframe temporário para exibir o relatório
-      const iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      document.body.appendChild(iframe);
+      // Criar uma nova janela para renderizar o conteúdo
+      const printWindow = window.open('', '_blank');
       
-      // Escrever o conteúdo HTML no iframe
-      const iframeDocument = iframe.contentDocument || iframe.contentWindow?.document;
-      if (iframeDocument) {
-        iframeDocument.open();
-        iframeDocument.write(relatorio.conteudo);
-        iframeDocument.close();
-        
-        // Imprimir o iframe em uma nova janela
-        iframe.onload = () => {
-          try {
-            iframe.contentWindow?.print();
-          } catch (printError) {
-            console.error('[DEBUG] Erro ao imprimir:', printError);
-            
-            // Alternativa: abrir em nova aba
-            const blob = new Blob([relatorio.conteudo], { type: 'text/html' });
-            const url = URL.createObjectURL(blob);
-            const newWindow = window.open('', '_blank');
-            if (newWindow) {
-              newWindow.document.write(relatorio.conteudo);
-              newWindow.document.close();
-            } else {
-              throw new Error('Não foi possível abrir uma nova janela. Verifique se o bloqueador de pop-ups está desativado.');
+      if (!printWindow) {
+        throw new Error('Não foi possível abrir uma nova janela. Verifique se o bloqueador de pop-ups está desativado.');
+      }
+      
+      // Escrever o conteúdo HTML na nova janela
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Relatório ${format(parseISO(relatorio.data_inicio), 'dd-MM-yyyy')} a ${format(parseISO(relatorio.data_fim), 'dd-MM-yyyy')}</title>
+          <meta charset="UTF-8">
+          <style>
+            body { 
+              font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+              margin: 0;
+              padding: 0;
             }
-          }
-          
-          // Remover o iframe após a impressão
-          setTimeout(() => {
-            document.body.removeChild(iframe);
-          }, 1000);
-        };
-      }
-    } catch (error) {
-      console.error('[DEBUG] Erro ao visualizar o relatório:', error);
+            img { max-width: 100%; }
+            
+            @media print {
+              body {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              
+              @page {
+                size: A4;
+                margin: 10mm;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          ${relatorio.conteudo}
+        </body>
+        </html>
+      `);
       
-      // Método alternativo se o principal falhar
-      try {
-        const newWindow = window.open('', '_blank');
-        if (newWindow) {
-          newWindow.document.write(relatorio.conteudo);
-          newWindow.document.close();
-        } else {
-          throw new Error('Não foi possível abrir uma nova janela. Verifique se o bloqueador de pop-ups está desativado.');
-        }
-      } catch (fallbackError) {
-        console.error('[DEBUG] Erro no método alternativo:', fallbackError);
-        toast({
-          title: "Erro de visualização",
-          description: "Não foi possível visualizar o relatório. Verifique se o bloqueador de pop-ups está desativado.",
-          variant: "destructive"
-        });
-      }
+      // Fechar o documento para finalizar o carregamento
+      printWindow.document.close();
+      
+    } catch (error) {
+      console.error('[DEBUG] Erro ao visualizar relatório:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível visualizar o relatório. Tente novamente.",
+        variant: "destructive"
+      });
     }
   };
 
@@ -740,150 +734,48 @@ const Relatorios = () => {
         description: "Preparando o PDF, por favor aguarde...",
       });
       
-      // Criar uma nova janela para renderizar o conteúdo
-      const printWindow = window.open('', '_blank');
+      // Criar um iframe temporário para exibir o relatório
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
       
-      if (!printWindow) {
-        throw new Error('Não foi possível abrir uma nova janela. Verifique se o bloqueador de pop-ups está desativado.');
+      // Escrever o conteúdo HTML no iframe
+      const iframeDocument = iframe.contentDocument || iframe.contentWindow?.document;
+      if (iframeDocument) {
+        iframeDocument.open();
+        iframeDocument.write(relatorio.conteudo);
+        iframeDocument.close();
+        
+        // Imprimir o iframe como PDF
+        iframe.onload = () => {
+          try {
+            iframe.contentWindow?.print();
+          } catch (printError) {
+            console.error('[DEBUG] Erro ao imprimir:', printError);
+            
+            // Alternativa: criar um link para download direto
+            const blob = new Blob([relatorio.conteudo], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `relatorio-${format(parseISO(relatorio.data_inicio), 'dd-MM-yyyy')}.html`;
+            document.body.appendChild(a);
+            a.click();
+            URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+          }
+          
+          // Remover o iframe após a impressão
+          setTimeout(() => {
+            document.body.removeChild(iframe);
+          }, 1000);
+        };
       }
-      
-      // Escrever o conteúdo HTML na nova janela
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Relatório ${format(parseISO(relatorio.data_inicio), 'dd-MM-yyyy')} a ${format(parseISO(relatorio.data_fim), 'dd-MM-yyyy')}</title>
-          <meta charset="UTF-8">
-          <style>
-            body { 
-              font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
-              margin: 0;
-              padding: 0;
-            }
-            img { max-width: 100%; }
-            
-            @media print {
-              body {
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-              }
-              
-              @page {
-                size: A4;
-                margin: 10mm;
-              }
-            }
-            
-            .print-button {
-              position: fixed;
-              top: 20px;
-              right: 20px;
-              padding: 10px 20px;
-              background-color: #0369a1;
-              color: white;
-              border: none;
-              border-radius: 4px;
-              cursor: pointer;
-              font-size: 16px;
-              z-index: 9999;
-              box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            }
-            
-            .print-button:hover {
-              background-color: #0284c7;
-            }
-            
-            @media print {
-              .print-button {
-                display: none;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          <button class="print-button" onclick="prepararImpressao()">Salvar como PDF</button>
-          ${relatorio.conteudo}
-          <script>
-            // Função para carregar todas as imagens antes de imprimir
-            function carregarImagens() {
-              return new Promise((resolve) => {
-                const imagens = document.querySelectorAll('img');
-                let imagensCarregadas = 0;
-                const totalImagens = imagens.length;
-                
-                console.log('Total de imagens:', totalImagens);
-                
-                if (totalImagens === 0) {
-                  resolve();
-                  return;
-                }
-                
-                imagens.forEach(img => {
-                  // Adicionar crossOrigin para permitir imagens de outros domínios
-                  img.crossOrigin = 'Anonymous';
-                  
-                  if (img.complete) {
-                    console.log('Imagem já carregada:', img.src);
-                    imagensCarregadas++;
-                    if (imagensCarregadas === totalImagens) {
-                      resolve();
-                    }
-                  } else {
-                    img.onload = () => {
-                      console.log('Imagem carregada:', img.src);
-                      imagensCarregadas++;
-                      if (imagensCarregadas === totalImagens) {
-                        resolve();
-                      }
-                    };
-                    img.onerror = () => {
-                      console.error('Erro ao carregar imagem:', img.src);
-                      img.style.display = 'none';
-                      imagensCarregadas++;
-                      if (imagensCarregadas === totalImagens) {
-                        resolve();
-                      }
-                    };
-                  }
-                });
-              });
-            }
-            
-            // Função para preparar a impressão com nome de arquivo personalizado
-            async function prepararImpressao() {
-              await carregarImagens();
-              console.log('Todas as imagens carregadas, pronto para imprimir');
-              
-              // Definir o nome do arquivo no título da página
-              // Os navegadores geralmente usam o título da página como sugestão de nome de arquivo
-              document.title = "Relatório_${format(parseISO(relatorio.data_inicio), 'dd-MM-yyyy')}_a_${format(parseISO(relatorio.data_fim), 'dd-MM-yyyy')}";
-              
-              // Iniciar a impressão
-              window.print();
-            }
-            
-            // Quando a página carregar, aguardar o carregamento das imagens
-            window.onload = async function() {
-              await carregarImagens();
-              console.log('Todas as imagens carregadas, pronto para imprimir');
-            };
-          </script>
-        </body>
-        </html>
-      `);
-      
-      // Fechar o documento para finalizar o carregamento
-      printWindow.document.close();
-      
-      toast({
-        title: "Sucesso",
-        description: "Relatório aberto em nova janela. Clique no botão 'Salvar como PDF' para baixar o arquivo.",
-      });
     } catch (error) {
       console.error('[DEBUG] Erro ao gerar PDF:', error);
       toast({
         title: "Erro",
-        description: "Não foi possível gerar o PDF. Tente novamente ou use a opção de visualização e imprima como PDF.",
+        description: "Não foi possível gerar o PDF. Tente novamente ou use a opção de visualização.",
         variant: "destructive"
       });
     }

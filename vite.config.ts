@@ -14,7 +14,7 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: true,
     rollupOptions: {
-      external: ['@capacitor-community/barcode-scanner', 'recharts'],
+      external: ['@capacitor-community/barcode-scanner', 'recharts', 'xlsx'],
     }
   },
   define: {

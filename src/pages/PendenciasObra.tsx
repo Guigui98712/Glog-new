@@ -1015,55 +1015,54 @@ const PendenciasObra = () => {
         </html>
       `;
 
-      if (isCapacitor) {
-        try {
-          const { Filesystem } = await import('@capacitor/filesystem');
-          const html2canvas = (await import('html2canvas')).default;
-          const jsPDF = (await import('jspdf')).default;
+      // Criar um elemento temporário para renderizar o HTML
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = htmlContent;
+      tempDiv.style.position = 'absolute';
+      tempDiv.style.left = '-9999px';
+      document.body.appendChild(tempDiv);
 
-          // Criar um elemento temporário para renderizar o HTML
-          const tempDiv = document.createElement('div');
-          tempDiv.innerHTML = htmlContent;
-          tempDiv.style.position = 'absolute';
-          tempDiv.style.left = '-9999px';
-          document.body.appendChild(tempDiv);
+      try {
+        // Converter HTML para canvas
+        const canvas = await html2canvas(tempDiv, {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          allowTaint: true,
+          backgroundColor: '#ffffff',
+        });
 
+        // Criar PDF
+        const pdf = new jsPDF({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: 'a4'
+        });
+
+        const imgData = canvas.toDataURL('image/png');
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = pdf.internal.pageSize.getHeight();
+        const imgWidth = canvas.width;
+        const imgHeight = canvas.height;
+        const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+        const imgX = (pdfWidth - imgWidth * ratio) / 2;
+        const imgY = 20;
+
+        // Adicionar título
+        pdf.setFontSize(16);
+        pdf.text('Relatório de Pendências', pdfWidth / 2, 10, { align: 'center' });
+
+        // Adicionar data
+        pdf.setFontSize(10);
+        pdf.text(`Data: ${dataAtual}`, 10, 10);
+
+        // Adicionar imagem do conteúdo
+        pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
+
+        if (isCapacitor) {
           try {
-            // Converter HTML para canvas
-            const canvas = await html2canvas(tempDiv, {
-              scale: 2,
-              useCORS: true,
-              logging: false,
-              allowTaint: true,
-              backgroundColor: '#ffffff',
-            });
-
-            // Criar PDF
-            const pdf = new jsPDF({
-              orientation: 'portrait',
-              unit: 'mm',
-              format: 'a4'
-            });
-
-            const imgData = canvas.toDataURL('image/png');
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = pdf.internal.pageSize.getHeight();
-            const imgWidth = canvas.width;
-            const imgHeight = canvas.height;
-            const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-            const imgX = (pdfWidth - imgWidth * ratio) / 2;
-            const imgY = 20;
-
-            // Adicionar título
-            pdf.setFontSize(16);
-            pdf.text('Relatório de Pendências', pdfWidth / 2, 10, { align: 'center' });
-
-            // Adicionar data
-            pdf.setFontSize(10);
-            pdf.text(`Data: ${dataAtual}`, 10, 10);
-
-            // Adicionar imagem do conteúdo
-            pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
+            const { Filesystem } = await import('@capacitor/filesystem');
+            const { Browser } = await import('@capacitor/browser');
 
             // Gerar o PDF como base64
             const pdfBase64 = pdf.output('datauristring').split(',')[1];
@@ -1082,7 +1081,6 @@ const PendenciasObra = () => {
             });
 
             // Abrir o PDF usando o visualizador nativo
-            const { Browser } = await import('@capacitor/browser');
             await Browser.open({
               url: fileInfo.uri,
               presentationStyle: 'popover',
@@ -1093,11 +1091,6 @@ const PendenciasObra = () => {
               hidden: false
             });
 
-            toast({
-              title: "Sucesso",
-              description: "PDF gerado com sucesso!",
-            });
-
             // Limpar arquivos temporários após 5 segundos
             setTimeout(async () => {
               try {
@@ -1105,87 +1098,28 @@ const PendenciasObra = () => {
                   path: fileName,
                   directory: 'CACHE'
                 });
-                document.body.removeChild(tempDiv);
               } catch (error) {
                 console.error('Erro ao limpar arquivos temporários:', error);
               }
             }, 5000);
-
-          } finally {
-            // Garantir que o elemento temporário seja removido
-            if (document.body.contains(tempDiv)) {
-              document.body.removeChild(tempDiv);
-            }
+          } catch (error) {
+            console.error('Erro ao usar Capacitor:', error);
+            // Fallback para download direto
+            pdf.save(fileName);
           }
-        } catch (error) {
-          console.error('Erro ao gerar PDF:', error);
-          toast({
-            title: "Erro",
-            description: "Não foi possível gerar o PDF. Tente novamente.",
-            variant: "destructive"
-          });
-        }
-      } else {
-        // Código para ambiente web
-        const html2canvas = (await import('html2canvas')).default;
-        const jsPDF = (await import('jspdf')).default;
-
-        // Criar um elemento temporário para renderizar o HTML
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = htmlContent;
-        tempDiv.style.position = 'absolute';
-        tempDiv.style.left = '-9999px';
-        document.body.appendChild(tempDiv);
-
-        try {
-          // Converter HTML para canvas
-          const canvas = await html2canvas(tempDiv, {
-            scale: 2,
-            useCORS: true,
-            logging: false,
-            allowTaint: true,
-            backgroundColor: '#ffffff',
-          });
-
-          // Criar PDF
-          const pdf = new jsPDF({
-            orientation: 'portrait',
-            unit: 'mm',
-            format: 'a4'
-          });
-
-          const imgData = canvas.toDataURL('image/png');
-          const pdfWidth = pdf.internal.pageSize.getWidth();
-          const pdfHeight = pdf.internal.pageSize.getHeight();
-          const imgWidth = canvas.width;
-          const imgHeight = canvas.height;
-          const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-          const imgX = (pdfWidth - imgWidth * ratio) / 2;
-          const imgY = 20;
-
-          // Adicionar título
-          pdf.setFontSize(16);
-          pdf.text('Relatório de Pendências', pdfWidth / 2, 10, { align: 'center' });
-
-          // Adicionar data
-          pdf.setFontSize(10);
-          pdf.text(`Data: ${dataAtual}`, 10, 10);
-
-          // Adicionar imagem do conteúdo
-          pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
-
-          // Salvar o PDF
+        } else {
+          // Download direto no navegador
           pdf.save(fileName);
+        }
 
-          toast({
-            title: "Sucesso",
-            description: "PDF gerado com sucesso!",
-          });
-        } finally {
-          // Garantir que o elemento temporário seja removido
-          if (document.body.contains(tempDiv)) {
-            document.body.removeChild(tempDiv);
-          }
+        toast({
+          title: "Sucesso",
+          description: "PDF gerado com sucesso!",
+        });
+      } finally {
+        // Garantir que o elemento temporário seja removido
+        if (document.body.contains(tempDiv)) {
+          document.body.removeChild(tempDiv);
         }
       }
     } catch (error) {
@@ -1352,59 +1286,59 @@ const PendenciasObra = () => {
         </html>
       `;
 
-      try {
-        const { Filesystem } = await import('@capacitor/filesystem');
-        const { Share } = await import('@capacitor/share');
-        
+        try {
+          const { Filesystem } = await import('@capacitor/filesystem');
+          const { Share } = await import('@capacitor/share');
+          
         // Criar um Blob com o conteúdo HTML
         const blob = new Blob([htmlContent], { type: 'text/html' });
         const reader = new FileReader();
         
         reader.onload = async () => {
           try {
-            // Salvar o arquivo temporariamente
+          // Salvar o arquivo temporariamente
             await Filesystem.writeFile({
-              path: fileName,
+            path: fileName,
               data: reader.result as string,
-              directory: 'CACHE'
-            });
-            
-            // Compartilhar o arquivo
-            await Share.share({
-              title: 'Relatório de Pendências',
-              text: 'Relatório de pendências da obra',
+            directory: 'CACHE'
+          });
+          
+          // Compartilhar o arquivo
+          await Share.share({
+            title: 'Relatório de Pendências',
+            text: 'Relatório de pendências da obra',
               url: fileName,
-              dialogTitle: 'Compartilhar relatório'
-            });
-            
-            // Limpar o arquivo temporário
-            await Filesystem.deleteFile({
-              path: fileName,
-              directory: 'CACHE'
-            });
-            
-            toast({
-              title: "Sucesso",
+            dialogTitle: 'Compartilhar relatório'
+          });
+          
+          // Limpar o arquivo temporário
+          await Filesystem.deleteFile({
+            path: fileName,
+            directory: 'CACHE'
+          });
+
+          toast({
+            title: "Sucesso",
               description: "Arquivo pronto para compartilhar!",
             });
           } catch (error) {
             console.error('Erro ao compartilhar:', error);
-            toast({
+          toast({
               title: "Erro",
               description: "Não foi possível compartilhar o arquivo. Tente novamente.",
               variant: "destructive"
-            });
-          }
+          });
+        }
         };
-        
+
         reader.readAsDataURL(blob);
       } catch (error) {
         console.error('Erro ao preparar arquivo para compartilhamento:', error);
-        toast({
+      toast({
           title: "Erro",
           description: "Não foi possível preparar o arquivo para compartilhamento. Tente novamente.",
           variant: "destructive"
-        });
+      });
       }
     } catch (error) {
       console.error('Erro ao compartilhar:', error);

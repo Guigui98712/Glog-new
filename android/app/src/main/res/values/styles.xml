@@ -15,13 +15,8 @@
         <item name="android:background">@null</item>
     </style>
 
-    <!-- Tema para a tela de splash -->
-    <style name="Theme.SplashScreen" parent="Theme.AppCompat.NoActionBar">
-        <item name="android:windowBackground">@drawable/splash</item>
-        <item name="android:windowFullscreen">true</item>
-        <item name="android:windowContentOverlay">@null</item>
-    </style>
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="android:background">@drawable/splash</item>
     </style>
 </resources>

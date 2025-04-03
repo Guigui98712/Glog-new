@@ -881,7 +881,7 @@ const PendenciasObra = () => {
       const dataAtual = new Date().toLocaleDateString('pt-BR');
       const fileName = `Pendencias_${dataAtual.replace(/\//g, '-')}.pdf`;
 
-      // Conteúdo HTML do relatório
+      // Conteúdo HTML do relatório - NOVO DESIGN COMPLETO
       const htmlContent = `
         <!DOCTYPE html>
         <html>
@@ -894,172 +894,297 @@ const PendenciasObra = () => {
               size: A4;
               margin: 15mm;
             }
-            body { 
-              font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+            html, body {
               margin: 0;
-              padding: 20px;
-              background-color: white;
-              font-size: 12pt;
-              line-height: 1.4;
+              padding: 0;
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
               color: #333;
+              background-color: #ffffff;
+              width: 100%;
             }
-            .container {
-              max-width: 100%;
+            * {
+              box-sizing: border-box;
+            }
+            .pdf-container {
+              width: 100%;
+              padding: 0;
               margin: 0 auto;
             }
-            .header {
-              text-align: center;
-              margin-bottom: 30px;
-              padding-bottom: 15px;
+            .report-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 25px;
               border-bottom: 2px solid #3b82f6;
-              page-break-after: avoid;
-              position: relative;
+              padding-bottom: 15px;
+              width: 100%;
             }
-            .header h1 {
-              margin: 0;
-              color: #1e40af;
-              font-size: 28px;
-              font-weight: 600;
+            .report-header-left {
+              display: flex;
+              align-items: center;
             }
-            .header .obra-nome {
+            .report-logo {
+              width: 50px;
+              height: 50px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              margin-right: 15px;
+            }
+            .report-logo img, .report-logo svg {
+              width: 50px;
+              height: 50px;
+            }
+            .report-title-container {
+              display: flex;
+              flex-direction: column;
+            }
+            .report-title {
               font-size: 22px;
-              color: #3b82f6;
-              margin: 10px 0;
+              font-weight: 700;
+              color: #333;
+              margin: 0;
+            }
+            .obra-title {
+              font-size: 17px;
               font-weight: 500;
+              color: #3b82f6;
+              margin: 5px 0 0 0;
             }
-            .header .data {
+            .report-header-right {
+              text-align: right;
+            }
+            .report-date {
               font-size: 14px;
-              color: #6b7280;
-              margin-top: 5px;
+              color: #666;
             }
-            .lista {
-              margin-bottom: 30px;
-              page-break-inside: avoid;
+            
+            .report-content {
+              width: 100%;
+            }
+            .report-lists {
+              display: flex;
+              flex-direction: column;
+              gap: 20px;
+              width: 100%;
+            }
+            .list-container {
+              border: 1px solid #e5e7eb;
               border-radius: 8px;
               overflow: hidden;
               box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+              break-inside: avoid;
+              width: 100%;
             }
-            .lista-titulo {
-              background-color: #3b82f6 !important;
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
-              padding: 12px 15px;
-              font-weight: 600;
+            .list-header {
+              background-color: #3b82f6;
               color: white;
+              padding: 10px 15px;
               font-size: 16px;
-              border-top-left-radius: 8px;
-              border-top-right-radius: 8px;
+              font-weight: 600;
             }
-            .lista-conteudo {
+            .list-body {
               padding: 10px;
-              background-color: #f9fafb !important;
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
+              background-color: #f9fafb;
             }
-            .card {
-              background-color: white;
+            .card-container {
+              background: white;
               border: 1px solid #e5e7eb;
               border-radius: 6px;
               padding: 12px;
               margin-bottom: 10px;
-              page-break-inside: avoid;
               box-shadow: 0 1px 2px rgba(0,0,0,0.05);
             }
-            .card-titulo {
-              font-weight: 600;
-              margin-bottom: 8px;
-              color: #1f2937;
+            .card-title {
               font-size: 15px;
+              font-weight: 600;
+              color: #1f2937;
+              margin-top: 0;
+              margin-bottom: 8px;
             }
-            .card-descricao {
-              color: #4b5563;
+            .card-description {
               font-size: 14px;
+              color: #4b5563;
               margin: 8px 0;
-              line-height: 1.5;
             }
-            .card-labels {
+            .card-checklists {
               margin-top: 10px;
-              display: flex;
-              gap: 6px;
-              flex-wrap: wrap;
-            }
-            .label {
-              padding: 3px 8px;
-              border-radius: 4px;
-              font-size: 12px;
-              color: white;
-              display: inline-block;
-              margin: 2px;
-              font-weight: 500;
-            }
-            .footer {
-              text-align: center;
-              margin-top: 30px;
-              padding-top: 15px;
               border-top: 1px solid #e5e7eb;
-              color: #6b7280;
-              font-size: 12px;
-              page-break-before: avoid;
+              padding-top: 10px;
             }
-            .logo {
-              text-align: center;
+            .checklist-container {
+              margin-bottom: 12px;
+            }
+            .checklist-title {
+              font-size: 14px;
+              font-weight: 600;
+              color: #4b5563;
               margin-bottom: 5px;
             }
-            .logo img {
-              height: 40px;
-              width: auto;
+            .checklist-items {
+              padding-left: 10px;
+            }
+            .checklist-item {
+              display: flex;
+              align-items: flex-start;
+              margin-bottom: 5px;
+              font-size: 13px;
+            }
+            .checkbox {
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              width: 16px;
+              height: 16px;
+              margin-right: 8px;
+              border-radius: 3px;
+              flex-shrink: 0;
+              line-height: 1;
+              font-size: 10px;
+            }
+            .checkbox.checked {
+              background-color: #22c55e;
+              color: white;
+              font-weight: bold;
+              border: 1px solid #22c55e;
+            }
+            .checkbox.unchecked {
+              background-color: white;
+              border: 1px solid #d1d5db;
+            }
+            .checklist-item-text {
+              font-size: 13px;
+              color: #4b5563;
+            }
+            .completed-text {
+              text-decoration: line-through;
+              color: #9ca3af;
+            }
+            .card-labels {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 5px;
+              margin-top: 10px;
+            }
+            .label {
+              display: inline-block;
+              padding: 3px 8px;
+              border-radius: 4px;
+              font-size: 11px;
+              color: white;
+              font-weight: 500;
+              margin-right: 5px;
+            }
+            .footer {
+              margin-top: 30px;
+              text-align: center;
+              font-size: 12px;
+              color: #6b7280;
+              border-top: 1px solid #e5e7eb;
+              padding-top: 15px;
+            }
+            
+            /* Estilos para garantir melhor impressão */
+            @media print {
+              .list-header {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              .label {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              .checkbox.checked {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
             }
           </style>
         </head>
         <body>
-          <div class="container">
-            <div class="header">
-              <div class="logo">
-                <svg width="120" height="40" viewBox="0 0 120 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <rect width="40" height="40" rx="8" fill="#3b82f6"/>
-                  <path d="M10 20L18 28L30 12" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-                  <text x="45" y="25" font-family="Arial" font-size="18" font-weight="bold" fill="#1e40af">GLog</text>
-                </svg>
-              </div>
-              <h1>Relatório de Pendências</h1>
-              <div class="obra-nome">${obraNome}</div>
-              <div class="data">Data: ${dataAtual}</div>
-            </div>
-
-            ${board.lists.map(lista => `
-              <div class="lista">
-                <div class="lista-titulo">${lista.title}</div>
-                <div class="lista-conteudo">
-                  ${lista.cards.length > 0 ? lista.cards.map(card => `
-                    <div class="card">
-                      <div class="card-titulo">${card.title}</div>
-                      ${card.description ? `<div class="card-descricao">${card.description}</div>` : ''}
-                      ${card.labels && card.labels.length > 0 ? `
-                        <div class="card-labels">
-                          ${card.labels.map(label => {
-                            const labelText = typeof label === 'string' ? label : (label.title || label.toString());
-                            let bgColor = '';
-                            
-                            if (labelText === 'Urgente') bgColor = '#ef4444';
-                            else if (labelText === 'Fazendo') bgColor = '#eab308';
-                            else if (labelText === 'Feito') bgColor = '#22c55e';
-                            else if (labelText === 'Alta') bgColor = '#ef4444';
-                            else if (labelText === 'Média') bgColor = '#f97316';
-                            else if (labelText === 'Baixa') bgColor = '#3b82f6';
-                            
-                            return `<span class="label" style="background-color: ${bgColor || '#6b7280'} !important;">${labelText}</span>`;
-                          }).join('')}
-                        </div>
-                      ` : ''}
-                    </div>
-                  `).join('') : `<div class="card"><div class="card-descricao">Nenhuma pendência registrada nesta seção.</div></div>`}
+          <div class="pdf-container">
+            <div class="report-header">
+              <div class="report-header-left">
+                <div class="report-logo">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="50" height="50">
+                    <rect width="512" height="512" rx="100" fill="#3b82f6"/>
+                    <path d="M161.4 242.4c-3.9-3.9-3.9-10.2 0-14.1s10.2-3.9 14.1 0L226.7 279.5 336.6 169.6c3.9-3.9 10.2-3.9 14.1 0s3.9 10.2 0 14.1L236.8 287.6c-3.9 3.9-10.2 3.9-14.1 0L161.4 242.4z" fill="white"/>
+                    <path d="M400 160c0-8.8-7.2-16-16-16H192c-8.8 0-16 7.2-16 16s7.2 16 16 16H384c8.8 0 16-7.2 16-16zm0 64c0-8.8-7.2-16-16-16H288c-8.8 0-16 7.2-16 16s7.2 16 16 16h96c8.8 0 16-7.2 16-16zm0 64c0-8.8-7.2-16-16-16H288c-8.8 0-16 7.2-16 16s7.2 16 16 16h96c8.8 0 16-7.2 16-16zm0 64c0-8.8-7.2-16-16-16H192c-8.8 0-16 7.2-16 16s7.2 16 16 16H384c8.8 0 16-7.2 16-16z" fill="white"/>
+                  </svg>
+                </div>
+                <div class="report-title-container">
+                  <h1 class="report-title">Relatório de Pendências</h1>
+                  <h2 class="obra-title">${obraNome}</h2>
                 </div>
               </div>
-            `).join('')}
-
+              <div class="report-header-right">
+                <div class="report-date">Data: ${dataAtual}</div>
+              </div>
+            </div>
+            
+            <div class="report-content">
+              <div class="report-lists">
+                ${board.lists.map(lista => `
+                  <div class="list-container">
+                    <div class="list-header">${lista.title}</div>
+                    <div class="list-body">
+                      ${lista.cards.length > 0 ? lista.cards.map(card => `
+                        <div class="card-container">
+                          <h3 class="card-title">${card.title}</h3>
+                          ${card.description ? `<div class="card-description">${card.description}</div>` : ''}
+                          
+                          ${card.checklists && card.checklists.length > 0 ? `
+                            <div class="card-checklists">
+                              ${card.checklists.map(checklist => `
+                                <div class="checklist-container">
+                                  <div class="checklist-title">${checklist.title}</div>
+                                  <div class="checklist-items">
+                                    ${checklist.items.map(item => `
+                                      <div class="checklist-item">
+                                        <div class="checkbox ${item.checked ? 'checked' : 'unchecked'}" style="display: flex; align-items: center; justify-content: center; line-height: 0.8;">
+                                          ${item.checked ? '✓' : ''}
+                                        </div>
+                                        <span class="checklist-item-text ${item.checked ? 'completed-text' : ''}">${item.text || item.title}</span>
+                                      </div>
+                                    `).join('')}
+                                  </div>
+                                </div>
+                              `).join('')}
+                            </div>
+                          ` : ''}
+                          
+                          ${card.labels && card.labels.length > 0 ? `
+                            <div class="card-labels">
+                              ${card.labels.map(label => {
+                                const labelText = typeof label === 'string' ? label : (label.title || label.toString());
+                                let bgColor = '';
+                                
+                                if (labelText === 'Urgente') bgColor = '#ef4444';
+                                else if (labelText === 'Fazendo') bgColor = '#eab308';
+                                else if (labelText === 'Feito' || labelText === 'Concluído') bgColor = '#22c55e';
+                                else if (labelText === 'Alta') bgColor = '#ef4444';
+                                else if (labelText === 'Média') bgColor = '#f97316';
+                                else if (labelText === 'Baixa') bgColor = '#3b82f6';
+                                else bgColor = '#6b7280';
+                                
+                                return `<span class="label" style="background-color: ${bgColor};">${labelText}</span>`;
+                              }).join('')}
+                            </div>
+                          ` : ''}
+                        </div>
+                      `).join('') : `
+                        <div class="card-container">
+                          <div class="card-description">Nenhuma pendência registrada nesta seção.</div>
+                        </div>
+                      `}
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+            
             <div class="footer">
-              <p>Relatório de Pendências gerado em ${dataAtual}</p>
-              <p>GLog - Sistema de Gestão de Obras</p>
+              <p>Relatório de Pendências gerado em ${dataAtual} | GLog - Sistema de Gestão de Obras</p>
             </div>
           </div>
         </body>
@@ -1068,102 +1193,86 @@ const PendenciasObra = () => {
 
       if (isCapacitor) {
         try {
+          // Importando módulos necessários do Capacitor
           const { Filesystem } = await import('@capacitor/filesystem');
-          const html2canvas = (await import('html2canvas')).default;
           const jsPDF = (await import('jspdf')).default;
 
-          // Criar um elemento temporário para renderizar o HTML
+          // Criar um elemento temporário para renderizar o HTML (invisível)
           const tempDiv = document.createElement('div');
           tempDiv.innerHTML = htmlContent;
           tempDiv.style.position = 'absolute';
           tempDiv.style.left = '-9999px';
+          tempDiv.style.visibility = 'hidden';
+          
           document.body.appendChild(tempDiv);
 
           try {
-            // Converter HTML para canvas
-            const canvas = await html2canvas(tempDiv, {
-              scale: 2,
-              useCORS: true,
-              logging: false,
-              allowTaint: true,
-              backgroundColor: '#ffffff',
-            });
-
-            // Criar PDF
-            const pdf = new jsPDF({
-              orientation: 'portrait',
-              unit: 'mm',
-              format: 'a4'
-            });
-
-            const imgData = canvas.toDataURL('image/png');
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = pdf.internal.pageSize.getHeight();
-            const imgWidth = canvas.width;
-            const imgHeight = canvas.height;
-            const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-            const imgX = (pdfWidth - imgWidth * ratio) / 2;
-            const imgY = 20;
-
-            // Adicionar título
-            pdf.setFontSize(16);
-            pdf.text('Relatório de Pendências', pdfWidth / 2, 10, { align: 'center' });
-
-            // Adicionar data
-            pdf.setFontSize(10);
-            pdf.text(`Data: ${dataAtual}`, 10, 10);
-
-            // Adicionar imagem do conteúdo
-            pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
-
-            // Gerar o PDF como base64
-            const pdfBase64 = pdf.output('datauristring').split(',')[1];
-
-            // Salvar o arquivo no sistema de arquivos
-            await Filesystem.writeFile({
-              path: fileName,
-              data: pdfBase64,
-              directory: 'CACHE'
-            });
-
-            // Obter o caminho do arquivo salvo
-            const fileInfo = await Filesystem.getUri({
-              path: fileName,
-              directory: 'CACHE'
-            });
-
-            // Abrir o PDF usando o visualizador nativo
-            const { Browser } = await import('@capacitor/browser');
-            await Browser.open({
-              url: fileInfo.uri,
-              presentationStyle: 'popover',
-              toolbarColor: '#ffffff',
-              backgroundColor: '#ffffff',
-              windowName: 'PDF Viewer',
-              fullscreen: false,
-              hidden: false
-            });
-
-            toast({
-              title: "Sucesso",
-              description: "PDF gerado com sucesso!",
-            });
-
-            // Limpar arquivos temporários após 5 segundos
-            setTimeout(async () => {
+            // Abordagem direta: salvar HTML no sistema de arquivos e abrir com Browser API
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const reader = new FileReader();
+            
+            reader.onloadend = async function() {
               try {
-                await Filesystem.deleteFile({
-                  path: fileName,
+                // Salvar o arquivo HTML no sistema de arquivos
+                const base64Data = reader.result?.toString().split(',')[1] || '';
+                
+                await Filesystem.writeFile({
+                  path: `${fileName}.html`,
+                  data: base64Data,
                   directory: 'CACHE'
                 });
-                document.body.removeChild(tempDiv);
+                
+                // Obter URI do arquivo salvo
+                const fileInfo = await Filesystem.getUri({
+                  path: `${fileName}.html`,
+                  directory: 'CACHE'
+                });
+                
+                // Importar Browser API e abrir o arquivo
+                const { Browser } = await import('@capacitor/browser');
+                await Browser.open({
+                  url: fileInfo.uri,
+                  presentationStyle: 'popover'
+                });
+                
+                toast({
+                  title: "Sucesso",
+                  description: "Relatório gerado e aberto com sucesso!",
+                });
+                
+                // Limpar arquivos temporários após um tempo
+                setTimeout(async () => {
+                  try {
+                    await Filesystem.deleteFile({
+                      path: `${fileName}.html`,
+                      directory: 'CACHE'
+                    });
+                  } catch (error) {
+                    console.log('Erro ao limpar arquivos temporários:', error);
+                  }
+                }, 60000); // Limpar após 1 minuto
               } catch (error) {
-                console.error('Erro ao limpar arquivos temporários:', error);
+                console.error('Erro ao processar PDF:', error);
+                toast({
+                  title: "Erro",
+                  description: "Não foi possível gerar o relatório. Tente novamente.",
+                  variant: "destructive"
+                });
               }
-            }, 5000);
-
+            };
+            
+            reader.onerror = function() {
+              toast({
+                title: "Erro",
+                description: "Falha ao processar o conteúdo do PDF.",
+                variant: "destructive"
+              });
+            };
+            
+            reader.readAsDataURL(blob);
+            
           } finally {
-            // Garantir que o elemento temporário seja removido
+            // Limpar o elemento temporário
             if (document.body.contains(tempDiv)) {
               document.body.removeChild(tempDiv);
             }
@@ -1184,11 +1293,28 @@ const PendenciasObra = () => {
         // Criar um elemento temporário para renderizar o HTML
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = htmlContent;
-        tempDiv.style.position = 'absolute';
-        tempDiv.style.left = '-9999px';
+        tempDiv.style.position = 'fixed';
+        tempDiv.style.left = '0';
+        tempDiv.style.top = '0';
+        tempDiv.style.width = '100%';
+        tempDiv.style.height = '100%';
+        tempDiv.style.backgroundColor = 'white';
+        tempDiv.style.zIndex = '-9999';
+        tempDiv.style.overflow = 'auto';
+        
         document.body.appendChild(tempDiv);
 
         try {
+          // Aguardar para garantir que o HTML seja renderizado
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Capturar a altura total do conteúdo
+          const contentHeight = tempDiv.scrollHeight;
+          
+          // Definir tamanho proporcional para captura
+          tempDiv.style.width = '800px';
+          tempDiv.style.height = `${contentHeight}px`;
+          
           // Converter HTML para canvas
           const canvas = await html2canvas(tempDiv, {
             scale: 2,
@@ -1196,6 +1322,8 @@ const PendenciasObra = () => {
             logging: false,
             allowTaint: true,
             backgroundColor: '#ffffff',
+            windowWidth: 800,
+            windowHeight: contentHeight
           });
 
           // Criar PDF
@@ -1208,22 +1336,41 @@ const PendenciasObra = () => {
           const imgData = canvas.toDataURL('image/png');
           const pdfWidth = pdf.internal.pageSize.getWidth();
           const pdfHeight = pdf.internal.pageSize.getHeight();
-          const imgWidth = canvas.width;
-          const imgHeight = canvas.height;
-          const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-          const imgX = (pdfWidth - imgWidth * ratio) / 2;
-          const imgY = 20;
-
-          // Adicionar título
-          pdf.setFontSize(16);
-          pdf.text('Relatório de Pendências', pdfWidth / 2, 10, { align: 'center' });
-
-          // Adicionar data
-          pdf.setFontSize(10);
-          pdf.text(`Data: ${dataAtual}`, 10, 10);
-
-          // Adicionar imagem do conteúdo
-          pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
+          
+          // Calcular escala e altura total
+          const scale = pdfWidth / canvas.width;
+          const totalHeight = canvas.height * scale;
+          
+          // Adicionar múltiplas páginas se necessário
+          if (totalHeight > pdfHeight) {
+            let remainingHeight = canvas.height;
+            let position = 0;
+            
+            while (remainingHeight > 0) {
+              const height = Math.min(remainingHeight, pdfHeight / scale);
+              
+              pdf.addImage(
+                imgData, 
+                'PNG', 
+                0, 
+                position === 0 ? 0 : -position * scale, 
+                pdfWidth, 
+                canvas.height * scale,
+                '', 
+                'FAST'
+              );
+              
+              remainingHeight -= height;
+              position += height;
+              
+              if (remainingHeight > 0) {
+                pdf.addPage();
+              }
+            }
+          } else {
+            // Caso caiba em uma única página
+            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, totalHeight);
+          }
 
           // Salvar o PDF
           pdf.save(fileName);
@@ -1231,6 +1378,13 @@ const PendenciasObra = () => {
           toast({
             title: "Sucesso",
             description: "PDF gerado com sucesso!",
+          });
+        } catch (error) {
+          console.error('Erro ao gerar PDF:', error);
+          toast({
+            title: "Erro",
+            description: "Não foi possível gerar o PDF. Tente novamente.",
+            variant: "destructive"
           });
         } finally {
           // Garantir que o elemento temporário seja removido
@@ -1269,7 +1423,7 @@ const PendenciasObra = () => {
       const dataAtual = new Date().toLocaleDateString('pt-BR');
       const fileName = `Pendencias_${dataAtual.replace(/\//g, '-')}.pdf`;
 
-      // Gerar o conteúdo HTML
+      // Gerar o conteúdo HTML - Usando o mesmo template da função gerarPDF
       const htmlContent = `
         <!DOCTYPE html>
         <html>
@@ -1282,172 +1436,297 @@ const PendenciasObra = () => {
               size: A4;
               margin: 15mm;
             }
-            body { 
-              font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+            html, body {
               margin: 0;
-              padding: 20px;
-              background-color: white;
-              font-size: 12pt;
-              line-height: 1.4;
+              padding: 0;
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
               color: #333;
+              background-color: #ffffff;
+              width: 100%;
             }
-            .container {
-              max-width: 100%;
+            * {
+              box-sizing: border-box;
+            }
+            .pdf-container {
+              width: 100%;
+              padding: 0;
               margin: 0 auto;
             }
-            .header {
-              text-align: center;
-              margin-bottom: 30px;
-              padding-bottom: 15px;
+            .report-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 25px;
               border-bottom: 2px solid #3b82f6;
-              page-break-after: avoid;
-              position: relative;
+              padding-bottom: 15px;
+              width: 100%;
             }
-            .header h1 {
-              margin: 0;
-              color: #1e40af;
-              font-size: 28px;
-              font-weight: 600;
+            .report-header-left {
+              display: flex;
+              align-items: center;
             }
-            .header .obra-nome {
+            .report-logo {
+              width: 50px;
+              height: 50px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              margin-right: 15px;
+            }
+            .report-logo img, .report-logo svg {
+              width: 50px;
+              height: 50px;
+            }
+            .report-title-container {
+              display: flex;
+              flex-direction: column;
+            }
+            .report-title {
               font-size: 22px;
-              color: #3b82f6;
-              margin: 10px 0;
+              font-weight: 700;
+              color: #333;
+              margin: 0;
+            }
+            .obra-title {
+              font-size: 17px;
               font-weight: 500;
+              color: #3b82f6;
+              margin: 5px 0 0 0;
             }
-            .header .data {
+            .report-header-right {
+              text-align: right;
+            }
+            .report-date {
               font-size: 14px;
-              color: #6b7280;
-              margin-top: 5px;
+              color: #666;
             }
-            .lista {
-              margin-bottom: 30px;
-              page-break-inside: avoid;
+            
+            .report-content {
+              width: 100%;
+            }
+            .report-lists {
+              display: flex;
+              flex-direction: column;
+              gap: 20px;
+              width: 100%;
+            }
+            .list-container {
+              border: 1px solid #e5e7eb;
               border-radius: 8px;
               overflow: hidden;
               box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+              break-inside: avoid;
+              width: 100%;
             }
-            .lista-titulo {
-              background-color: #3b82f6 !important;
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
-              padding: 12px 15px;
-              font-weight: 600;
+            .list-header {
+              background-color: #3b82f6;
               color: white;
+              padding: 10px 15px;
               font-size: 16px;
-              border-top-left-radius: 8px;
-              border-top-right-radius: 8px;
+              font-weight: 600;
             }
-            .lista-conteudo {
+            .list-body {
               padding: 10px;
-              background-color: #f9fafb !important;
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
+              background-color: #f9fafb;
             }
-            .card {
-              background-color: white;
+            .card-container {
+              background: white;
               border: 1px solid #e5e7eb;
               border-radius: 6px;
               padding: 12px;
               margin-bottom: 10px;
-              page-break-inside: avoid;
               box-shadow: 0 1px 2px rgba(0,0,0,0.05);
             }
-            .card-titulo {
-              font-weight: 600;
-              margin-bottom: 8px;
-              color: #1f2937;
+            .card-title {
               font-size: 15px;
+              font-weight: 600;
+              color: #1f2937;
+              margin-top: 0;
+              margin-bottom: 8px;
             }
-            .card-descricao {
-              color: #4b5563;
+            .card-description {
               font-size: 14px;
+              color: #4b5563;
               margin: 8px 0;
-              line-height: 1.5;
             }
-            .card-labels {
+            .card-checklists {
               margin-top: 10px;
-              display: flex;
-              gap: 6px;
-              flex-wrap: wrap;
-            }
-            .label {
-              padding: 3px 8px;
-              border-radius: 4px;
-              font-size: 12px;
-              color: white;
-              display: inline-block;
-              margin: 2px;
-              font-weight: 500;
-            }
-            .footer {
-              text-align: center;
-              margin-top: 30px;
-              padding-top: 15px;
               border-top: 1px solid #e5e7eb;
-              color: #6b7280;
-              font-size: 12px;
-              page-break-before: avoid;
+              padding-top: 10px;
             }
-            .logo {
-              text-align: center;
+            .checklist-container {
+              margin-bottom: 12px;
+            }
+            .checklist-title {
+              font-size: 14px;
+              font-weight: 600;
+              color: #4b5563;
               margin-bottom: 5px;
             }
-            .logo img {
-              height: 40px;
-              width: auto;
+            .checklist-items {
+              padding-left: 10px;
+            }
+            .checklist-item {
+              display: flex;
+              align-items: flex-start;
+              margin-bottom: 5px;
+              font-size: 13px;
+            }
+            .checkbox {
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              width: 16px;
+              height: 16px;
+              margin-right: 8px;
+              border-radius: 3px;
+              flex-shrink: 0;
+              line-height: 1;
+              font-size: 10px;
+            }
+            .checkbox.checked {
+              background-color: #22c55e;
+              color: white;
+              font-weight: bold;
+              border: 1px solid #22c55e;
+            }
+            .checkbox.unchecked {
+              background-color: white;
+              border: 1px solid #d1d5db;
+            }
+            .checklist-item-text {
+              font-size: 13px;
+              color: #4b5563;
+            }
+            .completed-text {
+              text-decoration: line-through;
+              color: #9ca3af;
+            }
+            .card-labels {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 5px;
+              margin-top: 10px;
+            }
+            .label {
+              display: inline-block;
+              padding: 3px 8px;
+              border-radius: 4px;
+              font-size: 11px;
+              color: white;
+              font-weight: 500;
+              margin-right: 5px;
+            }
+            .footer {
+              margin-top: 30px;
+              text-align: center;
+              font-size: 12px;
+              color: #6b7280;
+              border-top: 1px solid #e5e7eb;
+              padding-top: 15px;
+            }
+            
+            /* Estilos para garantir melhor impressão */
+            @media print {
+              .list-header {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              .label {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              .checkbox.checked {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
             }
           </style>
         </head>
         <body>
-          <div class="container">
-            <div class="header">
-              <div class="logo">
-                <svg width="120" height="40" viewBox="0 0 120 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <rect width="40" height="40" rx="8" fill="#3b82f6"/>
-                  <path d="M10 20L18 28L30 12" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-                  <text x="45" y="25" font-family="Arial" font-size="18" font-weight="bold" fill="#1e40af">GLog</text>
-                </svg>
-              </div>
-              <h1>Relatório de Pendências</h1>
-              <div class="obra-nome">${obraNome}</div>
-              <div class="data">Data: ${dataAtual}</div>
-            </div>
-
-            ${board.lists.map(lista => `
-              <div class="lista">
-                <div class="lista-titulo">${lista.title}</div>
-                <div class="lista-conteudo">
-                  ${lista.cards.length > 0 ? lista.cards.map(card => `
-                    <div class="card">
-                      <div class="card-titulo">${card.title}</div>
-                      ${card.description ? `<div class="card-descricao">${card.description}</div>` : ''}
-                      ${card.labels && card.labels.length > 0 ? `
-                        <div class="card-labels">
-                          ${card.labels.map(label => {
-                            const labelText = typeof label === 'string' ? label : (label.title || label.toString());
-                            let bgColor = '';
-                            
-                            if (labelText === 'Urgente') bgColor = '#ef4444';
-                            else if (labelText === 'Fazendo') bgColor = '#eab308';
-                            else if (labelText === 'Feito') bgColor = '#22c55e';
-                            else if (labelText === 'Alta') bgColor = '#ef4444';
-                            else if (labelText === 'Média') bgColor = '#f97316';
-                            else if (labelText === 'Baixa') bgColor = '#3b82f6';
-                            
-                            return `<span class="label" style="background-color: ${bgColor || '#6b7280'} !important;">${labelText}</span>`;
-                          }).join('')}
-                        </div>
-                      ` : ''}
-                    </div>
-                  `).join('') : `<div class="card"><div class="card-descricao">Nenhuma pendência registrada nesta seção.</div></div>`}
+          <div class="pdf-container">
+            <div class="report-header">
+              <div class="report-header-left">
+                <div class="report-logo">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="50" height="50">
+                    <rect width="512" height="512" rx="100" fill="#3b82f6"/>
+                    <path d="M161.4 242.4c-3.9-3.9-3.9-10.2 0-14.1s10.2-3.9 14.1 0L226.7 279.5 336.6 169.6c3.9-3.9 10.2-3.9 14.1 0s3.9 10.2 0 14.1L236.8 287.6c-3.9 3.9-10.2 3.9-14.1 0L161.4 242.4z" fill="white"/>
+                    <path d="M400 160c0-8.8-7.2-16-16-16H192c-8.8 0-16 7.2-16 16s7.2 16 16 16H384c8.8 0 16-7.2 16-16zm0 64c0-8.8-7.2-16-16-16H288c-8.8 0-16 7.2-16 16s7.2 16 16 16h96c8.8 0 16-7.2 16-16zm0 64c0-8.8-7.2-16-16-16H288c-8.8 0-16 7.2-16 16s7.2 16 16 16h96c8.8 0 16-7.2 16-16zm0 64c0-8.8-7.2-16-16-16H192c-8.8 0-16 7.2-16 16s7.2 16 16 16H384c8.8 0 16-7.2 16-16z" fill="white"/>
+                  </svg>
+                </div>
+                <div class="report-title-container">
+                  <h1 class="report-title">Relatório de Pendências</h1>
+                  <h2 class="obra-title">${obraNome}</h2>
                 </div>
               </div>
-            `).join('')}
-
+              <div class="report-header-right">
+                <div class="report-date">Data: ${dataAtual}</div>
+              </div>
+            </div>
+            
+            <div class="report-content">
+              <div class="report-lists">
+                ${board.lists.map(lista => `
+                  <div class="list-container">
+                    <div class="list-header">${lista.title}</div>
+                    <div class="list-body">
+                      ${lista.cards.length > 0 ? lista.cards.map(card => `
+                        <div class="card-container">
+                          <h3 class="card-title">${card.title}</h3>
+                          ${card.description ? `<div class="card-description">${card.description}</div>` : ''}
+                          
+                          ${card.checklists && card.checklists.length > 0 ? `
+                            <div class="card-checklists">
+                              ${card.checklists.map(checklist => `
+                                <div class="checklist-container">
+                                  <div class="checklist-title">${checklist.title}</div>
+                                  <div class="checklist-items">
+                                    ${checklist.items.map(item => `
+                                      <div class="checklist-item">
+                                        <div class="checkbox ${item.checked ? 'checked' : 'unchecked'}" style="display: flex; align-items: center; justify-content: center; line-height: 0.8;">
+                                          ${item.checked ? '✓' : ''}
+                                        </div>
+                                        <span class="checklist-item-text ${item.checked ? 'completed-text' : ''}">${item.text || item.title}</span>
+                                      </div>
+                                    `).join('')}
+                                  </div>
+                                </div>
+                              `).join('')}
+                            </div>
+                          ` : ''}
+                          
+                          ${card.labels && card.labels.length > 0 ? `
+                            <div class="card-labels">
+                              ${card.labels.map(label => {
+                                const labelText = typeof label === 'string' ? label : (label.title || label.toString());
+                                let bgColor = '';
+                                
+                                if (labelText === 'Urgente') bgColor = '#ef4444';
+                                else if (labelText === 'Fazendo') bgColor = '#eab308';
+                                else if (labelText === 'Feito' || labelText === 'Concluído') bgColor = '#22c55e';
+                                else if (labelText === 'Alta') bgColor = '#ef4444';
+                                else if (labelText === 'Média') bgColor = '#f97316';
+                                else if (labelText === 'Baixa') bgColor = '#3b82f6';
+                                else bgColor = '#6b7280';
+                                
+                                return `<span class="label" style="background-color: ${bgColor};">${labelText}</span>`;
+                              }).join('')}
+                            </div>
+                          ` : ''}
+                        </div>
+                      `).join('') : `
+                        <div class="card-container">
+                          <div class="card-description">Nenhuma pendência registrada nesta seção.</div>
+                        </div>
+                      `}
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+            
             <div class="footer">
-              <p>Relatório de Pendências gerado em ${dataAtual}</p>
-              <p>GLog - Sistema de Gestão de Obras</p>
+              <p>Relatório de Pendências gerado em ${dataAtual} | GLog - Sistema de Gestão de Obras</p>
             </div>
           </div>
         </body>
@@ -1462,33 +1741,48 @@ const PendenciasObra = () => {
         const blob = new Blob([htmlContent], { type: 'text/html' });
         const reader = new FileReader();
         
-        reader.onload = async () => {
+        reader.onloadend = async function() {
           try {
+            // Converter para base64
+            const base64Data = reader.result?.toString().split(',')[1] || '';
+            
             // Salvar o arquivo temporariamente
             await Filesystem.writeFile({
-              path: fileName,
-              data: reader.result as string,
+              path: `${fileName}.html`,
+              data: base64Data,
+              directory: 'CACHE'
+            });
+            
+            // Obter o caminho do arquivo para compartilhar
+            const fileInfo = await Filesystem.getUri({
+              path: `${fileName}.html`,
               directory: 'CACHE'
             });
             
             // Compartilhar o arquivo
             await Share.share({
               title: 'Relatório de Pendências',
-              text: 'Relatório de pendências da obra',
-              url: fileName,
+              text: `Relatório de pendências da obra ${obraNome}`,
+              url: fileInfo.uri,
               dialogTitle: 'Compartilhar relatório'
-            });
-            
-            // Limpar o arquivo temporário
-            await Filesystem.deleteFile({
-              path: fileName,
-              directory: 'CACHE'
             });
             
             toast({
               title: "Sucesso",
               description: "Arquivo pronto para compartilhar!",
             });
+            
+            // Limpar o arquivo temporário após compartilhar
+            setTimeout(async () => {
+              try {
+                await Filesystem.deleteFile({
+                  path: `${fileName}.html`,
+                  directory: 'CACHE'
+                });
+              } catch (error) {
+                console.log('Erro ao limpar arquivo temporário:', error);
+              }
+            }, 60000); // Limpar após 1 minuto
           } catch (error) {
             console.error('Erro ao compartilhar:', error);
             toast({
@@ -1497,6 +1791,14 @@ const PendenciasObra = () => {
               variant: "destructive"
             });
           }
+        };
+        
+        reader.onerror = function() {
+          toast({
+            title: "Erro",
+            description: "Falha ao processar o arquivo para compartilhamento.",
+            variant: "destructive"
+          });
         };
         
         reader.readAsDataURL(blob);

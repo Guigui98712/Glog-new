@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { ArrowLeft, Building2, Calendar as CalendarIcon, DollarSign, FileText, Plus, Pencil, CalendarDays, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Building2, Calendar as CalendarIcon, DollarSign, FileText, Plus, Pencil, CalendarDays, AlertCircle, FileUp } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis } from 'recharts';
 import Calendar from 'react-calendar';
@@ -48,6 +48,7 @@ interface Obra {
   custo_real: number;
   responsavel?: string;
   trello_board_id?: string;
+  definicoes_board_id?: string;
 }
 
 interface EtapaComDatas {
@@ -55,6 +56,37 @@ interface EtapaComDatas {
   data_inicio: string;
   data_fim?: string;
   status: 'em_andamento' | 'concluida';
+}
+
+interface DefinicaoCard {
+  id: string;
+  title: string;
+  description?: string;
+  attachments?: string[];
+  checklists?: {
+    id: string;
+    title: string;
+    items: {
+      id: string;
+      text?: string;
+      title?: string;
+      checked: boolean;
+    }[];
+  }[];
+  labels?: (string | { title?: string; color?: string })[];
+}
+
+interface DefinicaoLista {
+  id: string;
+  title: string;
+  cards: DefinicaoCard[];
+}
+
+interface DefinicaoQuadro {
+  id: string;
+  nome?: string;
+  title?: string;
+  lists: DefinicaoLista[];
 }
 
 const ObraDetalhes = () => {
@@ -73,6 +105,8 @@ const ObraDetalhes = () => {
   const [showEditarEtapas, setShowEditarEtapas] = useState(false);
   const [etapasFluxograma, setEtapasFluxograma] = useState<string[]>([]);
   const [etapasConfig, setEtapasConfig] = useState<{ id: string; nome: string; position: { x: number; y: number } }[]>([]);
+  const [definicoesQuadro, setDefinicoesQuadro] = useState<DefinicaoQuadro | null>(null);
+  const [numeroDefinicoes, setNumeroDefinicoes] = useState({ definir: 0, definido: 0 });
 
   const calcularProgresso = (registros: DiarioRegistro[]) => {
     try {
@@ -124,6 +158,8 @@ const ObraDetalhes = () => {
     }
     carregarDados();
     carregarEtapasFluxograma();
+    carregarPendencias();
+    carregarDefinicoes();
   }, [id]);
 
   const carregarDados = async () => {
@@ -359,6 +395,96 @@ const ObraDetalhes = () => {
     }
   };
 
+  // Nova função para carregar as definições da obra
+  const carregarDefinicoes = async () => {
+    try {
+      if (!obra?.id) return;
+
+      console.log('[DEBUG] Carregando definições para obra ID:', obra.id);
+      
+      // Buscar ou criar o quadro de definições
+      let quadroDefinicoes: DefinicaoQuadro | null = null;
+      
+      // Verificar se já existe um quadro de definições
+      if (obra.definicoes_board_id) {
+        try {
+          // Tentar obter o quadro existente
+          const { data, error } = await supabase
+            .from('definicoes_quadros')
+            .select('*')
+            .eq('id', obra.definicoes_board_id)
+            .single();
+          
+          if (error) throw error;
+          
+          if (data) {
+            quadroDefinicoes = data as unknown as DefinicaoQuadro;
+            console.log('[DEBUG] Quadro de definições existente:', quadroDefinicoes);
+          }
+        } catch (error) {
+          console.error('[DEBUG] Erro ao buscar quadro de definições:', error);
+        }
+      }
+      
+      // Se não existir, criar um novo quadro de definições
+      if (!quadroDefinicoes) {
+        // Criar novo quadro com listas padrão
+        quadroDefinicoes = {
+          id: `def_${obra.id}_${Date.now()}`,
+          title: `Definições - ${obra.nome}`,
+          lists: [
+            {
+              id: `def_list_definir_${Date.now()}`,
+              title: "Definir",
+              cards: []
+            },
+            {
+              id: `def_list_definido_${Date.now()}`,
+              title: "Definido",
+              cards: []
+            }
+          ]
+        };
+        
+        // Salvar o novo quadro no banco de dados
+        const { data, error } = await supabase
+          .from('definicoes_quadros')
+          .insert(quadroDefinicoes)
+          .select();
+        
+        if (error) throw error;
+        
+        // Atualizar o ID do quadro na obra
+        if (data && data.length > 0) {
+          await atualizarObra(obra.id, { definicoes_board_id: quadroDefinicoes.id });
+        }
+        
+        console.log('[DEBUG] Novo quadro de definições criado:', quadroDefinicoes);
+      }
+      
+      // Atualizar o estado com o quadro de definições
+      setDefinicoesQuadro(quadroDefinicoes);
+      
+      // Contar o número de cards em cada lista
+      let definir = 0;
+      let definido = 0;
+      
+      quadroDefinicoes.lists.forEach(lista => {
+        if (lista.title === "Definir" && lista.cards) {
+          definir = lista.cards.length;
+        } else if (lista.title === "Definido" && lista.cards) {
+          definido = lista.cards.length;
+        }
+      });
+      
+      setNumeroDefinicoes({ definir, definido });
+      console.log('[DEBUG] Contagem de definições:', { definir, definido });
+      
+    } catch (error) {
+      console.error('[DEBUG] Erro ao carregar definições:', error);
+    }
+  };
+
   const CORES_STATUS = {
     concluido: "#4CAF50",
     em_andamento: "#FFC107",
@@ -423,6 +549,20 @@ const ObraDetalhes = () => {
     }
   };
 
+  // Função para navegar para a página de definições
+  const handleDefinicoesClick = () => {
+    navigate(`/obras/${id}/definicoes`);
+  };
+
+  // Calcula o progresso geral da obra com base nos registros
+  const progressoGeral = obra?.progresso || calcularProgresso(registrosDiario);
+
+  // Atualiza o display para mostrar definições no formato correto
+  const definicaoDisplay = {
+    definido: numeroDefinicoes.definido,
+    total: numeroDefinicoes.definido + numeroDefinicoes.definir
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
@@ -459,8 +599,6 @@ const ObraDetalhes = () => {
     );
   }
 
-  const progressoGeral = calcularProgresso(registrosDiario);
-
   return (
     <div className="space-y-6 p-4 md:p-6 max-w-7xl mx-auto">
       {showEditarEtapas ? (
@@ -490,12 +628,6 @@ const ObraDetalhes = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 mb-4 md:mb-6">
               <div className="p-3 md:p-4 bg-gray-50 rounded-lg">
-                <h3 className="text-xs md:text-sm font-medium text-gray-500">Status</h3>
-                <p className="mt-1 text-base md:text-lg font-semibold">
-                  {obra?.status === 'em_andamento' ? 'Em Andamento' : obra?.status || 'Em Andamento'}
-                </p>
-              </div>
-              <div className="p-3 md:p-4 bg-gray-50 rounded-lg">
                 <h3 className="text-xs md:text-sm font-medium text-gray-500">Responsável</h3>
                 <p className="mt-1 text-base md:text-lg font-semibold truncate">{obra?.responsavel || 'Não informado'}</p>
               </div>
@@ -505,6 +637,18 @@ const ObraDetalhes = () => {
                   <Progress value={progressoGeral} className="h-2" />
                   <p className="mt-1 text-sm text-gray-600">{progressoGeral}% concluído</p>
                 </div>
+              </div>
+              <div className="p-3 md:p-4 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors" onClick={handleDefinicoesClick}>
+                <h3 className="text-xs md:text-sm font-medium text-gray-500">Definições</h3>
+                <div className="mt-1 flex items-center justify-between">
+                  <p className="text-base md:text-lg font-semibold">
+                    {definicaoDisplay.definido} / {definicaoDisplay.total}
+                  </p>
+                  <FileUp className="w-4 h-4 md:w-5 md:h-5 text-blue-500" />
+                </div>
+                <p className="text-xs md:text-sm text-gray-500 mt-1">
+                  {numeroDefinicoes.definir} a definir, {numeroDefinicoes.definido} definidos
+                </p>
               </div>
             </div>
 

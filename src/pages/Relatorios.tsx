@@ -485,8 +485,8 @@ const Relatorios = () => {
       const printWindow = window.open('', '_blank');
       
       if (!printWindow) {
-        throw new Error('Não foi possível abrir uma nova janela. Verifique se o bloqueador de pop-ups está desativado.');
-      }
+              throw new Error('Não foi possível abrir uma nova janela. Verifique se o bloqueador de pop-ups está desativado.');
+            }
       
       // Escrever o conteúdo HTML na nova janela
       printWindow.document.write(`
@@ -527,11 +527,11 @@ const Relatorios = () => {
       
     } catch (error) {
       console.error('[DEBUG] Erro ao visualizar relatório:', error);
-      toast({
+        toast({
         title: "Erro",
         description: "Não foi possível visualizar o relatório. Tente novamente.",
-        variant: "destructive"
-      });
+          variant: "destructive"
+        });
     }
   };
 

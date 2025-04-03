@@ -924,7 +924,7 @@ const PendenciasObra = () => {
         pdf.rect(margemEsquerda, yPos - 5, pdf.internal.pageSize.getWidth() - 20, 10, 'F');
         
         pdf.setTextColor(...corPrimaria);
-        pdf.setFontSize(12);
+      pdf.setFontSize(12);
         pdf.setFont('helvetica', 'bold');
         pdf.text(lista.title, margemEsquerda + 2, yPos);
         yPos += 12;
@@ -1017,7 +1017,7 @@ const PendenciasObra = () => {
 
           // Adicionar etiquetas com estilo
           if (card.labels && card.labels.length > 0) {
-            yPos += 2;
+          yPos += 2;
             let xPos = margemEsquerda + 2;
             const maxWidth = pdf.internal.pageSize.getWidth() - 20;
             

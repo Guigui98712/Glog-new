@@ -901,115 +901,166 @@ const PendenciasObra = () => {
               background-color: white;
               font-size: 12pt;
               line-height: 1.4;
+              color: #333;
+            }
+            .container {
+              max-width: 100%;
+              margin: 0 auto;
             }
             .header {
               text-align: center;
-              margin-bottom: 20px;
-              padding-bottom: 10px;
-              border-bottom: 1px solid #eee;
+              margin-bottom: 30px;
+              padding-bottom: 15px;
+              border-bottom: 2px solid #3b82f6;
               page-break-after: avoid;
+              position: relative;
             }
             .header h1 {
               margin: 0;
-              color: #2c3e50;
-              font-size: 24px;
+              color: #1e40af;
+              font-size: 28px;
+              font-weight: 600;
             }
-            .header p {
-              margin: 5px 0 0 0;
-              color: #666;
+            .header .obra-nome {
+              font-size: 22px;
+              color: #3b82f6;
+              margin: 10px 0;
+              font-weight: 500;
+            }
+            .header .data {
+              font-size: 14px;
+              color: #6b7280;
+              margin-top: 5px;
             }
             .lista {
-              margin-bottom: 20px;
+              margin-bottom: 30px;
               page-break-inside: avoid;
+              border-radius: 8px;
+              overflow: hidden;
+              box-shadow: 0 1px 3px rgba(0,0,0,0.1);
             }
             .lista-titulo {
-              background-color: #f8f9fa !important;
+              background-color: #3b82f6 !important;
               -webkit-print-color-adjust: exact;
               print-color-adjust: exact;
+              padding: 12px 15px;
+              font-weight: 600;
+              color: white;
+              font-size: 16px;
+              border-top-left-radius: 8px;
+              border-top-right-radius: 8px;
+            }
+            .lista-conteudo {
               padding: 10px;
-              margin-bottom: 10px;
-              border-radius: 4px;
-              font-weight: bold;
-              color: #2c3e50;
+              background-color: #f9fafb !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
             }
             .card {
               background-color: white;
-              border: 1px solid #eee;
-              border-radius: 4px;
-              padding: 10px;
+              border: 1px solid #e5e7eb;
+              border-radius: 6px;
+              padding: 12px;
               margin-bottom: 10px;
               page-break-inside: avoid;
+              box-shadow: 0 1px 2px rgba(0,0,0,0.05);
             }
             .card-titulo {
-              font-weight: 500;
-              margin-bottom: 5px;
-              color: #2c3e50;
+              font-weight: 600;
+              margin-bottom: 8px;
+              color: #1f2937;
+              font-size: 15px;
             }
             .card-descricao {
-              color: #666;
-              font-size: 0.9em;
-              margin: 5px 0;
+              color: #4b5563;
+              font-size: 14px;
+              margin: 8px 0;
+              line-height: 1.5;
             }
             .card-labels {
-              margin-top: 5px;
+              margin-top: 10px;
               display: flex;
-              gap: 5px;
+              gap: 6px;
               flex-wrap: wrap;
             }
             .label {
-              padding: 2px 6px;
+              padding: 3px 8px;
               border-radius: 4px;
-              font-size: 0.8em;
+              font-size: 12px;
               color: white;
               display: inline-block;
               margin: 2px;
+              font-weight: 500;
             }
             .footer {
               text-align: center;
-              margin-top: 20px;
-              padding-top: 10px;
-              border-top: 1px solid #eee;
-              color: #666;
-              font-size: 0.9em;
+              margin-top: 30px;
+              padding-top: 15px;
+              border-top: 1px solid #e5e7eb;
+              color: #6b7280;
+              font-size: 12px;
               page-break-before: avoid;
+            }
+            .logo {
+              text-align: center;
+              margin-bottom: 5px;
+            }
+            .logo img {
+              height: 40px;
+              width: auto;
             }
           </style>
         </head>
         <body>
-          <div class="header">
-            <h1>Relatório de Pendências</h1>
-            <p>Obra: ${obraNome}</p>
-            <p>Data: ${dataAtual}</p>
-          </div>
-
-          ${board.lists.map(lista => `
-            <div class="lista">
-              <div class="lista-titulo">${lista.title}</div>
-              ${lista.cards.map(card => `
-                <div class="card">
-                  <div class="card-titulo">${card.title}</div>
-                  ${card.description ? `<div class="card-descricao">${card.description}</div>` : ''}
-                  ${card.labels && card.labels.length > 0 ? `
-                    <div class="card-labels">
-                      ${card.labels.map(label => {
-                        const labelText = typeof label === 'string' ? label : (label.title || label.toString());
-                        let bgColor = '';
-                        
-                        if (labelText === 'Urgente') bgColor = '#ef4444';
-                        else if (labelText === 'Fazendo') bgColor = '#eab308';
-                        else if (labelText === 'Feito') bgColor = '#22c55e';
-                        
-                        return `<span class="label" style="background-color: ${bgColor || '#6b7280'} !important;">${labelText}</span>`;
-                      }).join('')}
-                    </div>
-                  ` : ''}
-                </div>
-              `).join('')}
+          <div class="container">
+            <div class="header">
+              <div class="logo">
+                <svg width="120" height="40" viewBox="0 0 120 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect width="40" height="40" rx="8" fill="#3b82f6"/>
+                  <path d="M10 20L18 28L30 12" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                  <text x="45" y="25" font-family="Arial" font-size="18" font-weight="bold" fill="#1e40af">GLog</text>
+                </svg>
+              </div>
+              <h1>Relatório de Pendências</h1>
+              <div class="obra-nome">${obraNome}</div>
+              <div class="data">Data: ${dataAtual}</div>
             </div>
-          `).join('')}
 
-          <div class="footer">
-            <p>Relatório gerado em ${dataAtual}</p>
+            ${board.lists.map(lista => `
+              <div class="lista">
+                <div class="lista-titulo">${lista.title}</div>
+                <div class="lista-conteudo">
+                  ${lista.cards.length > 0 ? lista.cards.map(card => `
+                    <div class="card">
+                      <div class="card-titulo">${card.title}</div>
+                      ${card.description ? `<div class="card-descricao">${card.description}</div>` : ''}
+                      ${card.labels && card.labels.length > 0 ? `
+                        <div class="card-labels">
+                          ${card.labels.map(label => {
+                            const labelText = typeof label === 'string' ? label : (label.title || label.toString());
+                            let bgColor = '';
+                            
+                            if (labelText === 'Urgente') bgColor = '#ef4444';
+                            else if (labelText === 'Fazendo') bgColor = '#eab308';
+                            else if (labelText === 'Feito') bgColor = '#22c55e';
+                            else if (labelText === 'Alta') bgColor = '#ef4444';
+                            else if (labelText === 'Média') bgColor = '#f97316';
+                            else if (labelText === 'Baixa') bgColor = '#3b82f6';
+                            
+                            return `<span class="label" style="background-color: ${bgColor || '#6b7280'} !important;">${labelText}</span>`;
+                          }).join('')}
+                        </div>
+                      ` : ''}
+                    </div>
+                  `).join('') : `<div class="card"><div class="card-descricao">Nenhuma pendência registrada nesta seção.</div></div>`}
+                </div>
+              </div>
+            `).join('')}
+
+            <div class="footer">
+              <p>Relatório de Pendências gerado em ${dataAtual}</p>
+              <p>GLog - Sistema de Gestão de Obras</p>
+            </div>
           </div>
         </body>
         </html>
@@ -1238,115 +1289,166 @@ const PendenciasObra = () => {
               background-color: white;
               font-size: 12pt;
               line-height: 1.4;
+              color: #333;
+            }
+            .container {
+              max-width: 100%;
+              margin: 0 auto;
             }
             .header {
               text-align: center;
-              margin-bottom: 20px;
-              padding-bottom: 10px;
-              border-bottom: 1px solid #eee;
+              margin-bottom: 30px;
+              padding-bottom: 15px;
+              border-bottom: 2px solid #3b82f6;
               page-break-after: avoid;
+              position: relative;
             }
             .header h1 {
               margin: 0;
-              color: #2c3e50;
-              font-size: 24px;
+              color: #1e40af;
+              font-size: 28px;
+              font-weight: 600;
             }
-            .header p {
-              margin: 5px 0 0 0;
-              color: #666;
+            .header .obra-nome {
+              font-size: 22px;
+              color: #3b82f6;
+              margin: 10px 0;
+              font-weight: 500;
+            }
+            .header .data {
+              font-size: 14px;
+              color: #6b7280;
+              margin-top: 5px;
             }
             .lista {
-              margin-bottom: 20px;
+              margin-bottom: 30px;
               page-break-inside: avoid;
+              border-radius: 8px;
+              overflow: hidden;
+              box-shadow: 0 1px 3px rgba(0,0,0,0.1);
             }
             .lista-titulo {
-              background-color: #f8f9fa !important;
+              background-color: #3b82f6 !important;
               -webkit-print-color-adjust: exact;
               print-color-adjust: exact;
+              padding: 12px 15px;
+              font-weight: 600;
+              color: white;
+              font-size: 16px;
+              border-top-left-radius: 8px;
+              border-top-right-radius: 8px;
+            }
+            .lista-conteudo {
               padding: 10px;
-              margin-bottom: 10px;
-              border-radius: 4px;
-              font-weight: bold;
-              color: #2c3e50;
+              background-color: #f9fafb !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
             }
             .card {
               background-color: white;
-              border: 1px solid #eee;
-              border-radius: 4px;
-              padding: 10px;
+              border: 1px solid #e5e7eb;
+              border-radius: 6px;
+              padding: 12px;
               margin-bottom: 10px;
               page-break-inside: avoid;
+              box-shadow: 0 1px 2px rgba(0,0,0,0.05);
             }
             .card-titulo {
-              font-weight: 500;
-              margin-bottom: 5px;
-              color: #2c3e50;
+              font-weight: 600;
+              margin-bottom: 8px;
+              color: #1f2937;
+              font-size: 15px;
             }
             .card-descricao {
-              color: #666;
-              font-size: 0.9em;
-              margin: 5px 0;
+              color: #4b5563;
+              font-size: 14px;
+              margin: 8px 0;
+              line-height: 1.5;
             }
             .card-labels {
-              margin-top: 5px;
+              margin-top: 10px;
               display: flex;
-              gap: 5px;
+              gap: 6px;
               flex-wrap: wrap;
             }
             .label {
-              padding: 2px 6px;
+              padding: 3px 8px;
               border-radius: 4px;
-              font-size: 0.8em;
+              font-size: 12px;
               color: white;
               display: inline-block;
               margin: 2px;
+              font-weight: 500;
             }
             .footer {
               text-align: center;
-              margin-top: 20px;
-              padding-top: 10px;
-              border-top: 1px solid #eee;
-              color: #666;
-              font-size: 0.9em;
+              margin-top: 30px;
+              padding-top: 15px;
+              border-top: 1px solid #e5e7eb;
+              color: #6b7280;
+              font-size: 12px;
               page-break-before: avoid;
+            }
+            .logo {
+              text-align: center;
+              margin-bottom: 5px;
+            }
+            .logo img {
+              height: 40px;
+              width: auto;
             }
           </style>
         </head>
         <body>
-          <div class="header">
-            <h1>Relatório de Pendências</h1>
-            <p>Obra: ${obraNome}</p>
-            <p>Data: ${dataAtual}</p>
-          </div>
-
-          ${board.lists.map(lista => `
-            <div class="lista">
-              <div class="lista-titulo">${lista.title}</div>
-              ${lista.cards.map(card => `
-                <div class="card">
-                  <div class="card-titulo">${card.title}</div>
-                  ${card.description ? `<div class="card-descricao">${card.description}</div>` : ''}
-                  ${card.labels && card.labels.length > 0 ? `
-                    <div class="card-labels">
-                      ${card.labels.map(label => {
-                        const labelText = typeof label === 'string' ? label : (label.title || label.toString());
-                        let bgColor = '';
-                        
-                        if (labelText === 'Urgente') bgColor = '#ef4444';
-                        else if (labelText === 'Fazendo') bgColor = '#eab308';
-                        else if (labelText === 'Feito') bgColor = '#22c55e';
-                        
-                        return `<span class="label" style="background-color: ${bgColor || '#6b7280'} !important;">${labelText}</span>`;
-                      }).join('')}
-                    </div>
-                  ` : ''}
-                </div>
-              `).join('')}
+          <div class="container">
+            <div class="header">
+              <div class="logo">
+                <svg width="120" height="40" viewBox="0 0 120 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect width="40" height="40" rx="8" fill="#3b82f6"/>
+                  <path d="M10 20L18 28L30 12" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                  <text x="45" y="25" font-family="Arial" font-size="18" font-weight="bold" fill="#1e40af">GLog</text>
+                </svg>
+              </div>
+              <h1>Relatório de Pendências</h1>
+              <div class="obra-nome">${obraNome}</div>
+              <div class="data">Data: ${dataAtual}</div>
             </div>
-          `).join('')}
 
-          <div class="footer">
-            <p>Relatório gerado em ${dataAtual}</p>
+            ${board.lists.map(lista => `
+              <div class="lista">
+                <div class="lista-titulo">${lista.title}</div>
+                <div class="lista-conteudo">
+                  ${lista.cards.length > 0 ? lista.cards.map(card => `
+                    <div class="card">
+                      <div class="card-titulo">${card.title}</div>
+                      ${card.description ? `<div class="card-descricao">${card.description}</div>` : ''}
+                      ${card.labels && card.labels.length > 0 ? `
+                        <div class="card-labels">
+                          ${card.labels.map(label => {
+                            const labelText = typeof label === 'string' ? label : (label.title || label.toString());
+                            let bgColor = '';
+                            
+                            if (labelText === 'Urgente') bgColor = '#ef4444';
+                            else if (labelText === 'Fazendo') bgColor = '#eab308';
+                            else if (labelText === 'Feito') bgColor = '#22c55e';
+                            else if (labelText === 'Alta') bgColor = '#ef4444';
+                            else if (labelText === 'Média') bgColor = '#f97316';
+                            else if (labelText === 'Baixa') bgColor = '#3b82f6';
+                            
+                            return `<span class="label" style="background-color: ${bgColor || '#6b7280'} !important;">${labelText}</span>`;
+                          }).join('')}
+                        </div>
+                      ` : ''}
+                    </div>
+                  `).join('') : `<div class="card"><div class="card-descricao">Nenhuma pendência registrada nesta seção.</div></div>`}
+                </div>
+              </div>
+            `).join('')}
+
+            <div class="footer">
+              <p>Relatório de Pendências gerado em ${dataAtual}</p>
+              <p>GLog - Sistema de Gestão de Obras</p>
+            </div>
           </div>
         </body>
         </html>

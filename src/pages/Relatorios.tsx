@@ -563,141 +563,57 @@ const Relatorios = () => {
     }
   };
 
-  // Alternar presença - agora com três estados: 0 (ausente), 0.5 (meio período), 1 (período completo)
-  // Ordem alterada para: 0 -> 1 -> 0.5 -> 0
-  const togglePresenca = async (funcionarioId: string, data: string) => {
+  // Função para atualizar a presença de um funcionário
+  const handlePresencaChange = (funcionarioId: string, data: string, valor: number) => {
     const semanaKey = format(startOfWeek(semanaAtual, { weekStartsOn: 0 }), 'yyyy-MM-dd');
     
-    // Atualizar o estado dos funcionários
-    const novosFuncionarios = funcionarios.map(func => {
-      if (func.id === funcionarioId) {
-        const presencaAtual = func.presencas[data] || 0;
-        let novaPresenca = 0;
-        
-        // Alternar entre os três estados: 0 -> 1 -> 0.5 -> 0
-        if (presencaAtual === 0) novaPresenca = 1;
-        else if (presencaAtual === 1) novaPresenca = 0.5;
-        else novaPresenca = 0;
-        
-        return {
-          ...func,
-          presencas: {
-            ...func.presencas,
-            [data]: novaPresenca
-          }
-        };
-      }
-      return func;
+    // Atualizar funcionários
+    setFuncionarios(prevFuncionarios => {
+      const novosFuncionarios = prevFuncionarios.map(func => {
+        if (func.id === funcionarioId) {
+          return {
+            ...func,
+            presencas: {
+              ...func.presencas,
+              [data]: valor
+            }
+          };
+        }
+        return func;
+      });
+      
+      // Atualizar funcionários da semana
+      setFuncionariosPorSemana(prev => ({
+        ...prev,
+        [semanaKey]: novosFuncionarios
+      }));
+      
+      return novosFuncionarios;
     });
     
-    setFuncionarios(novosFuncionarios);
-    
-    // Atualizar o estado de funcionários por semana
-    setFuncionariosPorSemana(prev => ({
+    // Atualizar presenças da semana
+    setPresencasPorSemana(prev => ({
       ...prev,
-      [semanaKey]: novosFuncionarios
+      [semanaKey]: {
+        ...prev[semanaKey],
+        [funcionarioId]: {
+          ...(prev[semanaKey]?.[funcionarioId] || {}),
+          [data]: valor
+        }
+      }
     }));
     
-    // Criar um objeto com as presenças atualizadas
-    const presencasAtualizadas: {[funcionarioId: string]: {[data: string]: number}} = {};
-    novosFuncionarios.forEach(func => {
-      presencasAtualizadas[func.id] = func.presencas;
-    });
-    
-    // Atualizar o estado de presenças por semana
-    const novoPresencasPorSemana = {
-      ...presencasPorSemana,
-      [semanaKey]: presencasAtualizadas
-    };
-    
-    setPresencasPorSemana(novoPresencasPorSemana);
-    
-    // Salvar no localStorage para persistência
+    // Salvar no localStorage
+    salvarPresencasNoLocalStorage();
+  };
+
+  // Função para salvar presenças no localStorage
+  const salvarPresencasNoLocalStorage = () => {
     try {
-      localStorage.setItem('presencasPorSemana', JSON.stringify(novoPresencasPorSemana));
-      console.log('[DEBUG] Presenças salvas no localStorage');
+      localStorage.setItem('presencasPorSemana', JSON.stringify(presencasPorSemana));
     } catch (error) {
       console.error('[DEBUG] Erro ao salvar presenças no localStorage:', error);
     }
-    
-    // Tentar salvar no banco de dados
-    try {
-      const funcionario = novosFuncionarios.find(f => f.id === funcionarioId);
-      if (!funcionario) {
-        console.error('[DEBUG] Funcionário não encontrado:', funcionarioId);
-        return;
-      }
-      
-      const novaPresenca = funcionario.presencas[data];
-      console.log('[DEBUG] Salvando presença no banco de dados:', {
-        obra_id: id,
-        funcionario_id: funcionarioId,
-        nome_funcionario: funcionario.nome,
-        data,
-        presenca: novaPresenca,
-        semana: semanaKey
-      });
-      
-      // Verificar se já existe um registro para esta combinação
-      const { data: registroExistente, error: erroConsulta } = await supabase
-        .from('presencas_funcionarios')
-        .select('*')
-        .eq('obra_id', id)
-        .eq('funcionario_id', funcionarioId)
-        .eq('data', data)
-        .single();
-      
-      if (erroConsulta && erroConsulta.code !== 'PGRST116') { // PGRST116 é o código para "nenhum resultado encontrado"
-        console.error('[DEBUG] Erro ao consultar registro existente:', erroConsulta);
-        // Não lançar erro, pois já salvamos no localStorage
-      } else {
-        if (registroExistente) {
-          console.log('[DEBUG] Atualizando registro existente:', registroExistente.id);
-          // Atualizar registro existente
-          const { error } = await supabase
-            .from('presencas_funcionarios')
-            .update({
-              presenca: novaPresenca,
-              semana: semanaKey,
-              nome_funcionario: funcionario.nome
-            })
-            .eq('id', registroExistente.id);
-          
-          if (error) {
-            console.error('[DEBUG] Erro ao atualizar registro:', error);
-            // Não lançar erro, pois já salvamos no localStorage
-          }
-        } else {
-          console.log('[DEBUG] Criando novo registro');
-          // Criar novo registro
-          const { error } = await supabase
-            .from('presencas_funcionarios')
-            .insert({
-              obra_id: id,
-              funcionario_id: funcionarioId,
-              nome_funcionario: funcionario.nome,
-              data,
-              presenca: novaPresenca,
-              semana: semanaKey
-            });
-          
-          if (error) {
-            console.error('[DEBUG] Erro ao criar novo registro:', error);
-            // Não lançar erro, pois já salvamos no localStorage
-          }
-        }
-      }
-      
-      console.log('[DEBUG] Presença salva com sucesso');
-    } catch (error) {
-      console.error('[DEBUG] Erro ao salvar presença no banco de dados:', error);
-      // Não lançar erro, pois já salvamos no localStorage
-    }
-    
-    toast({
-      title: "Sucesso",
-      description: "Presença atualizada com sucesso!"
-    });
   };
 
   // Filtrar relatórios do mês atual
@@ -968,59 +884,6 @@ const Relatorios = () => {
     }
   };
 
-  // Função para atualizar a presença de um funcionário
-  const handlePresencaChange = (funcionarioId: string, data: string, valor: number) => {
-    const semanaKey = format(startOfWeek(semanaAtual, { weekStartsOn: 0 }), 'yyyy-MM-dd');
-    
-    // Atualizar funcionários
-    setFuncionarios(prevFuncionarios => {
-      const novosFuncionarios = prevFuncionarios.map(func => {
-        if (func.id === funcionarioId) {
-          return {
-            ...func,
-            presencas: {
-              ...func.presencas,
-              [data]: valor
-            }
-          };
-        }
-        return func;
-      });
-      
-      // Atualizar funcionários da semana
-      setFuncionariosPorSemana(prev => ({
-        ...prev,
-        [semanaKey]: novosFuncionarios
-      }));
-      
-      return novosFuncionarios;
-    });
-    
-    // Atualizar presenças da semana
-    setPresencasPorSemana(prev => ({
-      ...prev,
-      [semanaKey]: {
-        ...prev[semanaKey],
-        [funcionarioId]: {
-          ...(prev[semanaKey]?.[funcionarioId] || {}),
-          [data]: valor
-        }
-      }
-    }));
-    
-    // Salvar no localStorage
-    salvarPresencasNoLocalStorage();
-  };
-
-  // Função para salvar presenças no localStorage
-  const salvarPresencasNoLocalStorage = () => {
-    try {
-      localStorage.setItem('presencasPorSemana', JSON.stringify(presencasPorSemana));
-    } catch (error) {
-      console.error('[DEBUG] Erro ao salvar presenças no localStorage:', error);
-    }
-  };
-
   return (
     <div className="container mx-auto p-4 space-y-8">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
@@ -1048,14 +911,7 @@ const Relatorios = () => {
               }}
               className="rounded-md border mx-auto p-3 sm:p-6 bg-white shadow-lg"
               locale={ptBR}
-              tileClassName={({ date }) => {
-                const temDiario = diasComDiario.some(d => 
-                  d.getDate() === date.getDate() &&
-                  d.getMonth() === date.getMonth() &&
-                  d.getFullYear() === date.getFullYear()
-                );
-                return temDiario ? 'bg-primary/10 font-bold cursor-pointer' : '';
-              }}
+              tileClassName={tileClassName}
             />
           </div>
 
@@ -1109,7 +965,7 @@ const Relatorios = () => {
                 <thead>
                   <tr className="bg-muted">
                     <th className="p-2 text-left min-w-[150px] sticky left-0 bg-muted">Funcionário</th>
-                    {getDiasUteis(semanaAtual).map((dia) => (
+                    {diasUteis.map((dia) => (
                       <th key={format(dia, 'yyyy-MM-dd')} className="p-2 text-center min-w-[100px]">
                         {format(dia, 'EEE, dd/MM', { locale: ptBR })}
                       </th>
@@ -1120,7 +976,7 @@ const Relatorios = () => {
                   {funcionarios.map((funcionario) => (
                     <tr key={funcionario.id} className="border-b">
                       <td className="p-2 sticky left-0 bg-background">{funcionario.nome}</td>
-                      {getDiasUteis(semanaAtual).map((dia) => {
+                      {diasUteis.map((dia) => {
                         const dataKey = format(dia, 'yyyy-MM-dd');
                         const presenca = funcionario.presencas[dataKey] || 0;
                         return (
@@ -1203,7 +1059,7 @@ const Relatorios = () => {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleVisualizarRelatorio(relatorio)}
+                      onClick={() => handleDownloadPDF(relatorio)}
                     className="flex-1 sm:flex-none"
                     >
                     <FileText className="h-4 w-4 mr-2" />
@@ -1213,7 +1069,7 @@ const Relatorios = () => {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleDownloadPDF(relatorio)}
+                      onClick={() => handleVisualizarRelatorio(relatorio)}
                     className="flex-1 sm:flex-none bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-300"
                     >
                     <Download className="h-4 w-4 mr-2" />
@@ -1254,7 +1110,7 @@ const Relatorios = () => {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleVisualizarRelatorio(relatorio)}
+                      onClick={() => handleDownloadPDF(relatorio)}
                     className="flex-1 sm:flex-none"
                     >
                     <FileText className="h-4 w-4 mr-2" />
@@ -1264,7 +1120,7 @@ const Relatorios = () => {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleDownloadPDF(relatorio)}
+                      onClick={() => handleVisualizarRelatorio(relatorio)}
                     className="flex-1 sm:flex-none bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-300"
                     >
                     <Download className="h-4 w-4 mr-2" />

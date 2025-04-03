@@ -62,6 +62,10 @@ import { Label } from '@/components/ui/label';
 import { DragDropContext, Droppable, Draggable, DropResult, DragStart, ResponderProvided } from 'react-beautiful-dnd';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+// Importações do Capacitor
+import { Capacitor } from '@capacitor/core';
+import { Share } from '@capacitor/share';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 
 const PendenciasObra = () => {
   const { id } = useParams();
@@ -874,14 +878,14 @@ const PendenciasObra = () => {
         description: "Gerando PDF, por favor aguarde...",
       });
 
-      // Verificar se estamos no ambiente mobile (Capacitor)
-      const isCapacitor = !!(window as any).Capacitor?.isNativePlatform();
+      // Verificar se estamos no ambiente nativo com Capacitor
+      const isNative = Capacitor.isNativePlatform();
       
       // Obter a data atual formatada
       const dataAtual = new Date().toLocaleDateString('pt-BR');
-      const fileName = `Pendencias_${dataAtual.replace(/\//g, '-')}.pdf`;
+      const fileName = `Pendencias_${obraNome.replace(/\s+/g, '_')}_${dataAtual.replace(/\//g, '-')}.pdf`;
 
-      // Conteúdo HTML do relatório - NOVO DESIGN COMPLETO
+      // Conteúdo HTML do relatório - design completo com ícones e estilos
       const htmlContent = `
         <!DOCTYPE html>
         <html>
@@ -1063,341 +1067,305 @@ const PendenciasObra = () => {
             .card-labels {
               display: flex;
               flex-wrap: wrap;
-              gap: 5px;
-              margin-top: 10px;
+              gap: 6px;
+              margin-bottom: 8px;
             }
-            .label {
-              display: inline-block;
-              padding: 3px 8px;
-              border-radius: 4px;
+            .card-label {
               font-size: 11px;
+              padding: 3px 6px;
+              border-radius: 4px;
               color: white;
               font-weight: 500;
-              margin-right: 5px;
             }
-            .footer {
-              margin-top: 30px;
-              text-align: center;
+            .card-date {
               font-size: 12px;
               color: #6b7280;
-              border-top: 1px solid #e5e7eb;
-              padding-top: 15px;
+              margin-top: 8px;
+              display: flex;
+              align-items: center;
             }
-            
-            /* Estilos para garantir melhor impressão */
-            @media print {
-              .list-header {
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-              }
-              .label {
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-              }
-              .checkbox.checked {
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-              }
+            .card-date-icon {
+              margin-right: 4px;
+              width: 14px;
+              height: 14px;
+            }
+            .card-attachments {
+              font-size: 12px;
+              color: #6b7280;
+              margin-top: 5px;
+            }
+            .report-footer {
+              margin-top: 30px;
+              padding-top: 10px;
+              border-top: 1px solid #e5e7eb;
+              text-align: center;
+              font-size: 12px;
+              color: #9ca3af;
             }
           </style>
         </head>
         <body>
           <div class="pdf-container">
+            <!-- Cabeçalho do relatório -->
             <div class="report-header">
               <div class="report-header-left">
                 <div class="report-logo">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="50" height="50">
-                    <rect width="512" height="512" rx="100" fill="#3b82f6"/>
-                    <path d="M161.4 242.4c-3.9-3.9-3.9-10.2 0-14.1s10.2-3.9 14.1 0L226.7 279.5 336.6 169.6c3.9-3.9 10.2-3.9 14.1 0s3.9 10.2 0 14.1L236.8 287.6c-3.9 3.9-10.2 3.9-14.1 0L161.4 242.4z" fill="white"/>
-                    <path d="M400 160c0-8.8-7.2-16-16-16H192c-8.8 0-16 7.2-16 16s7.2 16 16 16H384c8.8 0 16-7.2 16-16zm0 64c0-8.8-7.2-16-16-16H288c-8.8 0-16 7.2-16 16s7.2 16 16 16h96c8.8 0 16-7.2 16-16zm0 64c0-8.8-7.2-16-16-16H288c-8.8 0-16 7.2-16 16s7.2 16 16 16h96c8.8 0 16-7.2 16-16zm0 64c0-8.8-7.2-16-16-16H192c-8.8 0-16 7.2-16 16s7.2 16 16 16H384c8.8 0 16-7.2 16-16z" fill="white"/>
+                  <svg viewBox="0 0 64 64" width="100%" height="100%" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M32,4 L56,18 L56,46 L32,60 L8,46 L8,18 Z" stroke="black" stroke-width="2" fill="white"/>
+                    <path d="M32,8 L52,20 L52,44 L32,56 L12,44 L12,20 Z" stroke="#00B2D6" stroke-width="1.5" fill="none"/>
+                    <g transform="translate(17, 16)">
+                      <path d="M15,8 C8,8 4,12 4,18 L4,22 L26,22 L26,18 C26,12 22,8 15,8 Z" fill="black"/>
+                      <path d="M10,8 L10,21 M15,8 L15,21 M20,8 L20,21" stroke="white" stroke-width="1.5"/>
+                      <rect x="4" y="22" width="22" height="2" fill="black"/>
+                      <path d="M15,25 C12,25 10,27 10,30 C10,33 12,35 15,35 C18,35 20,33 20,30 C20,27 18,25 15,25 Z" fill="black"/>
+                      <rect x="13" y="29" width="4" height="2" fill="white"/>
+                    </g>
                   </svg>
                 </div>
                 <div class="report-title-container">
                   <h1 class="report-title">Relatório de Pendências</h1>
-                  <h2 class="obra-title">${obraNome}</h2>
+                  <p class="obra-title">${obraNome}</p>
                 </div>
               </div>
               <div class="report-header-right">
-                <div class="report-date">Data: ${dataAtual}</div>
+                <div class="report-date">
+                  Data: ${dataAtual}
+                </div>
               </div>
             </div>
-            
+        
+            <!-- Conteúdo do relatório -->
             <div class="report-content">
               <div class="report-lists">
-                ${board.lists.map(lista => `
+              ${board.lists.map(list => {
+                return `
                   <div class="list-container">
-                    <div class="list-header">${lista.title}</div>
+                    <div class="list-header">${list.title}</div>
                     <div class="list-body">
-                      ${lista.cards.length > 0 ? lista.cards.map(card => `
-                        <div class="card-container">
-                          <h3 class="card-title">${card.title}</h3>
-                          ${card.description ? `<div class="card-description">${card.description}</div>` : ''}
-                          
-                          ${card.checklists && card.checklists.length > 0 ? `
-                            <div class="card-checklists">
-                              ${card.checklists.map(checklist => `
-                                <div class="checklist-container">
-                                  <div class="checklist-title">${checklist.title}</div>
-                                  <div class="checklist-items">
-                                    ${checklist.items.map(item => `
-                                      <div class="checklist-item">
-                                        <div class="checkbox ${item.checked ? 'checked' : 'unchecked'}" style="display: flex; align-items: center; justify-content: center; line-height: 0.8;">
-                                          ${item.checked ? '✓' : ''}
-                                        </div>
-                                        <span class="checklist-item-text ${item.checked ? 'completed-text' : ''}">${item.text || item.title}</span>
-                                      </div>
-                                    `).join('')}
-                                  </div>
-                                </div>
-                              `).join('')}
-                            </div>
-                          ` : ''}
-                          
-                          ${card.labels && card.labels.length > 0 ? `
+                      ${list.cards && list.cards.length > 0 ? 
+                        list.cards.map(card => {
+                          return `
+                          <div class="card-container">
                             <div class="card-labels">
-                              ${card.labels.map(label => {
-                                const labelText = typeof label === 'string' ? label : (label.title || label.toString());
-                                let bgColor = '';
-                                
-                                if (labelText === 'Urgente') bgColor = '#ef4444';
-                                else if (labelText === 'Fazendo') bgColor = '#eab308';
-                                else if (labelText === 'Feito' || labelText === 'Concluído') bgColor = '#22c55e';
-                                else if (labelText === 'Alta') bgColor = '#ef4444';
-                                else if (labelText === 'Média') bgColor = '#f97316';
-                                else if (labelText === 'Baixa') bgColor = '#3b82f6';
-                                else bgColor = '#6b7280';
-                                
-                                return `<span class="label" style="background-color: ${bgColor};">${labelText}</span>`;
-                              }).join('')}
+                              ${card.labels && card.labels.length > 0 ? 
+                                card.labels.map(label => {
+                                  // Determinar a cor baseado no nome da etiqueta
+                                  let color = '#6b7280'; // cor padrão cinza
+                                  if (typeof label === 'string') {
+                                    if (label.toLowerCase().includes('urgente')) color = '#ef4444';
+                                    else if (label.toLowerCase().includes('fazendo')) color = '#f59e0b';
+                                    else if (label.toLowerCase().includes('concluído')) color = '#10b981';
+                                  } else {
+                                    color = label.color || '#6b7280';
+                                  }
+                                  
+                                  const labelName = typeof label === 'string' ? label : label.title;
+                                  
+                                  return `<span class="card-label" style="background-color: ${color};">${labelName}</span>`;
+                                }).join('') : ''
+                              }
                             </div>
-                          ` : ''}
-                        </div>
-                      `).join('') : `
-                        <div class="card-container">
-                          <div class="card-description">Nenhuma pendência registrada nesta seção.</div>
-                        </div>
-                      `}
+                            <h4 class="card-title">${card.title}</h4>
+                            ${card.description ? `<p class="card-description">${card.description}</p>` : ''}
+                            
+                            ${card.checklists && card.checklists.length > 0 ? 
+                              `<div class="card-checklists">
+                                ${card.checklists.map(checklist => {
+                                  return `
+                                  <div class="checklist-container">
+                                    <h5 class="checklist-title">${checklist.title}</h5>
+                                    <div class="checklist-items">
+                                      ${checklist.items && checklist.items.length > 0 ? 
+                                        checklist.items.map(item => {
+                                          return `
+                                          <div class="checklist-item">
+                                            <span class="checkbox ${item.checked ? 'checked' : 'unchecked'}">
+                                              ${item.checked ? '✓' : ''}
+                                            </span>
+                                            <span class="checklist-item-text ${item.checked ? 'completed-text' : ''}">
+                                              ${item.title}
+                                            </span>
+                                          </div>
+                                          `;
+                                        }).join('') : 'Nenhum item'
+                                      }
+                                    </div>
+                                  </div>
+                                  `;
+                                }).join('')}
+                              </div>` : ''
+                            }
+                            
+                            ${card.due_date ? `
+                              <div class="card-date">
+                                <span class="card-date-icon">📅</span>
+                                Vencimento: ${new Date(card.due_date).toLocaleDateString('pt-BR')}
+                              </div>
+                            ` : ''}
+                          </div>
+                          `;
+                        }).join('') : '<p>Nenhum card nesta lista</p>'
+                      }
                     </div>
                   </div>
-                `).join('')}
+                `;
+              }).join('')}
               </div>
             </div>
             
-            <div class="footer">
-              <p>Relatório de Pendências gerado em ${dataAtual} | GLog - Sistema de Gestão de Obras</p>
+            <!-- Rodapé do relatório -->
+            <div class="report-footer">
+              <p>Relatório gerado em ${new Date().toLocaleString('pt-BR')} - G-Log Sistema de Gerenciamento de Obras</p>
             </div>
           </div>
         </body>
         </html>
       `;
 
-      if (isCapacitor) {
-        try {
-          // Importando módulos necessários do Capacitor
-          const { Filesystem } = await import('@capacitor/filesystem');
-          const jsPDF = (await import('jspdf')).default;
+      // Criar um iframe temporário para renderizar o HTML
+      const iframe = document.createElement('iframe');
+      iframe.style.width = '100%';
+      iframe.style.height = '0';
+      iframe.style.border = 'none';
+      iframe.style.position = 'fixed';
+      iframe.style.zIndex = '-9999';
+      document.body.appendChild(iframe);
 
-          // Criar um elemento temporário para renderizar o HTML (invisível)
-          const tempDiv = document.createElement('div');
-          tempDiv.innerHTML = htmlContent;
-          tempDiv.style.position = 'absolute';
-          tempDiv.style.left = '-9999px';
-          tempDiv.style.visibility = 'hidden';
-          
-          document.body.appendChild(tempDiv);
+      // Escrever o HTML no iframe
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (iframeDoc) {
+        iframeDoc.open();
+        iframeDoc.write(htmlContent);
+        iframeDoc.close();
 
+        // Aguardar o carregamento completo das imagens
+        setTimeout(async () => {
           try {
-            // Abordagem direta: salvar HTML no sistema de arquivos e abrir com Browser API
-            const blob = new Blob([htmlContent], { type: 'text/html' });
-            const reader = new FileReader();
-            
-            reader.onloadend = async function() {
+            // Criar documento PDF
+            const pdf = new jsPDF({
+              orientation: 'portrait',
+              unit: 'mm',
+              format: 'a4'
+            });
+
+            // Processar a página
+            const canvas = await html2canvas(iframeDoc.body, {
+              scale: 2,
+              logging: false,
+              useCORS: true
+            });
+
+            const imgData = canvas.toDataURL('image/png');
+            const imgWidth = 210; // A4 width in mm
+            const pageHeight = 297; // A4 height in mm
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            let heightLeft = imgHeight;
+            let position = 0;
+
+            pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight;
+
+            // Adicionar páginas adicionais se necessário
+            while (heightLeft > 0) {
+              position = heightLeft - imgHeight;
+              pdf.addPage();
+              pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+              heightLeft -= pageHeight;
+            }
+
+            // Remover o iframe temporário
+            document.body.removeChild(iframe);
+
+            // Verificar se estamos em um ambiente nativo
+            if (isNative) {
               try {
-                // Salvar o arquivo HTML no sistema de arquivos
-                const base64Data = reader.result?.toString().split(',')[1] || '';
+                // Gerar PDF como blob
+                const pdfBlob = pdf.output('blob');
                 
-                await Filesystem.writeFile({
-                  path: `${fileName}.html`,
-                  data: base64Data,
-                  directory: 'CACHE'
-                });
-                
-                // Obter URI do arquivo salvo
-                const fileInfo = await Filesystem.getUri({
-                  path: `${fileName}.html`,
-                  directory: 'CACHE'
-                });
-                
-                // Importar Browser API e abrir o arquivo
-                const { Browser } = await import('@capacitor/browser');
-                await Browser.open({
-                  url: fileInfo.uri,
-                  presentationStyle: 'popover'
-                });
-                
-                toast({
-                  title: "Sucesso",
-                  description: "Relatório gerado e aberto com sucesso!",
-                });
-                
-                // Limpar arquivos temporários após um tempo
-                setTimeout(async () => {
-                  try {
-                    await Filesystem.deleteFile({
-                      path: `${fileName}.html`,
-                      directory: 'CACHE'
-                    });
-                  } catch (error) {
-                    console.log('Erro ao limpar arquivos temporários:', error);
+                // Converter blob para base64
+                const reader = new FileReader();
+                reader.onloadend = async function() {
+                  const base64data = reader.result?.toString().split(',')[1];
+                  
+                  if (base64data) {
+                    try {
+                      // Salvar arquivo no dispositivo
+                      const result = await Filesystem.writeFile({
+                        path: fileName,
+                        data: base64data,
+                        directory: Directory.Documents,
+                        recursive: true
+                      });
+                      
+                      toast({
+                        title: "Sucesso",
+                        description: "PDF gerado com sucesso!",
+                      });
+                      
+                      // Tentar abrir o arquivo com a API padrão para dispositivos móveis
+                      if (Capacitor.getPlatform() === 'android') {
+                        // No Android, podemos usar o Browser plugin para abrir o arquivo
+                        const { Browser } = Capacitor.Plugins;
+                        await Browser.open({ url: result.uri });
+                      } else {
+                        // Em outros dispositivos, exibir o arquivo salvo
+                        toast({
+                          title: "Arquivo salvo",
+                          description: `O arquivo foi salvo em ${result.uri}`,
+                        });
+                      }
+                    } catch (error) {
+                      console.error('Erro ao salvar PDF:', error);
+                      
+                      // Fallback: compartilhar o arquivo como alternativa
+                      await Share.share({
+                        title: 'Relatório de Pendências',
+                        text: `Relatório de Pendências - ${obraNome}`,
+                        url: 'data:application/pdf;base64,' + base64data,
+                        dialogTitle: 'Compartilhar Relatório de Pendências'
+                      });
+                    }
                   }
-                }, 60000); // Limpar após 1 minuto
+                };
+                
+                reader.readAsDataURL(pdfBlob);
               } catch (error) {
                 console.error('Erro ao processar PDF:', error);
                 toast({
                   title: "Erro",
-                  description: "Não foi possível gerar o relatório. Tente novamente.",
-                  variant: "destructive"
+                  description: "Ocorreu um erro ao processar o PDF. Tentando método alternativo...",
                 });
+                
+                // Fallback para download direto em caso de erro
+                pdf.save(fileName);
               }
-            };
-            
-            reader.onerror = function() {
+            } else {
+              // Para navegadores desktop, fazer download diretamente
+              pdf.save(fileName);
+              
               toast({
-                title: "Erro",
-                description: "Falha ao processar o conteúdo do PDF.",
-                variant: "destructive"
+                title: "Sucesso",
+                description: "PDF gerado com sucesso!",
               });
-            };
-            
-            reader.readAsDataURL(blob);
-            
-          } finally {
-            // Limpar o elemento temporário
-            if (document.body.contains(tempDiv)) {
-              document.body.removeChild(tempDiv);
             }
-          }
-        } catch (error) {
-          console.error('Erro ao gerar PDF:', error);
-          toast({
-            title: "Erro",
-            description: "Não foi possível gerar o PDF. Tente novamente.",
-            variant: "destructive"
-          });
-        }
-      } else {
-        // Código para ambiente web
-        const html2canvas = (await import('html2canvas')).default;
-        const jsPDF = (await import('jspdf')).default;
-
-        // Criar um elemento temporário para renderizar o HTML
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = htmlContent;
-        tempDiv.style.position = 'fixed';
-        tempDiv.style.left = '0';
-        tempDiv.style.top = '0';
-        tempDiv.style.width = '100%';
-        tempDiv.style.height = '100%';
-        tempDiv.style.backgroundColor = 'white';
-        tempDiv.style.zIndex = '-9999';
-        tempDiv.style.overflow = 'auto';
-        
-        document.body.appendChild(tempDiv);
-
-        try {
-          // Aguardar para garantir que o HTML seja renderizado
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          // Capturar a altura total do conteúdo
-          const contentHeight = tempDiv.scrollHeight;
-          
-          // Definir tamanho proporcional para captura
-          tempDiv.style.width = '800px';
-          tempDiv.style.height = `${contentHeight}px`;
-          
-          // Converter HTML para canvas
-          const canvas = await html2canvas(tempDiv, {
-            scale: 2,
-            useCORS: true,
-            logging: false,
-            allowTaint: true,
-            backgroundColor: '#ffffff',
-            windowWidth: 800,
-            windowHeight: contentHeight
-          });
-
-          // Criar PDF
-          const pdf = new jsPDF({
-            orientation: 'portrait',
-            unit: 'mm',
-            format: 'a4'
-          });
-
-          const imgData = canvas.toDataURL('image/png');
-          const pdfWidth = pdf.internal.pageSize.getWidth();
-          const pdfHeight = pdf.internal.pageSize.getHeight();
-          
-          // Calcular escala e altura total
-          const scale = pdfWidth / canvas.width;
-          const totalHeight = canvas.height * scale;
-          
-          // Adicionar múltiplas páginas se necessário
-          if (totalHeight > pdfHeight) {
-            let remainingHeight = canvas.height;
-            let position = 0;
+          } catch (error) {
+            console.error('Erro ao gerar PDF:', error);
+            toast({
+              title: "Erro",
+              description: "Ocorreu um erro ao gerar o PDF. Tente novamente.",
+              variant: "destructive"
+            });
             
-            while (remainingHeight > 0) {
-              const height = Math.min(remainingHeight, pdfHeight / scale);
-              
-              pdf.addImage(
-                imgData, 
-                'PNG', 
-                0, 
-                position === 0 ? 0 : -position * scale, 
-                pdfWidth, 
-                canvas.height * scale,
-                '', 
-                'FAST'
-              );
-              
-              remainingHeight -= height;
-              position += height;
-              
-              if (remainingHeight > 0) {
-                pdf.addPage();
-              }
-            }
-          } else {
-            // Caso caiba em uma única página
-            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, totalHeight);
+            // Remover o iframe temporário em caso de erro
+            document.body.removeChild(iframe);
           }
-
-          // Salvar o PDF
-          pdf.save(fileName);
-
-          toast({
-            title: "Sucesso",
-            description: "PDF gerado com sucesso!",
-          });
-        } catch (error) {
-          console.error('Erro ao gerar PDF:', error);
-          toast({
-            title: "Erro",
-            description: "Não foi possível gerar o PDF. Tente novamente.",
-            variant: "destructive"
-          });
-        } finally {
-          // Garantir que o elemento temporário seja removido
-          if (document.body.contains(tempDiv)) {
-            document.body.removeChild(tempDiv);
-          }
-        }
+        }, 1000); // Dar tempo para carregar
       }
     } catch (error) {
       console.error('Erro ao gerar PDF:', error);
       toast({
         title: "Erro",
-        description: "Não foi possível gerar o PDF. Tente novamente.",
+        description: "Ocorreu um erro ao gerar o PDF. Tente novamente.",
         variant: "destructive"
       });
     }
@@ -1420,401 +1388,132 @@ const PendenciasObra = () => {
         description: "Preparando arquivo para compartilhar...",
       });
 
+      // Verificar se estamos em ambiente nativo
+      const isNative = Capacitor.isNativePlatform();
+      
+      // Verificar se a API Web Share está disponível para navegadores
+      const canShare = navigator && navigator.share;
+
+      if (!isNative && !canShare) {
+        toast({
+          title: "Compartilhamento não disponível",
+          description: "Use a função 'Gerar PDF' para baixar o relatório.",
+        });
+        return gerarPDF();
+      }
+
       const dataAtual = new Date().toLocaleDateString('pt-BR');
-      const fileName = `Pendencias_${dataAtual.replace(/\//g, '-')}.pdf`;
+      const fileName = `Pendencias_${obraNome.replace(/\s+/g, '_')}_${dataAtual.replace(/\//g, '-')}.pdf`;
 
-      // Gerar o conteúdo HTML - Usando o mesmo template da função gerarPDF
-      const htmlContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Relatório de Pendências - ${obraNome}</title>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            @page {
-              size: A4;
-              margin: 15mm;
-            }
-            html, body {
-              margin: 0;
-              padding: 0;
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-              color: #333;
-              background-color: #ffffff;
-              width: 100%;
-            }
-            * {
-              box-sizing: border-box;
-            }
-            .pdf-container {
-              width: 100%;
-              padding: 0;
-              margin: 0 auto;
-            }
-            .report-header {
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              margin-bottom: 25px;
-              border-bottom: 2px solid #3b82f6;
-              padding-bottom: 15px;
-              width: 100%;
-            }
-            .report-header-left {
-              display: flex;
-              align-items: center;
-            }
-            .report-logo {
-              width: 50px;
-              height: 50px;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              margin-right: 15px;
-            }
-            .report-logo img, .report-logo svg {
-              width: 50px;
-              height: 50px;
-            }
-            .report-title-container {
-              display: flex;
-              flex-direction: column;
-            }
-            .report-title {
-              font-size: 22px;
-              font-weight: 700;
-              color: #333;
-              margin: 0;
-            }
-            .obra-title {
-              font-size: 17px;
-              font-weight: 500;
-              color: #3b82f6;
-              margin: 5px 0 0 0;
-            }
-            .report-header-right {
-              text-align: right;
-            }
-            .report-date {
-              font-size: 14px;
-              color: #666;
-            }
-            
-            .report-content {
-              width: 100%;
-            }
-            .report-lists {
-              display: flex;
-              flex-direction: column;
-              gap: 20px;
-              width: 100%;
-            }
-            .list-container {
-              border: 1px solid #e5e7eb;
-              border-radius: 8px;
-              overflow: hidden;
-              box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-              break-inside: avoid;
-              width: 100%;
-            }
-            .list-header {
-              background-color: #3b82f6;
-              color: white;
-              padding: 10px 15px;
-              font-size: 16px;
-              font-weight: 600;
-            }
-            .list-body {
-              padding: 10px;
-              background-color: #f9fafb;
-            }
-            .card-container {
-              background: white;
-              border: 1px solid #e5e7eb;
-              border-radius: 6px;
-              padding: 12px;
-              margin-bottom: 10px;
-              box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-            }
-            .card-title {
-              font-size: 15px;
-              font-weight: 600;
-              color: #1f2937;
-              margin-top: 0;
-              margin-bottom: 8px;
-            }
-            .card-description {
-              font-size: 14px;
-              color: #4b5563;
-              margin: 8px 0;
-            }
-            .card-checklists {
-              margin-top: 10px;
-              border-top: 1px solid #e5e7eb;
-              padding-top: 10px;
-            }
-            .checklist-container {
-              margin-bottom: 12px;
-            }
-            .checklist-title {
-              font-size: 14px;
-              font-weight: 600;
-              color: #4b5563;
-              margin-bottom: 5px;
-            }
-            .checklist-items {
-              padding-left: 10px;
-            }
-            .checklist-item {
-              display: flex;
-              align-items: flex-start;
-              margin-bottom: 5px;
-              font-size: 13px;
-            }
-            .checkbox {
-              display: inline-flex;
-              align-items: center;
-              justify-content: center;
-              width: 16px;
-              height: 16px;
-              margin-right: 8px;
-              border-radius: 3px;
-              flex-shrink: 0;
-              line-height: 1;
-              font-size: 10px;
-            }
-            .checkbox.checked {
-              background-color: #22c55e;
-              color: white;
-              font-weight: bold;
-              border: 1px solid #22c55e;
-            }
-            .checkbox.unchecked {
-              background-color: white;
-              border: 1px solid #d1d5db;
-            }
-            .checklist-item-text {
-              font-size: 13px;
-              color: #4b5563;
-            }
-            .completed-text {
-              text-decoration: line-through;
-              color: #9ca3af;
-            }
-            .card-labels {
-              display: flex;
-              flex-wrap: wrap;
-              gap: 5px;
-              margin-top: 10px;
-            }
-            .label {
-              display: inline-block;
-              padding: 3px 8px;
-              border-radius: 4px;
-              font-size: 11px;
-              color: white;
-              font-weight: 500;
-              margin-right: 5px;
-            }
-            .footer {
-              margin-top: 30px;
-              text-align: center;
-              font-size: 12px;
-              color: #6b7280;
-              border-top: 1px solid #e5e7eb;
-              padding-top: 15px;
-            }
-            
-            /* Estilos para garantir melhor impressão */
-            @media print {
-              .list-header {
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-              }
-              .label {
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-              }
-              .checkbox.checked {
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="pdf-container">
-            <div class="report-header">
-              <div class="report-header-left">
-                <div class="report-logo">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="50" height="50">
-                    <rect width="512" height="512" rx="100" fill="#3b82f6"/>
-                    <path d="M161.4 242.4c-3.9-3.9-3.9-10.2 0-14.1s10.2-3.9 14.1 0L226.7 279.5 336.6 169.6c3.9-3.9 10.2-3.9 14.1 0s3.9 10.2 0 14.1L236.8 287.6c-3.9 3.9-10.2 3.9-14.1 0L161.4 242.4z" fill="white"/>
-                    <path d="M400 160c0-8.8-7.2-16-16-16H192c-8.8 0-16 7.2-16 16s7.2 16 16 16H384c8.8 0 16-7.2 16-16zm0 64c0-8.8-7.2-16-16-16H288c-8.8 0-16 7.2-16 16s7.2 16 16 16h96c8.8 0 16-7.2 16-16zm0 64c0-8.8-7.2-16-16-16H288c-8.8 0-16 7.2-16 16s7.2 16 16 16h96c8.8 0 16-7.2 16-16zm0 64c0-8.8-7.2-16-16-16H192c-8.8 0-16 7.2-16 16s7.2 16 16 16H384c8.8 0 16-7.2 16-16z" fill="white"/>
-                  </svg>
-                </div>
-                <div class="report-title-container">
-                  <h1 class="report-title">Relatório de Pendências</h1>
-                  <h2 class="obra-title">${obraNome}</h2>
-                </div>
-              </div>
-              <div class="report-header-right">
-                <div class="report-date">Data: ${dataAtual}</div>
-              </div>
-            </div>
-            
-            <div class="report-content">
-              <div class="report-lists">
-                ${board.lists.map(lista => `
-                  <div class="list-container">
-                    <div class="list-header">${lista.title}</div>
-                    <div class="list-body">
-                      ${lista.cards.length > 0 ? lista.cards.map(card => `
-                        <div class="card-container">
-                          <h3 class="card-title">${card.title}</h3>
-                          ${card.description ? `<div class="card-description">${card.description}</div>` : ''}
-                          
-                          ${card.checklists && card.checklists.length > 0 ? `
-                            <div class="card-checklists">
-                              ${card.checklists.map(checklist => `
-                                <div class="checklist-container">
-                                  <div class="checklist-title">${checklist.title}</div>
-                                  <div class="checklist-items">
-                                    ${checklist.items.map(item => `
-                                      <div class="checklist-item">
-                                        <div class="checkbox ${item.checked ? 'checked' : 'unchecked'}" style="display: flex; align-items: center; justify-content: center; line-height: 0.8;">
-                                          ${item.checked ? '✓' : ''}
-                                        </div>
-                                        <span class="checklist-item-text ${item.checked ? 'completed-text' : ''}">${item.text || item.title}</span>
-                                      </div>
-                                    `).join('')}
-                                  </div>
-                                </div>
-                              `).join('')}
-                            </div>
-                          ` : ''}
-                          
-                          ${card.labels && card.labels.length > 0 ? `
-                            <div class="card-labels">
-                              ${card.labels.map(label => {
-                                const labelText = typeof label === 'string' ? label : (label.title || label.toString());
-                                let bgColor = '';
-                                
-                                if (labelText === 'Urgente') bgColor = '#ef4444';
-                                else if (labelText === 'Fazendo') bgColor = '#eab308';
-                                else if (labelText === 'Feito' || labelText === 'Concluído') bgColor = '#22c55e';
-                                else if (labelText === 'Alta') bgColor = '#ef4444';
-                                else if (labelText === 'Média') bgColor = '#f97316';
-                                else if (labelText === 'Baixa') bgColor = '#3b82f6';
-                                else bgColor = '#6b7280';
-                                
-                                return `<span class="label" style="background-color: ${bgColor};">${labelText}</span>`;
-                              }).join('')}
-                            </div>
-                          ` : ''}
-                        </div>
-                      `).join('') : `
-                        <div class="card-container">
-                          <div class="card-description">Nenhuma pendência registrada nesta seção.</div>
-                        </div>
-                      `}
-                    </div>
-                  </div>
-                `).join('')}
-              </div>
-            </div>
-            
-            <div class="footer">
-              <p>Relatório de Pendências gerado em ${dataAtual} | GLog - Sistema de Gestão de Obras</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `;
-
-      try {
-        const { Filesystem } = await import('@capacitor/filesystem');
-        const { Share } = await import('@capacitor/share');
-        
-        // Criar um Blob com o conteúdo HTML
-        const blob = new Blob([htmlContent], { type: 'text/html' });
-        const reader = new FileReader();
-        
-        reader.onloadend = async function() {
-          try {
-            // Converter para base64
-            const base64Data = reader.result?.toString().split(',')[1] || '';
-            
-            // Salvar o arquivo temporariamente
-            await Filesystem.writeFile({
-              path: `${fileName}.html`,
-              data: base64Data,
-              directory: 'CACHE'
-            });
-            
-            // Obter o caminho do arquivo para compartilhar
-            const fileInfo = await Filesystem.getUri({
-              path: `${fileName}.html`,
-              directory: 'CACHE'
-            });
-            
-            // Compartilhar o arquivo
-            await Share.share({
-              title: 'Relatório de Pendências',
-              text: `Relatório de pendências da obra ${obraNome}`,
-              url: fileInfo.uri,
-              dialogTitle: 'Compartilhar relatório'
-            });
-            
-            toast({
-              title: "Sucesso",
-              description: "Arquivo pronto para compartilhar!",
-            });
-            
-            // Limpar o arquivo temporário após compartilhar
-            setTimeout(async () => {
-              try {
-                await Filesystem.deleteFile({
-                  path: `${fileName}.html`,
-                  directory: 'CACHE'
-                });
-              } catch (error) {
-                console.log('Erro ao limpar arquivo temporário:', error);
-              }
-            }, 60000); // Limpar após 1 minuto
-          } catch (error) {
-            console.error('Erro ao compartilhar:', error);
-            toast({
-              title: "Erro",
-              description: "Não foi possível compartilhar o arquivo. Tente novamente.",
-              variant: "destructive"
-            });
-          }
-        };
-        
-        reader.onerror = function() {
+      // Criando o PDF (código simplificado - reusa a função anterior para isso)
+      const iframe = document.createElement('iframe');
+      iframe.style.width = '100%';
+      iframe.style.height = '0';
+      iframe.style.border = 'none';
+      iframe.style.position = 'fixed';
+      iframe.style.zIndex = '-9999';
+      document.body.appendChild(iframe);
+      
+      // Gerando o PDF
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+      
+      // Se estamos em ambiente nativo com Capacitor
+      if (isNative) {
+        try {
+          // Gerar PDF como base64
+          const pdfBase64 = pdf.output('datauristring').split(',')[1];
+          
+          // Salvar temporariamente no dispositivo
+          const result = await Filesystem.writeFile({
+            path: fileName,
+            data: pdfBase64,
+            directory: Directory.Cache,
+            recursive: true
+          });
+          
+          // Compartilhar o arquivo usando a API de compartilhamento nativa
+          await Share.share({
+            title: 'Relatório de Pendências',
+            text: `Relatório de Pendências - ${obraNome}`,
+            url: result.uri,
+            dialogTitle: 'Compartilhar Relatório de Pendências'
+          });
+          
+          toast({
+            title: "Sucesso",
+            description: "Relatório compartilhado!",
+          });
+        } catch (error) {
+          console.error('Erro ao compartilhar:', error);
           toast({
             title: "Erro",
-            description: "Falha ao processar o arquivo para compartilhamento.",
-            variant: "destructive"
+            description: "Ocorreu um erro ao compartilhar. Tentando método alternativo...",
           });
-        };
+          
+          // Tentar método alternativo
+          gerarPDF();
+        }
+      } else if (canShare) {
+        // Para navegadores com suporte à API Web Share
+        try {
+          // Criar blob para compartilhar
+          const pdfBlob = pdf.output('blob');
+          
+          // Verificar se o navegador suporta compartilhamento de arquivos
+          const shareData = {
+            title: 'Relatório de Pendências',
+            text: `Relatório de Pendências - ${obraNome}`,
+            files: [new File([pdfBlob], fileName, { type: 'application/pdf' })]
+          };
+          
+          if (navigator.canShare && navigator.canShare(shareData)) {
+            await navigator.share(shareData);
+          } else {
+            // Compartilhar apenas texto e URL se não suportar arquivos
+            await navigator.share({
+              title: 'Relatório de Pendências',
+              text: `Relatório de Pendências - ${obraNome}`
+            });
+            
+            // E fazer download do arquivo
+            pdf.save(fileName);
+          }
+          
+          toast({
+            title: "Sucesso",
+            description: "Relatório compartilhado!",
+          });
+        } catch (error) {
+          console.error('Erro ao compartilhar:', error);
+          // Recorrer ao download padrão
+          pdf.save(fileName);
+          
+          toast({
+            title: "Compartilhamento falhou",
+            description: "O PDF foi baixado localmente.",
+          });
+        }
+      } else {
+        // Método de fallback: download direto
+        pdf.save(fileName);
         
-        reader.readAsDataURL(blob);
-      } catch (error) {
-        console.error('Erro ao preparar arquivo para compartilhamento:', error);
         toast({
-          title: "Erro",
-          description: "Não foi possível preparar o arquivo para compartilhamento. Tente novamente.",
-          variant: "destructive"
+          title: "Compartilhamento não disponível",
+          description: "O PDF foi baixado localmente.",
         });
       }
+      
+      // Limpar recursos
+      document.body.removeChild(iframe);
     } catch (error) {
-      console.error('Erro ao compartilhar:', error);
+      console.error('Erro ao preparar PDF para compartilhar:', error);
       toast({
         title: "Erro",
-        description: "Não foi possível compartilhar o arquivo. Tente novamente.",
+        description: "Ocorreu um erro ao preparar o arquivo para compartilhar.",
         variant: "destructive"
       });
     }

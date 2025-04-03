@@ -398,7 +398,10 @@ const ObraDetalhes = () => {
   // Nova função para carregar as definições da obra
   const carregarDefinicoes = async () => {
     try {
-      if (!obra?.id) return;
+      if (!obra?.id) {
+        console.log('[DEBUG] Obra ID não disponível para carregar definições');
+        return;
+      }
 
       console.log('[DEBUG] Carregando definições para obra ID:', obra.id);
       
@@ -408,6 +411,7 @@ const ObraDetalhes = () => {
       // Verificar se já existe um quadro de definições
       if (obra.definicoes_board_id) {
         try {
+          console.log('[DEBUG] Buscando quadro de definições com ID:', obra.definicoes_board_id);
           // Tentar obter o quadro existente
           const { data, error } = await supabase
             .from('definicoes_quadros')
@@ -415,19 +419,33 @@ const ObraDetalhes = () => {
             .eq('id', obra.definicoes_board_id)
             .single();
           
-          if (error) throw error;
+          if (error) {
+            console.error('[DEBUG] Erro na consulta do quadro:', error);
+            throw error;
+          }
           
           if (data) {
-            quadroDefinicoes = data as unknown as DefinicaoQuadro;
-            console.log('[DEBUG] Quadro de definições existente:', quadroDefinicoes);
+            // Garantir que os dados tenham a estrutura correta 
+            quadroDefinicoes = {
+              id: data.id,
+              title: data.title,
+              nome: data.nome,
+              lists: Array.isArray(data.lists) ? data.lists : []
+            };
+            console.log('[DEBUG] Quadro de definições obtido do banco:', JSON.stringify(quadroDefinicoes));
+          } else {
+            console.log('[DEBUG] Nenhum quadro encontrado com esse ID');
           }
         } catch (error) {
           console.error('[DEBUG] Erro ao buscar quadro de definições:', error);
         }
+      } else {
+        console.log('[DEBUG] Obra não tem definicoes_board_id');
       }
       
       // Se não existir, criar um novo quadro de definições
       if (!quadroDefinicoes) {
+        console.log('[DEBUG] Criando novo quadro de definições para a obra');
         // Criar novo quadro com listas padrão
         quadroDefinicoes = {
           id: `def_${obra.id}_${Date.now()}`,
@@ -452,14 +470,24 @@ const ObraDetalhes = () => {
           .insert(quadroDefinicoes)
           .select();
         
-        if (error) throw error;
+        if (error) {
+          console.error('[DEBUG] Erro ao inserir novo quadro:', error);
+          throw error;
+        }
         
         // Atualizar o ID do quadro na obra
         if (data && data.length > 0) {
+          console.log('[DEBUG] Atualizando obra com novo definicoes_board_id:', quadroDefinicoes.id);
           await atualizarObra(obra.id, { definicoes_board_id: quadroDefinicoes.id });
         }
         
         console.log('[DEBUG] Novo quadro de definições criado:', quadroDefinicoes);
+      }
+      
+      // Verificar se o quadro tem a estrutura esperada
+      if (!quadroDefinicoes || !quadroDefinicoes.lists || !Array.isArray(quadroDefinicoes.lists)) {
+        console.error('[DEBUG] Estrutura do quadro inválida:', quadroDefinicoes);
+        return;
       }
       
       // Atualizar o estado com o quadro de definições
@@ -469,16 +497,22 @@ const ObraDetalhes = () => {
       let definir = 0;
       let definido = 0;
       
+      console.log('[DEBUG] Contando cards nas listas. Total de listas:', quadroDefinicoes.lists.length);
+      
       quadroDefinicoes.lists.forEach(lista => {
-        if (lista.title === "Definir" && lista.cards) {
+        const listaTitle = lista.title;
+        const numCards = Array.isArray(lista.cards) ? lista.cards.length : 0;
+        console.log(`[DEBUG] Lista "${listaTitle}" tem ${numCards} cards`);
+        
+        if (listaTitle === "Definir" && Array.isArray(lista.cards)) {
           definir = lista.cards.length;
-        } else if (lista.title === "Definido" && lista.cards) {
+        } else if (listaTitle === "Definido" && Array.isArray(lista.cards)) {
           definido = lista.cards.length;
         }
       });
       
+      console.log('[DEBUG] Resultado da contagem - Definir:', definir, 'Definido:', definido);
       setNumeroDefinicoes({ definir, definido });
-      console.log('[DEBUG] Contagem de definições:', { definir, definido });
       
     } catch (error) {
       console.error('[DEBUG] Erro ao carregar definições:', error);

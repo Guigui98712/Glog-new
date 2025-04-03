@@ -107,6 +107,18 @@ const ObraDetalhes = () => {
   const [etapasConfig, setEtapasConfig] = useState<{ id: string; nome: string; position: { x: number; y: number } }[]>([]);
   const [definicoesQuadro, setDefinicoesQuadro] = useState<DefinicaoQuadro | null>(null);
   const [numeroDefinicoes, setNumeroDefinicoes] = useState({ definir: 0, definido: 0 });
+  
+  console.log('[DEBUG-INIT] Estado inicial do componente ObraDetalhes');
+  console.log('[DEBUG-INIT] numeroDefinicoes inicial:', numeroDefinicoes);
+  
+  // Log para monitorar o ciclo de vida do componente
+  useEffect(() => {
+    console.log('[DEBUG-LIFECYCLE] ObraDetalhes montado');
+    
+    return () => {
+      console.log('[DEBUG-LIFECYCLE] ObraDetalhes desmontado');
+    };
+  }, []);
 
   const calcularProgresso = (registros: DiarioRegistro[]) => {
     try {
@@ -159,7 +171,6 @@ const ObraDetalhes = () => {
     carregarDados();
     carregarEtapasFluxograma();
     carregarPendencias();
-    carregarDefinicoes();
   }, [id]);
 
   const carregarDados = async () => {
@@ -180,6 +191,11 @@ const ObraDetalhes = () => {
       
       const datas = registros.map(reg => parseISO(reg.data));
       setDatasComRegistro(datas);
+
+      // Carregar pendências e definições explicitamente após ter os dados da obra
+      console.log('[DEBUG] Obra carregada no carregarDados, chamando carregarPendencias e carregarDefinicoes');
+      await carregarPendencias();
+      await carregarDefinicoes();
 
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
@@ -340,7 +356,9 @@ const ObraDetalhes = () => {
 
   useEffect(() => {
     if (obra) {
+      console.log('[DEBUG] Obra carregada, chamando carregarPendencias e carregarDefinicoes');
       carregarPendencias();
+      carregarDefinicoes();
     }
   }, [obra]);
 
@@ -500,19 +518,32 @@ const ObraDetalhes = () => {
       console.log('[DEBUG] Contando cards nas listas. Total de listas:', quadroDefinicoes.lists.length);
       
       quadroDefinicoes.lists.forEach(lista => {
-        const listaTitle = lista.title;
+        const listaTitle = lista.title || '';
         const numCards = Array.isArray(lista.cards) ? lista.cards.length : 0;
         console.log(`[DEBUG] Lista "${listaTitle}" tem ${numCards} cards`);
         
-        if (listaTitle === "Definir" && Array.isArray(lista.cards)) {
+        if (listaTitle.toLowerCase() === "definir" && Array.isArray(lista.cards)) {
           definir = lista.cards.length;
-        } else if (listaTitle === "Definido" && Array.isArray(lista.cards)) {
+        } else if (listaTitle.toLowerCase() === "definido" && Array.isArray(lista.cards)) {
           definido = lista.cards.length;
         }
       });
       
       console.log('[DEBUG] Resultado da contagem - Definir:', definir, 'Definido:', definido);
-      setNumeroDefinicoes({ definir, definido });
+      
+      // Atualizar o estado com os números corretos
+      setNumeroDefinicoes({ 
+        definir: definir, 
+        definido: definido 
+      });
+      
+      // Atualizar diretamente o estado de exibição também para garantir a atualização na UI
+      const total = definido + definir;
+      console.log('[DEBUG] Atualizando diretamente definicaoDisplay para:', { definido, total });
+      setDefinicaoDisplay({
+        definido: definido,
+        total: total
+      });
       
     } catch (error) {
       console.error('[DEBUG] Erro ao carregar definições:', error);
@@ -592,10 +623,36 @@ const ObraDetalhes = () => {
   const progressoGeral = obra?.progresso || calcularProgresso(registrosDiario);
 
   // Atualiza o display para mostrar definições no formato correto
-  const definicaoDisplay = {
-    definido: numeroDefinicoes.definido,
-    total: numeroDefinicoes.definido + numeroDefinicoes.definir
-  };
+  const [definicaoDisplay, setDefinicaoDisplay] = useState({
+    definido: 0,
+    total: 0
+  });
+  
+  // Este useEffect garante que o display seja atualizado sempre que numeroDefinicoes mudar
+  useEffect(() => {
+    console.log('[DEBUG] Atualizando definicaoDisplay com:', numeroDefinicoes);
+    console.log('[DEBUG] Estado atual de definicaoDisplay antes da atualização:', definicaoDisplay);
+    
+    const total = numeroDefinicoes.definido + numeroDefinicoes.definir;
+    
+    console.log('[DEBUG] Valores calculados - definido:', numeroDefinicoes.definido, 'total:', total);
+    
+    setDefinicaoDisplay({
+      definido: numeroDefinicoes.definido,
+      total: total
+    });
+    
+    // Log após o setState para verificar se o estado foi modificado corretamente
+    console.log('[DEBUG] definicaoDisplay deveria estar atualizado para:', {
+      definido: numeroDefinicoes.definido,
+      total: total
+    });
+  }, [numeroDefinicoes]);
+
+  // Adicionando um segundo useEffect para monitorar quando definicaoDisplay é atualizado
+  useEffect(() => {
+    console.log('[DEBUG] definicaoDisplay foi atualizado para:', definicaoDisplay);
+  }, [definicaoDisplay]);
 
   if (loading) {
     return (

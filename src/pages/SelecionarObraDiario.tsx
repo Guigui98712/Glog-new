@@ -1,15 +1,15 @@
+
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { listarObras } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
-import type { Obra } from '@/types/obra';
 
 const SelecionarObraDiario = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [obras, setObras] = useState<Obra[]>([]);
+  const [obras, setObras] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -21,11 +21,10 @@ const SelecionarObraDiario = () => {
       const data = await listarObras();
       setObras(data);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-      console.error('Erro ao carregar obras:', errorMessage);
+      console.error('Erro ao carregar obras:', error);
       toast({
         title: "Erro",
-        description: "Não foi possível carregar as obras. " + errorMessage,
+        description: "Não foi possível carregar as obras.",
         variant: "destructive"
       });
     } finally {

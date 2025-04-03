@@ -82,7 +82,7 @@ const Orcamentos = () => {
     try {
       setLoading(true);
       const obrasData = await listarObras();
-      setObras(obrasData);
+      setObras(obrasData || []);
       
       // Se não tiver obra selecionada, não carrega orçamentos ainda
       setLoading(false);
@@ -93,7 +93,6 @@ const Orcamentos = () => {
         description: "Não foi possível carregar os dados.",
         variant: "destructive"
       });
-      setObras([]);
       setLoading(false);
     }
   };

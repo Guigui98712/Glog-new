@@ -881,255 +881,312 @@ const PendenciasObra = () => {
       const dataAtual = new Date().toLocaleDateString('pt-BR');
       const fileName = `Pendencias_${dataAtual.replace(/\//g, '-')}.pdf`;
 
-      // Criar PDF
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      });
-
-      // Configurações de estilo
-      const corPrimaria = [3, 105, 161];  // #0369a1
-      const corSecundaria = [71, 85, 105]; // #475569
-      const corTexto = [15, 23, 42]; // #0f172a
-      
-      // Adicionar cabeçalho com estilo
-      pdf.setFillColor(...corPrimaria);
-      pdf.rect(0, 0, pdf.internal.pageSize.getWidth(), 30, 'F');
-      
-      pdf.setTextColor(255, 255, 255);
-      pdf.setFontSize(16);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('Relatório de Pendências', pdf.internal.pageSize.getWidth() / 2, 15, { align: 'center' });
-      
-      // Adicionar nome da obra
-      pdf.setFontSize(12);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(obraNome, pdf.internal.pageSize.getWidth() / 2, 25, { align: 'center' });
-
-      // Adicionar data
-      pdf.setTextColor(...corSecundaria);
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(`Data: ${dataAtual}`, 10, 45);
-
-      let yPos = 55;
-      const pageHeight = pdf.internal.pageSize.height;
-      const margemEsquerda = 10;
-
-      // Adicionar cada lista e seus cards
-      for (const lista of board.lists) {
-        // Adicionar título da lista com estilo
-        pdf.setFillColor(247, 248, 250); // #f7f8fa
-        pdf.rect(margemEsquerda, yPos - 5, pdf.internal.pageSize.getWidth() - 20, 10, 'F');
-        
-        pdf.setTextColor(...corPrimaria);
-      pdf.setFontSize(12);
-        pdf.setFont('helvetica', 'bold');
-        pdf.text(lista.title, margemEsquerda + 2, yPos);
-        yPos += 12;
-
-        // Adicionar cards
-        for (const card of lista.cards) {
-          // Verificar se precisa de nova página
-          if (yPos > pageHeight - 30) {
-            pdf.addPage();
-            yPos = 20;
-          }
-
-          // Desenhar borda do card
-          pdf.setDrawColor(229, 231, 235); // #e5e7eb
-          pdf.setLineWidth(0.1);
-          pdf.rect(margemEsquerda, yPos - 4, pdf.internal.pageSize.getWidth() - 20, 2 + (card.description ? 8 : 0) + (card.checklists?.length ? card.checklists.reduce((acc, cl) => acc + 4 + (cl.items.length * 4), 0) : 0) + (card.labels?.length ? 6 : 0), 'D');
-
-          // Título do card
-          pdf.setTextColor(...corTexto);
-          pdf.setFontSize(11);
-          pdf.setFont('helvetica', 'bold');
-          pdf.text(card.title, margemEsquerda + 2, yPos);
-          yPos += 6;
-
-          // Descrição do card
-          if (card.description) {
-            pdf.setTextColor(...corSecundaria);
-            pdf.setFontSize(9);
-            pdf.setFont('helvetica', 'normal');
-            pdf.text(card.description, margemEsquerda + 2, yPos);
-            yPos += 6;
-          }
-
-          // Adicionar checklists com estilo
-          if (card.checklists && card.checklists.length > 0) {
-            yPos += 2;
-            
-            for (const checklist of card.checklists) {
-              // Verificar se precisa de nova página para o título da checklist
-              if (yPos > pageHeight - 30) {
-                pdf.addPage();
-                yPos = 20;
-              }
-
-              pdf.setTextColor(...corPrimaria);
-              pdf.setFontSize(9);
-              pdf.setFont('helvetica', 'bold');
-              pdf.text(checklist.title || 'Checklist', margemEsquerda + 2, yPos);
-              yPos += 5;
-
-              pdf.setTextColor(...corTexto);
-              pdf.setFontSize(9);
-              pdf.setFont('helvetica', 'normal');
-              
-              for (const item of checklist.items) {
-                // Verificar se precisa de nova página para cada item
-                if (yPos > pageHeight - 15) {
-                  pdf.addPage();
-                  yPos = 20;
-                }
-
-                // Remover o caractere '&' do título do item e adicionar um marcador simples
-                const itemTitle = item.title.replace(/^[&\s]+/, '').trim();
-                
-                // Usar caracteres simples para os checkboxes
-                pdf.setTextColor(...corTexto);
-                const bulletPoint = '- ';
-                const status = item.checked ? '[x] ' : '[ ] ';
-                const itemText = `${bulletPoint}${status}${itemTitle}`;
-                
-                // Calcular largura disponível para o texto
-                const maxWidth = pdf.internal.pageSize.getWidth() - (margemEsquerda + 15);
-                
-                // Dividir o texto em linhas se necessário
-                const lines = pdf.splitTextToSize(itemText, maxWidth);
-                
-                // Adicionar cada linha
-                lines.forEach((line: string) => {
-                  if (yPos > pageHeight - 15) {
-                    pdf.addPage();
-                    yPos = 20;
-                  }
-                  pdf.text(line, margemEsquerda + 2, yPos);
-                  yPos += 4;
-                });
-              }
-              yPos += 3;
+      // Conteúdo HTML do relatório
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Relatório de Pendências - ${obraNome}</title>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            @page {
+              size: A4;
+              margin: 15mm;
             }
-          }
+            body { 
+              font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+              margin: 0;
+              padding: 20px;
+              background-color: white;
+              font-size: 12pt;
+              line-height: 1.4;
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 20px;
+              padding-bottom: 10px;
+              border-bottom: 1px solid #eee;
+              page-break-after: avoid;
+            }
+            .header h1 {
+              margin: 0;
+              color: #2c3e50;
+              font-size: 24px;
+            }
+            .header p {
+              margin: 5px 0 0 0;
+              color: #666;
+            }
+            .lista {
+              margin-bottom: 20px;
+              page-break-inside: avoid;
+            }
+            .lista-titulo {
+              background-color: #f8f9fa !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+              padding: 10px;
+              margin-bottom: 10px;
+              border-radius: 4px;
+              font-weight: bold;
+              color: #2c3e50;
+            }
+            .card {
+              background-color: white;
+              border: 1px solid #eee;
+              border-radius: 4px;
+              padding: 10px;
+              margin-bottom: 10px;
+              page-break-inside: avoid;
+            }
+            .card-titulo {
+              font-weight: 500;
+              margin-bottom: 5px;
+              color: #2c3e50;
+            }
+            .card-descricao {
+              color: #666;
+              font-size: 0.9em;
+              margin: 5px 0;
+            }
+            .card-labels {
+              margin-top: 5px;
+              display: flex;
+              gap: 5px;
+              flex-wrap: wrap;
+            }
+            .label {
+              padding: 2px 6px;
+              border-radius: 4px;
+              font-size: 0.8em;
+              color: white;
+              display: inline-block;
+              margin: 2px;
+            }
+            .footer {
+              text-align: center;
+              margin-top: 20px;
+              padding-top: 10px;
+              border-top: 1px solid #eee;
+              color: #666;
+              font-size: 0.9em;
+              page-break-before: avoid;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>Relatório de Pendências</h1>
+            <p>Obra: ${obraNome}</p>
+            <p>Data: ${dataAtual}</p>
+          </div>
 
-          // Adicionar etiquetas com estilo
-          if (card.labels && card.labels.length > 0) {
-          yPos += 2;
-            let xPos = margemEsquerda + 2;
-            const maxWidth = pdf.internal.pageSize.getWidth() - 20;
-            
-            card.labels.forEach((label: any) => {
-              const labelText = typeof label === 'string' ? label : (label.title || label.nome || label.toString());
-              let bgColor = [107, 114, 128]; // Cor padrão (gray-500)
-              
-              // Definir cores das etiquetas
-              if (labelText === 'Urgente') bgColor = [239, 68, 68]; // red-500
-              else if (labelText === 'Fazendo') bgColor = [234, 179, 8]; // yellow-500
-              else if (labelText === 'Concluído') bgColor = [34, 197, 94]; // green-500
+          ${board.lists.map(lista => `
+            <div class="lista">
+              <div class="lista-titulo">${lista.title}</div>
+              ${lista.cards.map(card => `
+                <div class="card">
+                  <div class="card-titulo">${card.title}</div>
+                  ${card.description ? `<div class="card-descricao">${card.description}</div>` : ''}
+                  ${card.labels && card.labels.length > 0 ? `
+                    <div class="card-labels">
+                      ${card.labels.map(label => {
+                        const labelText = typeof label === 'string' ? label : (label.title || label.toString());
+                        let bgColor = '';
+                        
+                        if (labelText === 'Urgente') bgColor = '#ef4444';
+                        else if (labelText === 'Fazendo') bgColor = '#eab308';
+                        else if (labelText === 'Feito') bgColor = '#22c55e';
+                        
+                        return `<span class="label" style="background-color: ${bgColor || '#6b7280'} !important;">${labelText}</span>`;
+                      }).join('')}
+                    </div>
+                  ` : ''}
+                </div>
+              `).join('')}
+            </div>
+          `).join('')}
 
-              // Calcular largura do texto
-              pdf.setFontSize(8);
-              const textWidth = pdf.getTextWidth(labelText) + 4;
-              
-              // Verificar se precisa ir para próxima linha
-              if (xPos + textWidth > maxWidth) {
-                xPos = margemEsquerda + 2;
-                yPos += 6;
-              }
-
-              // Desenhar fundo da etiqueta
-              pdf.setFillColor(...bgColor);
-              pdf.roundedRect(xPos, yPos - 3, textWidth + 4, 5, 1, 1, 'F');
-              
-              // Adicionar texto da etiqueta
-              pdf.setTextColor(255, 255, 255);
-              pdf.setFont('helvetica', 'normal');
-              pdf.text(labelText, xPos + 2, yPos);
-              
-              xPos += textWidth + 6;
-            });
-            yPos += 6;
-          }
-
-          yPos += 4; // Espaçamento entre cards
-        }
-
-        yPos += 8; // Espaçamento entre listas
-      }
-
-      // Adicionar rodapé
-      pdf.setFillColor(247, 248, 250);
-      pdf.rect(0, pageHeight - 15, pdf.internal.pageSize.getWidth(), 15, 'F');
-      
-      pdf.setTextColor(...corSecundaria);
-      pdf.setFontSize(8);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(`Gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm")}`, pdf.internal.pageSize.getWidth() - 15, pageHeight - 5, { align: 'right' });
+          <div class="footer">
+            <p>Relatório gerado em ${dataAtual}</p>
+          </div>
+        </body>
+        </html>
+      `;
 
       if (isCapacitor) {
         try {
           const { Filesystem } = await import('@capacitor/filesystem');
-          const { Browser } = await import('@capacitor/browser');
+          const html2canvas = (await import('html2canvas')).default;
+          const jsPDF = (await import('jspdf')).default;
 
-          // Converter PDF para base64
-          const pdfBase64 = pdf.output('datauristring');
+          // Criar um elemento temporário para renderizar o HTML
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = htmlContent;
+          tempDiv.style.position = 'absolute';
+          tempDiv.style.left = '-9999px';
+          document.body.appendChild(tempDiv);
 
-          // Salvar o arquivo no sistema de arquivos
-          await Filesystem.writeFile({
-            path: fileName,
-            data: pdfBase64,
-            directory: 'CACHE',
-            recursive: true
-          });
+          try {
+            // Converter HTML para canvas
+            const canvas = await html2canvas(tempDiv, {
+              scale: 2,
+              useCORS: true,
+              logging: false,
+              allowTaint: true,
+              backgroundColor: '#ffffff',
+            });
 
-          // Obter o caminho do arquivo salvo
-          const fileInfo = await Filesystem.getUri({
-            path: fileName,
-            directory: 'CACHE'
-          });
+            // Criar PDF
+            const pdf = new jsPDF({
+              orientation: 'portrait',
+              unit: 'mm',
+              format: 'a4'
+            });
 
-          // Abrir o PDF usando o visualizador nativo
-          await Browser.open({
-            url: fileInfo.uri,
-            presentationStyle: 'fullscreen',
-            toolbarColor: '#ffffff'
-          });
+            const imgData = canvas.toDataURL('image/png');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+            const imgWidth = canvas.width;
+            const imgHeight = canvas.height;
+            const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+            const imgX = (pdfWidth - imgWidth * ratio) / 2;
+            const imgY = 20;
 
-          toast({
-            title: "Sucesso",
-            description: "PDF gerado e aberto com sucesso!",
-          });
+            // Adicionar título
+            pdf.setFontSize(16);
+            pdf.text('Relatório de Pendências', pdfWidth / 2, 10, { align: 'center' });
 
-          // Limpar arquivo temporário após 5 segundos
-          setTimeout(async () => {
-            try {
-              await Filesystem.deleteFile({
-                path: fileName,
-                directory: 'CACHE'
-              });
-            } catch (error) {
-              console.error('Erro ao limpar arquivo temporário:', error);
+            // Adicionar data
+            pdf.setFontSize(10);
+            pdf.text(`Data: ${dataAtual}`, 10, 10);
+
+            // Adicionar imagem do conteúdo
+            pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
+
+            // Gerar o PDF como base64
+            const pdfBase64 = pdf.output('datauristring').split(',')[1];
+
+            // Salvar o arquivo no sistema de arquivos
+            await Filesystem.writeFile({
+              path: fileName,
+              data: pdfBase64,
+              directory: 'CACHE'
+            });
+
+            // Obter o caminho do arquivo salvo
+            const fileInfo = await Filesystem.getUri({
+              path: fileName,
+              directory: 'CACHE'
+            });
+
+            // Abrir o PDF usando o visualizador nativo
+            const { Browser } = await import('@capacitor/browser');
+            await Browser.open({
+              url: fileInfo.uri,
+              presentationStyle: 'popover',
+              toolbarColor: '#ffffff',
+              backgroundColor: '#ffffff',
+              windowName: 'PDF Viewer',
+              fullscreen: false,
+              hidden: false
+            });
+
+            toast({
+              title: "Sucesso",
+              description: "PDF gerado com sucesso!",
+            });
+
+            // Limpar arquivos temporários após 5 segundos
+            setTimeout(async () => {
+              try {
+                await Filesystem.deleteFile({
+                  path: fileName,
+                  directory: 'CACHE'
+                });
+                document.body.removeChild(tempDiv);
+              } catch (error) {
+                console.error('Erro ao limpar arquivos temporários:', error);
+              }
+            }, 5000);
+
+          } finally {
+            // Garantir que o elemento temporário seja removido
+            if (document.body.contains(tempDiv)) {
+              document.body.removeChild(tempDiv);
             }
-          }, 5000);
+          }
         } catch (error) {
-          console.error('Erro ao usar Capacitor:', error);
-          // Fallback para download direto
-          pdf.save(fileName);
+          console.error('Erro ao gerar PDF:', error);
           toast({
-            title: "Atenção",
-            description: "PDF gerado com método alternativo.",
+            title: "Erro",
+            description: "Não foi possível gerar o PDF. Tente novamente.",
+            variant: "destructive"
           });
         }
       } else {
-        // Download direto no navegador
-        pdf.save(fileName);
-        toast({
-          title: "Sucesso",
-          description: "PDF gerado com sucesso!",
-        });
+        // Código para ambiente web
+        const html2canvas = (await import('html2canvas')).default;
+        const jsPDF = (await import('jspdf')).default;
+
+        // Criar um elemento temporário para renderizar o HTML
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = htmlContent;
+        tempDiv.style.position = 'absolute';
+        tempDiv.style.left = '-9999px';
+        document.body.appendChild(tempDiv);
+
+        try {
+          // Converter HTML para canvas
+          const canvas = await html2canvas(tempDiv, {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            allowTaint: true,
+            backgroundColor: '#ffffff',
+          });
+
+          // Criar PDF
+          const pdf = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: 'a4'
+          });
+
+          const imgData = canvas.toDataURL('image/png');
+          const pdfWidth = pdf.internal.pageSize.getWidth();
+          const pdfHeight = pdf.internal.pageSize.getHeight();
+          const imgWidth = canvas.width;
+          const imgHeight = canvas.height;
+          const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+          const imgX = (pdfWidth - imgWidth * ratio) / 2;
+          const imgY = 20;
+
+          // Adicionar título
+          pdf.setFontSize(16);
+          pdf.text('Relatório de Pendências', pdfWidth / 2, 10, { align: 'center' });
+
+          // Adicionar data
+          pdf.setFontSize(10);
+          pdf.text(`Data: ${dataAtual}`, 10, 10);
+
+          // Adicionar imagem do conteúdo
+          pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
+
+          // Salvar o PDF
+          pdf.save(fileName);
+
+          toast({
+            title: "Sucesso",
+            description: "PDF gerado com sucesso!",
+          });
+        } finally {
+          // Garantir que o elemento temporário seja removido
+          if (document.body.contains(tempDiv)) {
+            document.body.removeChild(tempDiv);
+          }
+        }
       }
     } catch (error) {
       console.error('Erro ao gerar PDF:', error);
@@ -1295,59 +1352,59 @@ const PendenciasObra = () => {
         </html>
       `;
 
-        try {
-          const { Filesystem } = await import('@capacitor/filesystem');
-          const { Share } = await import('@capacitor/share');
-          
+      try {
+        const { Filesystem } = await import('@capacitor/filesystem');
+        const { Share } = await import('@capacitor/share');
+        
         // Criar um Blob com o conteúdo HTML
         const blob = new Blob([htmlContent], { type: 'text/html' });
         const reader = new FileReader();
         
         reader.onload = async () => {
           try {
-          // Salvar o arquivo temporariamente
+            // Salvar o arquivo temporariamente
             await Filesystem.writeFile({
-            path: fileName,
+              path: fileName,
               data: reader.result as string,
-            directory: 'CACHE'
-          });
-          
-          // Compartilhar o arquivo
-          await Share.share({
-            title: 'Relatório de Pendências',
-            text: 'Relatório de pendências da obra',
+              directory: 'CACHE'
+            });
+            
+            // Compartilhar o arquivo
+            await Share.share({
+              title: 'Relatório de Pendências',
+              text: 'Relatório de pendências da obra',
               url: fileName,
-            dialogTitle: 'Compartilhar relatório'
-          });
-          
-          // Limpar o arquivo temporário
-          await Filesystem.deleteFile({
-            path: fileName,
-            directory: 'CACHE'
-          });
-
-          toast({
-            title: "Sucesso",
+              dialogTitle: 'Compartilhar relatório'
+            });
+            
+            // Limpar o arquivo temporário
+            await Filesystem.deleteFile({
+              path: fileName,
+              directory: 'CACHE'
+            });
+            
+            toast({
+              title: "Sucesso",
               description: "Arquivo pronto para compartilhar!",
             });
           } catch (error) {
             console.error('Erro ao compartilhar:', error);
-          toast({
+            toast({
               title: "Erro",
               description: "Não foi possível compartilhar o arquivo. Tente novamente.",
               variant: "destructive"
-          });
-        }
+            });
+          }
         };
-
+        
         reader.readAsDataURL(blob);
       } catch (error) {
         console.error('Erro ao preparar arquivo para compartilhamento:', error);
-      toast({
+        toast({
           title: "Erro",
           description: "Não foi possível preparar o arquivo para compartilhamento. Tente novamente.",
           variant: "destructive"
-      });
+        });
       }
     } catch (error) {
       console.error('Erro ao compartilhar:', error);

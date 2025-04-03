@@ -20,10 +20,10 @@ type Orcamento = Database['public']['Tables']['orcamentos']['Row'];
 type NovoOrcamento = Database['public']['Tables']['orcamentos']['Insert'];
 
 // Funções para Obras
-export const listarObras = async (): Promise<Obra[]> => {
+export const listarObras = async () => {
   if (DISABLE_GOOGLE_APIS) {
     console.warn('APIs do Google desabilitadas temporariamente');
-    return [];
+    return { success: false, message: 'APIs do Google desabilitadas' };
   }
 
   try {
@@ -46,10 +46,10 @@ export const listarObras = async (): Promise<Obra[]> => {
     const { data, error } = await query;
 
     if (error) throw error;
-    return data || [];
+    return data;
   } catch (error) {
     console.error('Erro ao listar obras:', error);
-    return [];
+    throw error;
   }
 };
 

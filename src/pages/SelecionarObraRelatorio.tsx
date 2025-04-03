@@ -23,11 +23,10 @@ const SelecionarObraRelatorio = () => {
       const data = await listarObras();
       setObras(data || []);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-      console.error('Erro ao carregar obras:', errorMessage);
+      console.error('Erro ao carregar obras:', error);
       toast({
         title: "Erro",
-        description: "Não foi possível carregar a lista de obras. " + errorMessage,
+        description: "Não foi possível carregar a lista de obras.",
         variant: "destructive"
       });
     } finally {

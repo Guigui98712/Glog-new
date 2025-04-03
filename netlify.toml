@@ -1,5 +1,5 @@
 [build]
-  command = "npm run build"
+  command = "npx update-browserslist-db@latest && npm run build"
   publish = "dist"
 
 [build.environment]

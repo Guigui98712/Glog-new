@@ -109,6 +109,7 @@ const DefinicoesObra = () => {
   const [showAddCardDialog, setShowAddCardDialog] = useState(false);
   const [showDeleteCardDialog, setShowDeleteCardDialog] = useState(false);
   const [showCardDetailsDialog, setShowCardDetailsDialog] = useState(false);
+  const [showAddAttachmentDialog, setShowAddAttachmentDialog] = useState(false);
   
   // Estados para cards e listas
   const [cardAtual, setCardAtual] = useState<DefinicaoCard | null>(null);
@@ -917,6 +918,110 @@ const DefinicoesObra = () => {
     }
   };
 
+  // Função para adicionar novos anexos a um card existente
+  const handleAddAttachmentsToCard = async () => {
+    try {
+      if (!cardAtual || !listaAtual || !board || uploadedFiles.length === 0) return;
+      
+      // Criar cópia do board para atualização
+      const updatedBoard = { ...board };
+      
+      // Encontrar o card e adicionar os anexos
+      const listaIndex = updatedBoard.lists.findIndex(lista => lista.id === listaAtual.id);
+      if (listaIndex !== -1) {
+        const cardIndex = updatedBoard.lists[listaIndex].cards.findIndex(c => c.id === cardAtual.id);
+        if (cardIndex !== -1) {
+          // Garantir que attachments existe
+          if (!updatedBoard.lists[listaIndex].cards[cardIndex].attachments) {
+            updatedBoard.lists[listaIndex].cards[cardIndex].attachments = [];
+          }
+          
+          // Adicionar novos anexos
+          updatedBoard.lists[listaIndex].cards[cardIndex].attachments = [
+            ...updatedBoard.lists[listaIndex].cards[cardIndex].attachments || [],
+            ...uploadedFiles
+          ];
+          
+          // Atualizar o quadro no banco de dados
+          const { error } = await supabase
+            .from('definicoes_quadros')
+            .update(updatedBoard)
+            .eq('id', updatedBoard.id);
+          
+          if (error) throw error;
+          
+          // Atualizar o board e o card atual
+          setBoard(updatedBoard);
+          setCardAtual(updatedBoard.lists[listaIndex].cards[cardIndex]);
+          
+          // Limpar estados de upload
+          setFiles([]);
+          setUploadedFiles([]);
+          setShowAddAttachmentDialog(false);
+          
+          toast({
+            title: "Sucesso",
+            description: "Anexos adicionados com sucesso!",
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao adicionar anexos:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível adicionar os anexos. Tente novamente.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Função para excluir um anexo de um card
+  const handleDeleteAttachment = async (attachmentIndex: number) => {
+    try {
+      if (!cardAtual || !listaAtual || !board || !cardAtual.attachments) return;
+      
+      // Verificar se o índice é válido
+      if (attachmentIndex < 0 || attachmentIndex >= cardAtual.attachments.length) return;
+      
+      // Criar cópia do board para atualização
+      const updatedBoard = { ...board };
+      
+      // Encontrar o card para atualizar
+      const listaIndex = updatedBoard.lists.findIndex(lista => lista.id === listaAtual.id);
+      if (listaIndex !== -1) {
+        const cardIndex = updatedBoard.lists[listaIndex].cards.findIndex(c => c.id === cardAtual.id);
+        if (cardIndex !== -1 && updatedBoard.lists[listaIndex].cards[cardIndex].attachments) {
+          // Remover o anexo pelo índice
+          updatedBoard.lists[listaIndex].cards[cardIndex].attachments.splice(attachmentIndex, 1);
+          
+          // Atualizar o quadro no banco de dados
+          const { error } = await supabase
+            .from('definicoes_quadros')
+            .update(updatedBoard)
+            .eq('id', updatedBoard.id);
+          
+          if (error) throw error;
+          
+          // Atualizar o board e o card atual
+          setBoard(updatedBoard);
+          setCardAtual(updatedBoard.lists[listaIndex].cards[cardIndex]);
+          
+          toast({
+            title: "Sucesso",
+            description: "Anexo removido com sucesso!",
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao excluir anexo:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível excluir o anexo. Tente novamente.",
+        variant: "destructive"
+      });
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4">
@@ -1198,312 +1303,415 @@ const DefinicoesObra = () => {
       {/* Diálogo para detalhes do card */}
       <Dialog open={showCardDetailsDialog} onOpenChange={setShowCardDetailsDialog}>
         <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <div className="flex justify-between items-center">
-              <DialogTitle className="text-xl pr-8">
-                {editandoTitulo ? (
-                  <Input
-                    value={novoTitulo}
-                    onChange={(e) => setNovoTitulo(e.target.value)}
-                    className="text-xl font-semibold"
-                    autoFocus
-                  />
-                ) : (
-                  cardAtual?.title || "Detalhes da Definição"
-                )}
-              </DialogTitle>
-              
-              {/* Botão para mover o card para a outra lista */}
-              {listaAtual && cardAtual && board?.lists && board.lists.length > 1 && (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-500">Mover para:</span>
-                  {board.lists.map((lista) => {
-                    if (lista.id !== listaAtual.id) {
-                      return (
-                        <Button 
-                          key={lista.id}
-                          variant={lista.title === "Definido" ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => handleMoveCardToList(cardAtual.id, listaAtual.id, lista.id)}
-                        >
-                          {lista.title}
-                        </Button>
-                      );
-                    }
-                    return null;
-                  })}
+          {cardAtual ? (
+            <>
+              <DialogHeader>
+                <div className="flex justify-between items-center">
+                  <DialogTitle className="text-xl pr-8">
+                    {editandoTitulo ? (
+                      <Input
+                        value={novoTitulo}
+                        onChange={(e) => setNovoTitulo(e.target.value)}
+                        className="text-xl font-semibold"
+                        autoFocus
+                      />
+                    ) : (
+                      cardAtual?.title || "Detalhes da Definição"
+                    )}
+                  </DialogTitle>
+                  
+                  {/* Botão para mover o card para a outra lista */}
+                  {listaAtual && cardAtual && board?.lists && board.lists.length > 1 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-gray-500">Mover para:</span>
+                      {board.lists.map((lista) => {
+                        if (lista.id !== listaAtual.id) {
+                          return (
+                            <Button 
+                              key={lista.id}
+                              variant={lista.title === "Definido" ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => handleMoveCardToList(cardAtual.id, listaAtual.id, lista.id)}
+                            >
+                              {lista.title}
+                            </Button>
+                          );
+                        }
+                        return null;
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            {!editandoTitulo && (
-              <div className="flex gap-2 mt-2">
-                <Button size="sm" variant="outline" onClick={() => {
-                  setEditandoTitulo(true);
-                  setNovoTitulo(cardAtual?.title || "");
-                }}>
-                  <Edit className="w-4 h-4 mr-1" />
-                  Editar Título
-                </Button>
-              </div>
-            )}
-            {editandoTitulo && (
-              <div className="flex gap-2 mt-2">
-                <Button 
-                  size="sm" 
-                  onClick={handleUpdateTitle}
-                >
-                  <Check className="w-4 h-4 mr-1" />
-                  Salvar
-                </Button>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  onClick={() => setEditandoTitulo(false)}
-                >
-                  <X className="w-4 h-4 mr-1" />
-                  Cancelar
-                </Button>
-              </div>
-            )}
-          </DialogHeader>
+                {!editandoTitulo && (
+                  <div className="flex gap-2 mt-2">
+                    <Button size="sm" variant="outline" onClick={() => {
+                      setEditandoTitulo(true);
+                      setNovoTitulo(cardAtual?.title || "");
+                    }}>
+                      <Edit className="w-4 h-4 mr-1" />
+                      Editar Título
+                    </Button>
+                  </div>
+                )}
+                {editandoTitulo && (
+                  <div className="flex gap-2 mt-2">
+                    <Button 
+                      size="sm" 
+                      onClick={handleUpdateTitle}
+                    >
+                      <Check className="w-4 h-4 mr-1" />
+                      Salvar
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      onClick={() => setEditandoTitulo(false)}
+                    >
+                      <X className="w-4 h-4 mr-1" />
+                      Cancelar
+                    </Button>
+                  </div>
+                )}
+              </DialogHeader>
+              
+              <div className="space-y-6 py-4">
+                {/* Descrição */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-gray-700" />
+                    <h3 className="font-medium">Descrição</h3>
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      onClick={() => {
+                        setEditandoDescricao(true);
+                        setNovaDescricao(cardAtual.description || "");
+                      }}
+                    >
+                      <Edit className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <div className="pl-7">
+                    {editandoDescricao ? (
+                      <div className="space-y-2">
+                        <Textarea
+                          value={novaDescricao}
+                          onChange={(e) => setNovaDescricao(e.target.value)}
+                          rows={4}
+                          className="w-full"
+                        />
+                        <div className="flex justify-end gap-2">
+                          <Button 
+                            size="sm" 
+                            onClick={async () => {
+                              if (board && listaAtual) {
+                                try {
+                                  // Criar cópia do board para atualização
+                                  const updatedBoard = { ...board };
+                                  
+                                  // Encontrar o card e atualizar a descrição
+                                  const listaIndex = updatedBoard.lists.findIndex(lista => lista.id === listaAtual.id);
+                                  if (listaIndex !== -1) {
+                                    const cardIndex = updatedBoard.lists[listaIndex].cards.findIndex(c => c.id === cardAtual.id);
+                                    if (cardIndex !== -1) {
+                                      updatedBoard.lists[listaIndex].cards[cardIndex].description = capitalizarPrimeiraLetra(novaDescricao.trim());
+                                      
+                                      // Atualizar o quadro no banco de dados
+                                      const { error } = await supabase
+                                        .from('definicoes_quadros')
+                                        .update(updatedBoard)
+                                        .eq('id', updatedBoard.id);
+                                      
+                                      if (error) throw error;
+                                      
+                                      setBoard(updatedBoard);
+                                      
+                                      // Atualizar o card atual
+                                      const updatedCard = { ...cardAtual, description: capitalizarPrimeiraLetra(novaDescricao.trim()) };
+                                      setCardAtual(updatedCard);
 
-          <div className="space-y-6 py-4">
-            {/* Descrição */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-gray-700" />
-                <h3 className="font-medium">Descrição</h3>
-                <Button 
-                  size="sm" 
-                  variant="ghost" 
-                  onClick={() => {
-                    setEditandoDescricao(true);
-                    setNovaDescricao(cardAtual.description || "");
-                  }}
-                >
-                  <Edit className="w-4 h-4" />
-                </Button>
-              </div>
-              <div className="pl-7">
-                {editandoDescricao ? (
-                  <div className="space-y-2">
-                    <Textarea
-                      value={novaDescricao}
-                      onChange={(e) => setNovaDescricao(e.target.value)}
-                      rows={4}
-                      className="w-full"
-                    />
-                    <div className="flex justify-end gap-2">
-                      <Button 
-                        size="sm" 
-                        onClick={async () => {
-                          if (board && listaAtual) {
-                            try {
-                              // Criar cópia do board para atualização
-                              const updatedBoard = { ...board };
-                              
-                              // Encontrar o card e atualizar a descrição
-                              const listaIndex = updatedBoard.lists.findIndex(lista => lista.id === listaAtual.id);
-                              if (listaIndex !== -1) {
-                                const cardIndex = updatedBoard.lists[listaIndex].cards.findIndex(c => c.id === cardAtual.id);
-                                if (cardIndex !== -1) {
-                                  updatedBoard.lists[listaIndex].cards[cardIndex].description = capitalizarPrimeiraLetra(novaDescricao.trim());
-                                  
-                                  // Atualizar o quadro no banco de dados
-                                  const { error } = await supabase
-                                    .from('definicoes_quadros')
-                                    .update(updatedBoard)
-                                    .eq('id', updatedBoard.id);
-                                  
-                                  if (error) throw error;
-                                  
-                                  setBoard(updatedBoard);
-                                  
-                                  // Atualizar o card atual
-                                  const updatedCard = { ...cardAtual, description: capitalizarPrimeiraLetra(novaDescricao.trim()) };
-                                  setCardAtual(updatedCard);
-
+                                      toast({
+                                        title: "Sucesso",
+                                        description: "Descrição atualizada com sucesso!",
+                                      });
+                                    }
+                                  }
+                                } catch (error) {
+                                  console.error('Erro ao atualizar descrição:', error);
                                   toast({
-                                    title: "Sucesso",
-                                    description: "Descrição atualizada com sucesso!",
+                                    title: "Erro",
+                                    description: "Não foi possível atualizar a descrição. Tente novamente.",
+                                    variant: "destructive"
                                   });
                                 }
                               }
-                            } catch (error) {
-                              console.error('Erro ao atualizar descrição:', error);
-                              toast({
-                                title: "Erro",
-                                description: "Não foi possível atualizar a descrição. Tente novamente.",
-                                variant: "destructive"
-                              });
-                            }
-                          }
-                          setEditandoDescricao(false);
-                        }}
-                      >
-                        <Check className="w-4 h-4" />
-                        Salvar
-                      </Button>
+                              setEditandoDescricao(false);
+                            }}
+                          >
+                            <Check className="w-4 h-4" />
+                            Salvar
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={() => setEditandoDescricao(false)}
+                          >
+                            <X className="w-4 h-4" />
+                            Cancelar
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      cardAtual.description ? (
+                        <p className="text-gray-700 whitespace-pre-line">{cardAtual.description}</p>
+                      ) : (
+                        <p className="text-gray-400 italic">Sem descrição</p>
+                      )
+                    )}
+                  </div>
+                </div>
+
+                {/* Checklists */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckSquare className="w-5 h-5 text-gray-700" />
+                      <h3 className="font-medium">Checklists</h3>
+                    </div>
+                    
+                    {/* Form para adicionar checklist */}
+                    <div className="flex items-center gap-2">
+                      <Input
+                        placeholder="Nome do checklist"
+                        value={novoChecklistNome}
+                        onChange={(e) => setNovoChecklistNome(e.target.value)}
+                        className="text-sm h-8 w-48"
+                      />
                       <Button 
                         size="sm" 
                         variant="outline" 
-                        onClick={() => setEditandoDescricao(false)}
+                        onClick={handleAddChecklist}
+                        disabled={!novoChecklistNome}
                       >
-                        <X className="w-4 h-4" />
-                        Cancelar
+                        <Plus className="w-4 h-4 mr-1" />
+                        Adicionar
                       </Button>
                     </div>
                   </div>
-                ) : (
-                  cardAtual.description ? (
-                    <p className="text-gray-700 whitespace-pre-line">{cardAtual.description}</p>
+
+                  {(!cardAtual.checklists || cardAtual.checklists.length === 0) ? (
+                    <p className="text-gray-400 italic pl-7">Nenhum checklist adicionado</p>
                   ) : (
-                    <p className="text-gray-400 italic">Sem descrição</p>
-                  )
-                )}
-              </div>
-            </div>
-
-            {/* Checklists */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CheckSquare className="w-5 h-5 text-gray-700" />
-                  <h3 className="font-medium">Checklists</h3>
-                </div>
-                
-                {/* Form para adicionar checklist */}
-                <div className="flex items-center gap-2">
-                  <Input
-                    placeholder="Nome do checklist"
-                    value={novoChecklistNome}
-                    onChange={(e) => setNovoChecklistNome(e.target.value)}
-                    className="text-sm h-8 w-48"
-                  />
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    onClick={handleAddChecklist}
-                    disabled={!novoChecklistNome}
-                  >
-                    <Plus className="w-4 h-4 mr-1" />
-                    Adicionar
-                  </Button>
-                </div>
-              </div>
-
-              {(!cardAtual.checklists || cardAtual.checklists.length === 0) ? (
-                <p className="text-gray-400 italic pl-7">Nenhum checklist adicionado</p>
-              ) : (
-                <div className="space-y-4 pl-7">
-                  {cardAtual.checklists.map((checklist) => (
-                    <div key={checklist.id} className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-medium text-gray-700">{checklist.title}</h4>
-                        <Button 
-                          size="sm" 
-                          variant="ghost" 
-                          className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => handleDeleteChecklist(checklist.id)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                      
-                      {/* Lista de itens do checklist */}
-                      <div className="space-y-2">
-                        {checklist.items.map((item) => (
-                          <div key={item.id} className="flex items-start gap-2">
-                            <Checkbox 
-                              checked={item.checked} 
-                              onCheckedChange={(checked) => 
-                                handleToggleChecklistItem(checklist.id, item.id, checked as boolean)
-                              }
-                              id={item.id}
-                            />
-                            <label 
-                              htmlFor={item.id}
-                              className={`text-sm ${item.checked ? 'line-through text-gray-400' : 'text-gray-700'}`}
+                    <div className="space-y-4 pl-7">
+                      {cardAtual.checklists.map((checklist) => (
+                        <div key={checklist.id} className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <h4 className="font-medium text-gray-700">{checklist.title}</h4>
+                            <Button 
+                              size="sm" 
+                              variant="ghost" 
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => handleDeleteChecklist(checklist.id)}
                             >
-                              {item.text || item.title}
-                            </label>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="ml-auto p-0 h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50"
-                              onClick={() => handleDeleteChecklistItem(checklist.id, item.id)}
-                            >
-                              <X className="w-4 h-4" />
+                              <Trash2 className="w-4 h-4" />
                             </Button>
                           </div>
-                        ))}
-                      </div>
-                      
-                      {/* Form para adicionar item */}
-                      <div className="flex items-center gap-2 mt-2">
-                        <Input
-                          placeholder="Novo item"
-                          value={checklistAtual?.id === checklist.id ? novoChecklistItem : ''}
-                          onChange={(e) => {
-                            setChecklistAtual(checklist);
-                            setNovoChecklistItem(e.target.value);
-                          }}
-                          className="text-sm h-8"
-                        />
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          onClick={() => {
-                            setChecklistAtual(checklist);
-                            handleAddChecklistItem();
-                          }}
-                          disabled={!novoChecklistItem || checklistAtual?.id !== checklist.id}
-                        >
-                          <Plus className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Anexos */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Paperclip className="w-5 h-5 text-gray-700" />
-                <h3 className="font-medium">Anexos</h3>
-              </div>
-              
-              {(!cardAtual.attachments || cardAtual.attachments.length === 0) ? (
-                <p className="text-gray-400 italic pl-7">Nenhum anexo adicionado</p>
-              ) : (
-                <div className="space-y-2 pl-7">
-                  {cardAtual.attachments.map((attachment, index) => {
-                    // Extrair nome do arquivo da URL
-                    const fileName = attachment.split('/').pop() || `Arquivo ${index + 1}`;
-                    
-                    return (
-                      <div key={index} className="flex items-center justify-between bg-gray-50 p-2 rounded-md">
-                        <div className="flex items-center gap-2 overflow-hidden">
-                          <FileText className="w-4 h-4 flex-shrink-0" />
-                          <span className="text-sm truncate">{fileName}</span>
+                          
+                          {/* Lista de itens do checklist */}
+                          <div className="space-y-2">
+                            {checklist.items.map((item) => (
+                              <div key={item.id} className="flex items-start gap-2">
+                                <Checkbox 
+                                  checked={item.checked} 
+                                  onCheckedChange={(checked) => 
+                                    handleToggleChecklistItem(checklist.id, item.id, checked as boolean)
+                                  }
+                                  id={item.id}
+                                />
+                                <label 
+                                  htmlFor={item.id}
+                                  className={`text-sm ${item.checked ? 'line-through text-gray-400' : 'text-gray-700'}`}
+                                >
+                                  {item.text || item.title}
+                                </label>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="ml-auto p-0 h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteChecklistItem(checklist.id, item.id);
+                                  }}
+                                >
+                                  <X className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                          
+                          {/* Form para adicionar item */}
+                          <div className="flex items-center gap-2 mt-2">
+                            <Input
+                              placeholder="Novo item"
+                              value={checklistAtual?.id === checklist.id ? novoChecklistItem : ''}
+                              onChange={(e) => {
+                                setChecklistAtual(checklist);
+                                setNovoChecklistItem(e.target.value);
+                              }}
+                              className="text-sm h-8"
+                            />
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => {
+                                setChecklistAtual(checklist);
+                                handleAddChecklistItem();
+                              }}
+                              disabled={!novoChecklistItem || checklistAtual?.id !== checklist.id}
+                            >
+                              <Plus className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </div>
-                        <a 
-                          href={attachment} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:text-blue-800 text-sm"
-                        >
-                          Abrir
-                        </a>
-                      </div>
-                    );
-                  })}
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
+
+                {/* Anexos */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Paperclip className="w-5 h-5 text-gray-700" />
+                      <h3 className="font-medium">Anexos</h3>
+                    </div>
+                    
+                    {/* Botão para adicionar novos anexos */}
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      onClick={() => {
+                        setFiles([]);
+                        setUploadedFiles([]);
+                        setShowAddAttachmentDialog(true);
+                      }}
+                    >
+                      <Plus className="w-4 h-4 mr-1" />
+                      Adicionar
+                    </Button>
+                  </div>
+                  
+                  {(!cardAtual.attachments || cardAtual.attachments.length === 0) ? (
+                    <p className="text-gray-400 italic pl-7">Nenhum anexo adicionado</p>
+                  ) : (
+                    <div className="space-y-2 pl-7">
+                      {cardAtual.attachments.map((attachment, index) => {
+                        // Extrair nome do arquivo da URL
+                        const fileName = attachment.split('/').pop() || `Arquivo ${index + 1}`;
+                        
+                        return (
+                          <div key={index} className="flex items-center justify-between bg-gray-50 p-2 rounded-md">
+                            <div className="flex items-center gap-2 overflow-hidden">
+                              <FileText className="w-4 h-4 flex-shrink-0" />
+                              <span className="text-sm truncate">{fileName}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <a 
+                                href={attachment} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:text-blue-800 text-sm"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                Abrir
+                              </a>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="p-0 h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteAttachment(index);
+                                }}
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="py-4 text-center">
+              <p>Carregando detalhes...</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo para adicionar anexos a um card existente */}
+      <Dialog open={showAddAttachmentDialog} onOpenChange={setShowAddAttachmentDialog}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Adicionar Anexos</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Anexos</Label>
+              <FilePond
+                files={files}
+                onupdatefiles={setFiles}
+                allowMultiple={true}
+                maxFiles={5}
+                server={{
+                  process: (fieldName, file, metadata, load, error, progress, abort) => {
+                    // Processar arquivo
+                    handleProcessFile(null, { file, id: Date.now().toString() } as any);
+                    load(Date.now().toString());
+                    return {
+                      abort: () => {
+                        abort();
+                      }
+                    };
+                  },
+                  revert: (uniqueFileId, load, error) => {
+                    // Remover arquivo
+                    const fileToRemove = files.find(f => f.id === uniqueFileId);
+                    if (fileToRemove) {
+                      handleRemoveFile(fileToRemove);
+                    }
+                    load();
+                  }
+                }}
+                name="files"
+                labelIdle='Arraste e solte arquivos aqui ou <span class="filepond--label-action">Procure</span>'
+              />
             </div>
           </div>
+          <DialogFooter>
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => {
+                setShowAddAttachmentDialog(false);
+                setFiles([]);
+                setUploadedFiles([]);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              type="button" 
+              onClick={handleAddAttachmentsToCard}
+              disabled={uploadedFiles.length === 0}
+            >
+              Adicionar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

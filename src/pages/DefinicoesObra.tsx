@@ -353,6 +353,7 @@ const DefinicoesObra = () => {
     }
   };
 
+  // Função para mover um card entre listas
   const handleMoveCard = async (result: DropResult) => {
     try {
       if (!result.destination || !board) return;
@@ -363,6 +364,8 @@ const DefinicoesObra = () => {
       if (source.droppableId === destination.droppableId && source.index === destination.index) {
         return;
       }
+      
+      console.log('Movendo card:', { source, destination });
       
       // Obter as listas de origem e destino
       const sourceListIndex = board.lists.findIndex(lista => lista.id === source.droppableId);
@@ -376,8 +379,23 @@ const DefinicoesObra = () => {
       // Remover o card da lista de origem
       const [movedCard] = updatedBoard.lists[sourceListIndex].cards.splice(source.index, 1);
       
+      // Registrar a movimentação no título se for entre listas diferentes
+      if (source.droppableId !== destination.droppableId) {
+        // Registrar de qual lista para qual lista foi movido
+        const sourceListName = updatedBoard.lists[sourceListIndex].title;
+        const destListName = updatedBoard.lists[destListIndex].title;
+        
+        toast({
+          title: "Card movido",
+          description: `"${movedCard.title}" foi movido de "${sourceListName}" para "${destListName}"`,
+        });
+      }
+      
       // Adicionar o card na lista de destino
       updatedBoard.lists[destListIndex].cards.splice(destination.index, 0, movedCard);
+      
+      // Atualizar o board no state imediatamente para feedback visual rápido
+      setBoard(updatedBoard);
       
       // Atualizar o quadro no banco de dados
       const { error } = await supabase
@@ -385,9 +403,86 @@ const DefinicoesObra = () => {
         .update(updatedBoard)
         .eq('id', updatedBoard.id);
       
-      if (error) throw error;
+      if (error) {
+        // Se houver erro, reverter a alteração no state
+        console.error('Erro ao mover card:', error);
+        setBoard(board); // Reverte para o estado anterior
+        
+        toast({
+          title: "Erro",
+          description: "Não foi possível mover a definição. Tente novamente.",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao mover card:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível mover a definição. Tente novamente.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Função para mover um card para outra lista diretamente pelo botão
+  const handleMoveCardToList = async (cardId: string, sourceListId: string, destListId: string) => {
+    try {
+      if (!board) return;
       
+      // Obter as listas de origem e destino
+      const sourceListIndex = board.lists.findIndex(lista => lista.id === sourceListId);
+      const destListIndex = board.lists.findIndex(lista => lista.id === destListId);
+      
+      if (sourceListIndex === -1 || destListIndex === -1) return;
+      
+      // Criar uma cópia do board para manipular
+      const updatedBoard = { ...board };
+      
+      // Encontrar o card na lista de origem
+      const cardIndex = updatedBoard.lists[sourceListIndex].cards.findIndex(card => card.id === cardId);
+      
+      if (cardIndex === -1) return;
+      
+      // Remover o card da lista de origem
+      const [movedCard] = updatedBoard.lists[sourceListIndex].cards.splice(cardIndex, 1);
+      
+      // Adicionar o card no início da lista de destino
+      updatedBoard.lists[destListIndex].cards.unshift(movedCard);
+      
+      // Registrar movimentação
+      const sourceListName = updatedBoard.lists[sourceListIndex].title;
+      const destListName = updatedBoard.lists[destListIndex].title;
+      
+      // Atualizar o board no state imediatamente para feedback visual rápido
       setBoard(updatedBoard);
+      
+      // Atualizar o quadro no banco de dados
+      const { error } = await supabase
+        .from('definicoes_quadros')
+        .update(updatedBoard)
+        .eq('id', updatedBoard.id);
+      
+      if (error) {
+        // Se houver erro, reverter a alteração no state
+        console.error('Erro ao mover card:', error);
+        setBoard(board); // Reverte para o estado anterior
+        
+        toast({
+          title: "Erro",
+          description: "Não foi possível mover a definição. Tente novamente.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      toast({
+        title: "Card movido",
+        description: `"${movedCard.title}" foi movido de "${sourceListName}" para "${destListName}"`,
+      });
+      
+      // Fechar o diálogo se estiver aberto
+      setShowCardDetailsDialog(false);
+      
     } catch (error) {
       console.error('Erro ao mover card:', error);
       toast({
@@ -775,6 +870,53 @@ const DefinicoesObra = () => {
     }
   };
 
+  // Função para atualizar o título do card
+  const handleUpdateTitle = async () => {
+    if (!novoTitulo || !board || !listaAtual || !cardAtual) return;
+    
+    try {
+      // Criar cópia do board para atualização
+      const updatedBoard = { ...board };
+      
+      // Encontrar o card e atualizar o título
+      const listaIndex = updatedBoard.lists.findIndex(lista => lista.id === listaAtual.id);
+      if (listaIndex !== -1) {
+        const cardIndex = updatedBoard.lists[listaIndex].cards.findIndex(c => c.id === cardAtual.id);
+        if (cardIndex !== -1) {
+          updatedBoard.lists[listaIndex].cards[cardIndex].title = capitalizarPrimeiraLetra(novoTitulo.trim());
+          
+          // Atualizar o quadro no banco de dados
+          const { error } = await supabase
+            .from('definicoes_quadros')
+            .update(updatedBoard)
+            .eq('id', updatedBoard.id);
+          
+          if (error) throw error;
+          
+          setBoard(updatedBoard);
+          
+          // Atualizar o card atual
+          const updatedCard = { ...cardAtual, title: capitalizarPrimeiraLetra(novoTitulo.trim()) };
+          setCardAtual(updatedCard);
+          
+          toast({
+            title: "Sucesso",
+            description: "Título atualizado com sucesso!",
+          });
+        }
+      }
+      
+      setEditandoTitulo(false);
+    } catch (error) {
+      console.error('Erro ao atualizar título:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível atualizar o título. Tente novamente.",
+        variant: "destructive"
+      });
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4">
@@ -839,13 +981,26 @@ const DefinicoesObra = () => {
                                 ref={provided.innerRef}
                                 {...provided.draggableProps}
                                 {...provided.dragHandleProps}
-                                className="bg-white p-3 rounded-md shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-shadow"
+                                className="bg-white p-3 rounded-md shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-shadow relative group"
                                 onClick={() => {
                                   setCardAtual(card);
                                   setListaAtual(lista);
                                   setShowCardDetailsDialog(true);
                                 }}
                               >
+                                {/* Indicador de arraste */}
+                                <div className="absolute top-0 left-0 w-full h-full rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                                  <div className="absolute top-2 right-2 bg-gray-100 rounded-full p-1 shadow-sm">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500">
+                                      <path d="M14 3v4a1 1 0 0 0 1 1h4"></path>
+                                      <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z"></path>
+                                      <line x1="9" y1="9" x2="15" y2="9"></line>
+                                      <line x1="9" y1="13" x2="15" y2="13"></line>
+                                      <line x1="9" y1="17" x2="13" y2="17"></line>
+                                    </svg>
+                                  </div>
+                                </div>
+                                
                                 <div className="flex justify-between items-start mb-2">
                                   <h3 className="font-medium text-base line-clamp-2">{card.title}</h3>
                                   <DropdownMenu>
@@ -855,6 +1010,24 @@ const DefinicoesObra = () => {
                                       </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
+                                      {/* Opção para mover para outra lista */}
+                                      {board?.lists.map((targetLista) => {
+                                        if (targetLista.id !== lista.id) {
+                                          return (
+                                            <DropdownMenuItem
+                                              key={targetLista.id}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleMoveCardToList(card.id, lista.id, targetLista.id);
+                                              }}
+                                            >
+                                              <ArrowLeft className="w-4 h-4 mr-2 rotate-45" />
+                                              Mover para {targetLista.title}
+                                            </DropdownMenuItem>
+                                          );
+                                        }
+                                        return null;
+                                      })}
                                       <DropdownMenuItem
                                         onClick={(e) => {
                                           e.stopPropagation();
@@ -888,7 +1061,19 @@ const DefinicoesObra = () => {
                                       {card.attachments.length}
                                     </Badge>
                                   )}
+                                  
+                                  {/* Indicador de lista */}
+                                  <Badge variant="outline" className={lista.title === "Definido" ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}>
+                                    {lista.title}
+                                  </Badge>
                                 </div>
+                                
+                                {/* Mostrar parte da descrição se existir */}
+                                {card.description && (
+                                  <p className="text-gray-600 text-sm line-clamp-2">
+                                    {card.description}
+                                  </p>
+                                )}
                               </div>
                             )}
                           </Draggable>
@@ -1012,33 +1197,117 @@ const DefinicoesObra = () => {
 
       {/* Diálogo para detalhes do card */}
       <Dialog open={showCardDetailsDialog} onOpenChange={setShowCardDetailsDialog}>
-        <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
-          {cardAtual && (
-            <>
-              <DialogHeader>
-                <DialogTitle>
-                  {editandoTitulo ? (
-                    <div className="flex items-center gap-2">
-                      <Input
-                        value={novoTitulo}
-                        onChange={(e) => setNovoTitulo(e.target.value)}
-                        autoFocus
-                        className="flex-1"
-                      />
+        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex justify-between items-center">
+              <DialogTitle className="text-xl pr-8">
+                {editandoTitulo ? (
+                  <Input
+                    value={novoTitulo}
+                    onChange={(e) => setNovoTitulo(e.target.value)}
+                    className="text-xl font-semibold"
+                    autoFocus
+                  />
+                ) : (
+                  cardAtual?.title || "Detalhes da Definição"
+                )}
+              </DialogTitle>
+              
+              {/* Botão para mover o card para a outra lista */}
+              {listaAtual && cardAtual && board?.lists && board.lists.length > 1 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">Mover para:</span>
+                  {board.lists.map((lista) => {
+                    if (lista.id !== listaAtual.id) {
+                      return (
+                        <Button 
+                          key={lista.id}
+                          variant={lista.title === "Definido" ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => handleMoveCardToList(cardAtual.id, listaAtual.id, lista.id)}
+                        >
+                          {lista.title}
+                        </Button>
+                      );
+                    }
+                    return null;
+                  })}
+                </div>
+              )}
+            </div>
+            {!editandoTitulo && (
+              <div className="flex gap-2 mt-2">
+                <Button size="sm" variant="outline" onClick={() => {
+                  setEditandoTitulo(true);
+                  setNovoTitulo(cardAtual?.title || "");
+                }}>
+                  <Edit className="w-4 h-4 mr-1" />
+                  Editar Título
+                </Button>
+              </div>
+            )}
+            {editandoTitulo && (
+              <div className="flex gap-2 mt-2">
+                <Button 
+                  size="sm" 
+                  onClick={handleUpdateTitle}
+                >
+                  <Check className="w-4 h-4 mr-1" />
+                  Salvar
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  onClick={() => setEditandoTitulo(false)}
+                >
+                  <X className="w-4 h-4 mr-1" />
+                  Cancelar
+                </Button>
+              </div>
+            )}
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* Descrição */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-gray-700" />
+                <h3 className="font-medium">Descrição</h3>
+                <Button 
+                  size="sm" 
+                  variant="ghost" 
+                  onClick={() => {
+                    setEditandoDescricao(true);
+                    setNovaDescricao(cardAtual.description || "");
+                  }}
+                >
+                  <Edit className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="pl-7">
+                {editandoDescricao ? (
+                  <div className="space-y-2">
+                    <Textarea
+                      value={novaDescricao}
+                      onChange={(e) => setNovaDescricao(e.target.value)}
+                      rows={4}
+                      className="w-full"
+                    />
+                    <div className="flex justify-end gap-2">
                       <Button 
                         size="sm" 
                         onClick={async () => {
-                          if (novoTitulo && board && listaAtual) {
+                          if (board && listaAtual) {
                             try {
                               // Criar cópia do board para atualização
                               const updatedBoard = { ...board };
                               
-                              // Encontrar o card e atualizar o título
+                              // Encontrar o card e atualizar a descrição
                               const listaIndex = updatedBoard.lists.findIndex(lista => lista.id === listaAtual.id);
                               if (listaIndex !== -1) {
                                 const cardIndex = updatedBoard.lists[listaIndex].cards.findIndex(c => c.id === cardAtual.id);
                                 if (cardIndex !== -1) {
-                                  updatedBoard.lists[listaIndex].cards[cardIndex].title = capitalizarPrimeiraLetra(novoTitulo.trim());
+                                  updatedBoard.lists[listaIndex].cards[cardIndex].description = capitalizarPrimeiraLetra(novaDescricao.trim());
                                   
                                   // Atualizar o quadro no banco de dados
                                   const { error } = await supabase
@@ -1051,292 +1320,190 @@ const DefinicoesObra = () => {
                                   setBoard(updatedBoard);
                                   
                                   // Atualizar o card atual
-                                  const updatedCard = { ...cardAtual, title: capitalizarPrimeiraLetra(novoTitulo.trim()) };
+                                  const updatedCard = { ...cardAtual, description: capitalizarPrimeiraLetra(novaDescricao.trim()) };
                                   setCardAtual(updatedCard);
+
+                                  toast({
+                                    title: "Sucesso",
+                                    description: "Descrição atualizada com sucesso!",
+                                  });
                                 }
                               }
                             } catch (error) {
-                              console.error('Erro ao atualizar título:', error);
+                              console.error('Erro ao atualizar descrição:', error);
                               toast({
                                 title: "Erro",
-                                description: "Não foi possível atualizar o título. Tente novamente.",
+                                description: "Não foi possível atualizar a descrição. Tente novamente.",
                                 variant: "destructive"
                               });
                             }
                           }
-                          setEditandoTitulo(false);
+                          setEditandoDescricao(false);
                         }}
                       >
                         <Check className="w-4 h-4" />
+                        Salvar
                       </Button>
                       <Button 
                         size="sm" 
                         variant="outline" 
-                        onClick={() => setEditandoTitulo(false)}
+                        onClick={() => setEditandoDescricao(false)}
                       >
                         <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <span className="flex-1">{cardAtual.title}</span>
-                      <Button 
-                        size="sm" 
-                        variant="ghost" 
-                        onClick={() => {
-                          setNovoTitulo(cardAtual.title);
-                          setEditandoTitulo(true);
-                        }}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  )}
-                </DialogTitle>
-                <div className="text-sm text-gray-500">
-                  Lista: {listaAtual?.title}
-                </div>
-              </DialogHeader>
-
-              <div className="space-y-6 py-4">
-                {/* Descrição */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-gray-700" />
-                    <h3 className="font-medium">Descrição</h3>
-                    <Button 
-                      size="sm" 
-                      variant="ghost" 
-                      onClick={() => {
-                        setEditandoDescricao(true);
-                        setNovaDescricao(cardAtual.description || "");
-                      }}
-                    >
-                      <Edit className="w-4 h-4" />
-                    </Button>
-                  </div>
-                  <div className="pl-7">
-                    {editandoDescricao ? (
-                      <div className="space-y-2">
-                        <Textarea
-                          value={novaDescricao}
-                          onChange={(e) => setNovaDescricao(e.target.value)}
-                          rows={4}
-                          className="w-full"
-                        />
-                        <div className="flex justify-end gap-2">
-                          <Button 
-                            size="sm" 
-                            onClick={async () => {
-                              if (board && listaAtual) {
-                                try {
-                                  // Criar cópia do board para atualização
-                                  const updatedBoard = { ...board };
-                                  
-                                  // Encontrar o card e atualizar a descrição
-                                  const listaIndex = updatedBoard.lists.findIndex(lista => lista.id === listaAtual.id);
-                                  if (listaIndex !== -1) {
-                                    const cardIndex = updatedBoard.lists[listaIndex].cards.findIndex(c => c.id === cardAtual.id);
-                                    if (cardIndex !== -1) {
-                                      updatedBoard.lists[listaIndex].cards[cardIndex].description = capitalizarPrimeiraLetra(novaDescricao.trim());
-                                      
-                                      // Atualizar o quadro no banco de dados
-                                      const { error } = await supabase
-                                        .from('definicoes_quadros')
-                                        .update(updatedBoard)
-                                        .eq('id', updatedBoard.id);
-                                      
-                                      if (error) throw error;
-                                      
-                                      setBoard(updatedBoard);
-                                      
-                                      // Atualizar o card atual
-                                      const updatedCard = { ...cardAtual, description: capitalizarPrimeiraLetra(novaDescricao.trim()) };
-                                      setCardAtual(updatedCard);
-
-                                      toast({
-                                        title: "Sucesso",
-                                        description: "Descrição atualizada com sucesso!",
-                                      });
-                                    }
-                                  }
-                                } catch (error) {
-                                  console.error('Erro ao atualizar descrição:', error);
-                                  toast({
-                                    title: "Erro",
-                                    description: "Não foi possível atualizar a descrição. Tente novamente.",
-                                    variant: "destructive"
-                                  });
-                                }
-                              }
-                              setEditandoDescricao(false);
-                            }}
-                          >
-                            <Check className="w-4 h-4" />
-                            Salvar
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="outline" 
-                            onClick={() => setEditandoDescricao(false)}
-                          >
-                            <X className="w-4 h-4" />
-                            Cancelar
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      cardAtual.description ? (
-                        <p className="text-gray-700 whitespace-pre-line">{cardAtual.description}</p>
-                      ) : (
-                        <p className="text-gray-400 italic">Sem descrição</p>
-                      )
-                    )}
-                  </div>
-                </div>
-
-                {/* Checklists */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <CheckSquare className="w-5 h-5 text-gray-700" />
-                      <h3 className="font-medium">Checklists</h3>
-                    </div>
-                    
-                    {/* Form para adicionar checklist */}
-                    <div className="flex items-center gap-2">
-                      <Input
-                        placeholder="Nome do checklist"
-                        value={novoChecklistNome}
-                        onChange={(e) => setNovoChecklistNome(e.target.value)}
-                        className="text-sm h-8 w-48"
-                      />
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        onClick={handleAddChecklist}
-                        disabled={!novoChecklistNome}
-                      >
-                        <Plus className="w-4 h-4 mr-1" />
-                        Adicionar
+                        Cancelar
                       </Button>
                     </div>
                   </div>
-
-                  {(!cardAtual.checklists || cardAtual.checklists.length === 0) ? (
-                    <p className="text-gray-400 italic pl-7">Nenhum checklist adicionado</p>
+                ) : (
+                  cardAtual.description ? (
+                    <p className="text-gray-700 whitespace-pre-line">{cardAtual.description}</p>
                   ) : (
-                    <div className="space-y-4 pl-7">
-                      {cardAtual.checklists.map((checklist) => (
-                        <div key={checklist.id} className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <h4 className="font-medium text-gray-700">{checklist.title}</h4>
-                            <Button 
-                              size="sm" 
-                              variant="ghost" 
-                              className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                              onClick={() => handleDeleteChecklist(checklist.id)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                          
-                          {/* Lista de itens do checklist */}
-                          <div className="space-y-2">
-                            {checklist.items.map((item) => (
-                              <div key={item.id} className="flex items-start gap-2">
-                                <Checkbox 
-                                  checked={item.checked} 
-                                  onCheckedChange={(checked) => 
-                                    handleToggleChecklistItem(checklist.id, item.id, checked as boolean)
-                                  }
-                                  id={item.id}
-                                />
-                                <label 
-                                  htmlFor={item.id}
-                                  className={`text-sm ${item.checked ? 'line-through text-gray-400' : 'text-gray-700'}`}
-                                >
-                                  {item.text || item.title}
-                                </label>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="ml-auto p-0 h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                  onClick={() => handleDeleteChecklistItem(checklist.id, item.id)}
-                                >
-                                  <X className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            ))}
-                          </div>
-                          
-                          {/* Form para adicionar item */}
-                          <div className="flex items-center gap-2 mt-2">
-                            <Input
-                              placeholder="Novo item"
-                              value={checklistAtual?.id === checklist.id ? novoChecklistItem : ''}
-                              onChange={(e) => {
-                                setChecklistAtual(checklist);
-                                setNovoChecklistItem(e.target.value);
-                              }}
-                              className="text-sm h-8"
-                            />
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              onClick={() => {
-                                setChecklistAtual(checklist);
-                                handleAddChecklistItem();
-                              }}
-                              disabled={!novoChecklistItem || checklistAtual?.id !== checklist.id}
-                            >
-                              <Plus className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                    <p className="text-gray-400 italic">Sem descrição</p>
+                  )
+                )}
+              </div>
+            </div>
+
+            {/* Checklists */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckSquare className="w-5 h-5 text-gray-700" />
+                  <h3 className="font-medium">Checklists</h3>
                 </div>
-
-                {/* Anexos */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <Paperclip className="w-5 h-5 text-gray-700" />
-                    <h3 className="font-medium">Anexos</h3>
-                  </div>
-                  
-                  {(!cardAtual.attachments || cardAtual.attachments.length === 0) ? (
-                    <p className="text-gray-400 italic pl-7">Nenhum anexo adicionado</p>
-                  ) : (
-                    <div className="space-y-2 pl-7">
-                      {cardAtual.attachments.map((attachment, index) => {
-                        // Extrair nome do arquivo da URL
-                        const fileName = attachment.split('/').pop() || `Arquivo ${index + 1}`;
-                        
-                        return (
-                          <div key={index} className="flex items-center justify-between bg-gray-50 p-2 rounded-md">
-                            <div className="flex items-center gap-2 overflow-hidden">
-                              <FileText className="w-4 h-4 flex-shrink-0" />
-                              <span className="text-sm truncate">{fileName}</span>
-                            </div>
-                            <a 
-                              href={attachment} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="text-blue-600 hover:text-blue-800 text-sm"
-                            >
-                              Abrir
-                            </a>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                
+                {/* Form para adicionar checklist */}
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="Nome do checklist"
+                    value={novoChecklistNome}
+                    onChange={(e) => setNovoChecklistNome(e.target.value)}
+                    className="text-sm h-8 w-48"
+                  />
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={handleAddChecklist}
+                    disabled={!novoChecklistNome}
+                  >
+                    <Plus className="w-4 h-4 mr-1" />
+                    Adicionar
+                  </Button>
                 </div>
               </div>
-            </>
-          )}
+
+              {(!cardAtual.checklists || cardAtual.checklists.length === 0) ? (
+                <p className="text-gray-400 italic pl-7">Nenhum checklist adicionado</p>
+              ) : (
+                <div className="space-y-4 pl-7">
+                  {cardAtual.checklists.map((checklist) => (
+                    <div key={checklist.id} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-medium text-gray-700">{checklist.title}</h4>
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => handleDeleteChecklist(checklist.id)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      
+                      {/* Lista de itens do checklist */}
+                      <div className="space-y-2">
+                        {checklist.items.map((item) => (
+                          <div key={item.id} className="flex items-start gap-2">
+                            <Checkbox 
+                              checked={item.checked} 
+                              onCheckedChange={(checked) => 
+                                handleToggleChecklistItem(checklist.id, item.id, checked as boolean)
+                              }
+                              id={item.id}
+                            />
+                            <label 
+                              htmlFor={item.id}
+                              className={`text-sm ${item.checked ? 'line-through text-gray-400' : 'text-gray-700'}`}
+                            >
+                              {item.text || item.title}
+                            </label>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="ml-auto p-0 h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => handleDeleteChecklistItem(checklist.id, item.id)}
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                      
+                      {/* Form para adicionar item */}
+                      <div className="flex items-center gap-2 mt-2">
+                        <Input
+                          placeholder="Novo item"
+                          value={checklistAtual?.id === checklist.id ? novoChecklistItem : ''}
+                          onChange={(e) => {
+                            setChecklistAtual(checklist);
+                            setNovoChecklistItem(e.target.value);
+                          }}
+                          className="text-sm h-8"
+                        />
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={() => {
+                            setChecklistAtual(checklist);
+                            handleAddChecklistItem();
+                          }}
+                          disabled={!novoChecklistItem || checklistAtual?.id !== checklist.id}
+                        >
+                          <Plus className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Anexos */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Paperclip className="w-5 h-5 text-gray-700" />
+                <h3 className="font-medium">Anexos</h3>
+              </div>
+              
+              {(!cardAtual.attachments || cardAtual.attachments.length === 0) ? (
+                <p className="text-gray-400 italic pl-7">Nenhum anexo adicionado</p>
+              ) : (
+                <div className="space-y-2 pl-7">
+                  {cardAtual.attachments.map((attachment, index) => {
+                    // Extrair nome do arquivo da URL
+                    const fileName = attachment.split('/').pop() || `Arquivo ${index + 1}`;
+                    
+                    return (
+                      <div key={index} className="flex items-center justify-between bg-gray-50 p-2 rounded-md">
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          <FileText className="w-4 h-4 flex-shrink-0" />
+                          <span className="text-sm truncate">{fileName}</span>
+                        </div>
+                        <a 
+                          href={attachment} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800 text-sm"
+                        >
+                          Abrir
+                        </a>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

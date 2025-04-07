@@ -4,7 +4,7 @@ import { Building2, Calculator, RefreshCw, LogOut, User, Menu, X, ChevronLeft } 
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import GLogLogo from "./GLogLogo";
+import ConstructionLogo from "./ConstructionLogo";
 import useDevice from "@/hooks/useDevice";
 import { hapticFeedback, HapticType } from "@/lib/haptics";
 import {
@@ -206,9 +206,9 @@ const Layout = () => {
             ) : (
               <Link to="/obras" className="flex items-center">
                 {device.isMobile ? (
-                  <GLogLogo size="sm" variant="icon" darkMode={true} />
+                  <ConstructionLogo size="sm" variant="icon" darkMode={true} />
                 ) : (
-                  <GLogLogo size="md" variant="full" darkMode={true} />
+                  <ConstructionLogo size="md" variant="full" darkMode={true} />
                 )}
               </Link>
             )}
@@ -277,7 +277,7 @@ const Layout = () => {
           onClick={e => e.stopPropagation()}
         >
           <div className="p-4 border-b border-gray-200">
-            <GLogLogo size="sm" variant="full" />
+            <ConstructionLogo size="sm" variant="full" />
           </div>
           <nav className="p-4 space-y-2">
             {menuItems.map((item) => {
@@ -321,7 +321,7 @@ const Layout = () => {
         {/* Sidebar para desktop */}
         <aside className="fixed inset-y-0 left-0 z-30 w-64 bg-white border-r border-gray-200 pt-16 hidden md:block">
           <div className="p-4 border-b border-gray-200">
-            <GLogLogo size="sm" variant="full" />
+            <ConstructionLogo size="sm" variant="full" />
           </div>
           <nav className="p-4 space-y-2 overflow-y-auto h-[calc(100%-5rem)]">
             {menuItems.map((item) => {

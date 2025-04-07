@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Fundo quadrado arredondado -->
+  <rect x="0" y="0" width="64" height="64" rx="10" ry="10" fill="#0369a1" />
+  
+  <!-- Círculo secundário no canto inferior direito -->
+  <circle cx="48" cy="48" r="22" fill="#0ea5e9" opacity="0.7" />
+  
+  <!-- Texto "G" -->
+  <text x="32" y="40" font-family="Arial, sans-serif" font-size="38" font-weight="bold" fill="white" text-anchor="middle">G</text>
+</svg> 

@@ -17,19 +17,19 @@ const GLogLogo: React.FC<GLogLogoProps> = ({
       height: 30,
       width: variant === 'full' ? 100 : 30,
       fontSize: 16,
-      iconSize: 18
+      iconSize: 20
     },
     md: {
       height: 40,
       width: variant === 'full' ? 130 : 40,
       fontSize: 20,
-      iconSize: 24
+      iconSize: 26
     },
     lg: {
       height: 50,
       width: variant === 'full' ? 160 : 50,
       fontSize: 24,
-      iconSize: 30
+      iconSize: 32
     }
   };
 
@@ -75,7 +75,8 @@ const GLogLogo: React.FC<GLogLogoProps> = ({
           fontSize: currentSize.iconSize,
           fontFamily: 'Arial, sans-serif',
           position: 'relative',
-          zIndex: 1
+          zIndex: 1,
+          letterSpacing: '-0.5px'
         }}>
           G
         </span>
@@ -120,7 +121,8 @@ const GLogLogo: React.FC<GLogLogoProps> = ({
           fontSize: currentSize.iconSize,
           fontFamily: 'Arial, sans-serif',
           position: 'relative',
-          zIndex: 1
+          zIndex: 1,
+          letterSpacing: '-0.5px'
         }}>
           G
         </span>

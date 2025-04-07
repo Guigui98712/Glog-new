@@ -16,8 +16,10 @@ import NotFound from "./pages/NotFound";
 import SelecionarObraDiario from "./pages/SelecionarObraDiario";
 import SelecionarObraRelatorio from "./pages/SelecionarObraRelatorio";
 import PendenciasObra from "./pages/PendenciasObra";
+import DefinicoesObra from "@/pages/DefinicoesObra";
 import { Toaster } from "./components/ui/toaster";
 import "./App.css";
+import { supabase } from "@/lib/supabase";
 
 // Componente para redirecionar com base no estado de autenticação
 const RedirectBasedOnAuth = () => {
@@ -127,6 +129,7 @@ function App() {
             <Route path=":id/pendencias" element={<PendenciasObra />} />
             <Route path=":id/diario" element={<DiarioObra />} />
             <Route path=":id/relatorios" element={<Relatorios />} />
+            <Route path=":id/definicoes" element={<DefinicoesObra />} />
           </Route>
           
           <Route 

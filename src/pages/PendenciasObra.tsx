@@ -41,7 +41,7 @@ import {
   adicionarEtiqueta,
   atualizarPosicaoCard
 } from '@/lib/trello-local';
-import { TrelloBoard, TrelloList, TrelloCard, TrelloChecklist, TrelloChecklistItem, TrelloLabel } from '@/types/trello';
+import { TrelloBoard, TrelloList, TrelloCard, TrelloChecklist, TrelloChecklistItem, TrelloLabel, InitializedTrelloCard } from '@/types/trello';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -84,7 +84,7 @@ const PendenciasObra = () => {
   const [showCardDetailsDialog, setShowCardDetailsDialog] = useState(false);
   
   // Estados para cards e listas
-  const [cardAtual, setCardAtual] = useState<TrelloCard | null>(null);
+  const [cardAtual, setCardAtual] = useState<InitializedTrelloCard | null>(null);
   const [listaAtual, setListaAtual] = useState<TrelloList | null>(null);
   const [novaListaNome, setNovaListaNome] = useState('');
   const [etiquetasDisponiveis, setEtiquetasDisponiveis] = useState<TrelloLabel[]>([]);
@@ -401,7 +401,7 @@ const PendenciasObra = () => {
   };
 
   const handleDeleteCard = (card: TrelloCard) => {
-    setCardAtual(card);
+    setCardAtual(card as any);
     setShowDeleteCardDialog(true);
   };
 
@@ -483,31 +483,13 @@ const PendenciasObra = () => {
   };
   
   // Função auxiliar para renderizar labels
-  const renderizarLabels = (labels: any) => {
+  const renderizarLabels = (labels: TrelloLabel[]) => {
     if (!labels || labels.length === 0) return null;
     
-    // Função auxiliar para extrair o título da etiqueta
-    const getTituloEtiqueta = (label: any) => {
-      if (typeof label === 'string') return label;
-      if (label.title) return label.title;
-      if (label.nome) return label.nome;
-      return label.toString();
-    };
-
-    // Remover duplicatas baseado no título da etiqueta
-    const labelsUnicos = Array.from(new Set(labels.map(getTituloEtiqueta)))
-      .map(titulo => {
-        const etiqueta = etiquetas.find(e => e.nome === titulo);
-        return {
-          title: titulo,
-          cor: etiqueta?.cor || "bg-gray-500 text-white"
-        };
-      });
-    
-    return labelsUnicos.map((label, idx) => (
+    return labels.map((label) => (
       <Badge 
-        key={`${label.title}-${idx}`}
-        className={`text-xs mr-1 ${label.cor}`}
+        key={label.id}
+        className={`text-xs mr-1 ${label.color || 'bg-gray-500 text-white'}`}
       >
         {label.title}
       </Badge>
@@ -544,7 +526,17 @@ const PendenciasObra = () => {
       if (lista) {
         const card = lista.cards.find(c => c.id === cardAtual.id);
         if (card) {
-          setCardAtual(card as any);
+          setCardAtual({
+            ...(card as any),
+            checklists: (card as any).checklists || [],
+            comments: (card as any).comments || [],
+            attachments: (card as any).attachments || [],
+            labels: card.labels || []
+          });
+          setNovoCard({
+            ...novoCard,
+            labels: card.labels.map(l => l.title)
+          });
         }
       }
     } catch (error) {
@@ -599,7 +591,13 @@ const PendenciasObra = () => {
       if (lista) {
         const card = lista.cards.find(c => c.id === cardAtual?.id);
         if (card) {
-          setCardAtual(card as any);
+          setCardAtual({
+            ...(card as any),
+            checklists: (card as any).checklists || [],
+            comments: (card as any).comments || [],
+            attachments: (card as any).attachments || [],
+            labels: card.labels || []
+          });
           
           // Atualizar o board para refletir as mudanças instantaneamente
           const newBoard = {...board};
@@ -640,7 +638,13 @@ const PendenciasObra = () => {
       if (lista) {
         const card = lista.cards.find(c => c.id === cardAtual?.id);
         if (card) {
-          setCardAtual(card as any);
+          setCardAtual({
+            ...(card as any),
+            checklists: (card as any).checklists || [],
+            comments: (card as any).comments || [],
+            attachments: (card as any).attachments || [],
+            labels: card.labels || []
+          });
         }
       }
     } catch (error) {
@@ -668,7 +672,13 @@ const PendenciasObra = () => {
       if (lista) {
         const card = lista.cards.find(c => c.id === cardAtual?.id);
         if (card) {
-          setCardAtual(card as any);
+          setCardAtual({
+            ...(card as any),
+            checklists: (card as any).checklists || [],
+            comments: (card as any).comments || [],
+            attachments: (card as any).attachments || [],
+            labels: card.labels || []
+          });
         }
       }
     } catch (error) {
@@ -682,7 +692,13 @@ const PendenciasObra = () => {
   };
   
   const handleViewCardDetails = (card: TrelloCard) => {
-    setCardAtual(card as any);
+    setCardAtual({
+      ...(card as any),
+      checklists: (card as any).checklists || [],
+      comments: (card as any).comments || [],
+      attachments: (card as any).attachments || [],
+      labels: card.labels || []
+    });
     // Inicializar o estado do novoCard com os dados do card atual
     setNovoCard({
       title: card.title,
@@ -733,10 +749,16 @@ const PendenciasObra = () => {
       if (lista) {
         const cardAtualizado = lista.cards.find(c => c.id === cardAtual.id);
         if (cardAtualizado) {
-          setCardAtual(cardAtualizado);
+          setCardAtual({
+            ...(cardAtualizado as any),
+            checklists: (cardAtualizado as any).checklists || [],
+            comments: (cardAtualizado as any).comments || [],
+            attachments: (cardAtualizado as any).attachments || [],
+            labels: cardAtualizado.labels || []
+          });
           setNovoCard({
             ...novoCard,
-            labels: cardAtualizado.labels.map(l => typeof l === 'string' ? l : l.title)
+            labels: cardAtualizado.labels.map(l => l.title)
           });
         }
       }
@@ -861,339 +883,399 @@ const PendenciasObra = () => {
     }
   };
 
-  // Função para gerar o PDF
+  // Função para gerar o PDF usando window.print
   const gerarPDF = async () => {
     try {
-      if (!boardRef.current) return;
-
-      // Criar um elemento temporário para o PDF
-      const pdfElement = document.createElement('div');
-      pdfElement.style.width = '100%';
-      pdfElement.style.padding = '20px';
-      pdfElement.style.backgroundColor = 'white';
-      pdfElement.style.color = 'black';
-      pdfElement.style.fontFamily = 'Arial, sans-serif';
-      pdfElement.style.position = 'absolute';
-      pdfElement.style.left = '-9999px';
-      document.body.appendChild(pdfElement);
-
-      // Adicionar cabeçalho
-      const header = document.createElement('div');
-      header.style.marginBottom = '20px';
-      header.style.borderBottom = '2px solid #333';
-      header.style.paddingBottom = '10px';
-      header.innerHTML = `
-        <h1 style="font-size: 24px; margin: 0; color: #333;">Relatório de Pendências</h1>
-        <h2 style="font-size: 18px; margin: 10px 0; color: #666;">Obra: ${obraNome}</h2>
-        <p style="font-size: 14px; color: #666;">Data: ${format(new Date(), 'dd/MM/yyyy', { locale: ptBR })}</p>
-      `;
-      pdfElement.appendChild(header);
-
-      // Adicionar conteúdo
-      board?.lists.forEach(lista => {
-        const listSection = document.createElement('div');
-        listSection.style.marginBottom = '20px';
-        listSection.style.padding = '10px';
-        listSection.style.backgroundColor = '#f5f5f5';
-        listSection.style.borderRadius = '5px';
-
-        const listTitle = document.createElement('h3');
-        listTitle.style.fontSize = '16px';
-        listTitle.style.margin = '0 0 10px 0';
-        listTitle.style.color = '#333';
-        listTitle.textContent = lista.name;
-        listSection.appendChild(listTitle);
-
-        lista.cards.forEach(card => {
-          const cardElement = document.createElement('div');
-          cardElement.style.marginBottom = '10px';
-          cardElement.style.padding = '10px';
-          cardElement.style.backgroundColor = 'white';
-          cardElement.style.borderRadius = '3px';
-          cardElement.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
-
-          const cardTitle = document.createElement('h4');
-          cardTitle.style.fontSize = '14px';
-          cardTitle.style.margin = '0 0 5px 0';
-          cardTitle.style.color = '#333';
-          cardTitle.textContent = card.title;
-          cardElement.appendChild(cardTitle);
-
-          if (card.description) {
-            const description = document.createElement('p');
-            description.style.fontSize = '12px';
-            description.style.margin = '0 0 5px 0';
-            description.style.color = '#666';
-            description.textContent = card.description;
-            cardElement.appendChild(description);
-          }
-
-          if (card.due_date) {
-            const dueDate = document.createElement('p');
-            dueDate.style.fontSize = '12px';
-            dueDate.style.margin = '0 0 5px 0';
-            dueDate.style.color = '#666';
-            dueDate.textContent = `Prazo: ${format(new Date(card.due_date), 'dd/MM/yyyy', { locale: ptBR })}`;
-            cardElement.appendChild(dueDate);
-          }
-
-          if (card.checklists && card.checklists.length > 0) {
-            const checklistSection = document.createElement('div');
-            checklistSection.style.marginTop = '5px';
-            card.checklists.forEach(checklist => {
-              const checklistTitle = document.createElement('p');
-              checklistTitle.style.fontSize = '12px';
-              checklistTitle.style.margin = '5px 0';
-              checklistTitle.style.fontWeight = 'bold';
-              checklistTitle.textContent = checklist.name;
-              checklistSection.appendChild(checklistTitle);
-
-              const checklistItems = document.createElement('ul');
-              checklistItems.style.margin = '0';
-              checklistItems.style.paddingLeft = '20px';
-              checklistItems.style.listStyleType = 'none';
-              checklist.checkItems.forEach(item => {
-                const li = document.createElement('li');
-                li.style.fontSize = '12px';
-                li.style.margin = '2px 0';
-                li.style.display = 'flex';
-                li.style.alignItems = 'center';
-                li.innerHTML = `
-                  <span style="margin-right: 5px;">${item.state === 'complete' ? '✓' : '○'}</span>
-                  <span style="text-decoration: ${item.state === 'complete' ? 'line-through' : 'none'}">${item.name}</span>
-                `;
-                checklistItems.appendChild(li);
-              });
-              checklistSection.appendChild(checklistItems);
-            });
-            cardElement.appendChild(checklistSection);
-          }
-
-          listSection.appendChild(cardElement);
+      console.log('[DEBUG] Iniciando impressão do quadro');
+      
+      // Criar uma nova janela para o relatório
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        console.error('Não foi possível abrir janela de impressão. Verifique se o bloqueador de pop-ups está desativado.');
+        toast({
+          title: 'Erro',
+          description: 'Não foi possível abrir a janela de impressão. Verifique se o bloqueador de pop-ups está desativado.',
+          variant: 'destructive'
         });
-
-        pdfElement.appendChild(listSection);
-      });
-
-      // Gerar PDF
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      });
-
-      // Configurar para dispositivos móveis
-      const isMobile = Capacitor.isNativePlatform();
-      const scale = isMobile ? 1.5 : 1.0;
-
-      const canvas = await html2canvas(pdfElement, {
-        scale: scale,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff'
-      });
-
-      const imgData = canvas.toDataURL('image/png');
-      const imgProps = pdf.getImageProperties(imgData);
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-
-      // Limpar elemento temporário
-      document.body.removeChild(pdfElement);
-
-      // Salvar ou compartilhar o PDF
-      if (isMobile) {
-        const pdfBlob = pdf.output('blob');
-        const base64Data = await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result);
-          reader.readAsDataURL(pdfBlob);
-        });
-
-        const fileName = `relatorio-pendencias-${obraNome}-${format(new Date(), 'dd-MM-yyyy', { locale: ptBR })}.pdf`;
-        
-        // Salvar o arquivo
-        const savedFile = await Filesystem.writeFile({
-          path: fileName,
-          data: base64Data as string,
-          directory: Directory.Cache,
-          recursive: true
-        });
-
-        // Compartilhar o arquivo
-        await Share.share({
-          title: 'Relatório de Pendências',
-          text: `Relatório de pendências da obra ${obraNome}`,
-          url: savedFile.uri,
-          dialogTitle: 'Compartilhar Relatório'
-        });
-      } else {
-        pdf.save(`relatorio-pendencias-${obraNome}-${format(new Date(), 'dd-MM-yyyy', { locale: ptBR })}.pdf`);
+        return;
       }
-
+      
+      // Obter a data atual formatada
+      const dataAtual = format(new Date(), 'dd/MM/yyyy');
+      
+      // Preparar o conteúdo HTML do relatório
+      let conteudoHTML = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Relatório de Pendências - ${obraNome}</title>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              margin: 0;
+              padding: 20px;
+              color: #333;
+            }
+            .cabecalho {
+              border-bottom: 2px solid #ddd;
+              padding-bottom: 15px;
+              margin-bottom: 25px;
+              text-align: center;
+            }
+            .cabecalho h1 {
+              font-size: 22px;
+              margin: 0 0 8px 0;
+              color: #222;
+            }
+            .cabecalho p {
+              font-size: 14px;
+              margin: 5px 0;
+              color: #666;
+            }
+            .secao {
+              margin-bottom: 30px;
+              border: 1px solid #eee;
+              border-radius: 6px;
+              padding-bottom: 15px;
+            }
+            .secao h2 {
+              font-size: 16px;
+              background-color: #f5f5f5;
+              padding: 12px;
+              margin: 0 0 15px 0;
+              border-radius: 6px 6px 0 0;
+              border-bottom: 2px solid #e0e0e0;
+            }
+            .cartao {
+              padding: 12px;
+              margin: 0 15px 15px 15px;
+              border: 1px solid #eee;
+              border-radius: 4px;
+              box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            }
+            .cartao h3 {
+              font-size: 15px;
+              margin: 0 0 8px 0;
+              color: #333;
+              font-weight: 600;
+              border-bottom: 1px solid #f0f0f0;
+              padding-bottom: 6px;
+            }
+            .cartao p {
+              font-size: 12px;
+              margin: 0 0 5px 0;
+              color: #666;
+            }
+            .etiquetas {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 5px;
+              margin-top: 8px;
+              margin-bottom: 8px;
+            }
+            .etiqueta {
+              font-size: 10px;
+              padding: 3px 8px;
+              border-radius: 3px;
+              background-color: #eee;
+            }
+            .etiqueta-urgente {
+              background-color: #ffcccc;
+              color: #cc0000;
+            }
+            .etiqueta-fazendo {
+              background-color: #fff8cc;
+              color: #806600;
+            }
+            .etiqueta-concluido {
+              background-color: #ccffcc;
+              color: #006600;
+            }
+            .checklist {
+              margin-top: 10px;
+              font-size: 12px;
+              background-color: #f9f9f9;
+              padding: 8px;
+              border-radius: 4px;
+            }
+            .checklist-titulo {
+              font-weight: bold;
+              margin-bottom: 5px;
+              font-size: 13px;
+              color: #555;
+            }
+            .checklist-item {
+              margin-left: 15px;
+              margin-bottom: 4px;
+              line-height: 1.4;
+            }
+            .checklist-item.checked {
+              text-decoration: line-through;
+              color: #999;
+            }
+            .sem-pendencias {
+              text-align: center;
+              padding: 15px;
+              font-style: italic;
+              color: #888;
+              background-color: #f9f9f9;
+              border-radius: 4px;
+              margin: 0 15px;
+            }
+            @media print {
+              body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 15px;
+              }
+              .no-print {
+                display: none !important;
+              }
+              .page-break {
+                page-break-after: always;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="cabecalho">
+            <h1>Relatório de Pendências</h1>
+            <p>Obra: ${obraNome}</p>
+            <p>Data: ${dataAtual}</p>
+          </div>
+      `;
+      
+      // Adicionar cada seção (lista) ao relatório
+      if (board?.lists) {
+        board.lists.forEach(lista => {
+          conteudoHTML += `
+            <div class="secao">
+              <h2>${lista.title || (lista as any).nome}</h2>
+          `;
+          
+          if (lista.cards && lista.cards.length > 0) {
+            lista.cards.forEach(card => {
+              conteudoHTML += `
+                <div class="cartao">
+                  <h3>${card.title}</h3>
+              `;
+              
+              if (card.description) {
+                conteudoHTML += `<p>${card.description}</p>`;
+              }
+              
+              // Adicionar etiquetas
+              if (card.labels && card.labels.length > 0) {
+                conteudoHTML += `<div class="etiquetas">`;
+                card.labels.forEach(label => {
+                  const classeEtiqueta = label.title.toLowerCase().includes('urgente') 
+                    ? 'etiqueta-urgente' 
+                    : label.title.toLowerCase().includes('concluído') 
+                      ? 'etiqueta-concluido'
+                      : 'etiqueta-fazendo';
+                  
+                  conteudoHTML += `<span class="etiqueta ${classeEtiqueta}">${label.title}</span>`;
+                });
+                conteudoHTML += `</div>`;
+              }
+              
+              // Adicionar checklists
+              if (card.checklists && card.checklists.length > 0) {
+                card.checklists.forEach(checklist => {
+                  conteudoHTML += `
+                    <div class="checklist">
+                      <div class="checklist-titulo">${checklist.title}</div>
+                  `;
+                  
+                  checklist.items.forEach(item => {
+                    conteudoHTML += `
+                      <div class="checklist-item ${item.checked ? 'checked' : ''}">
+                        ${item.checked ? '✓' : '○'} ${item.title}
+                      </div>
+                    `;
+                  });
+                  
+                  conteudoHTML += `</div>`;
+                });
+              }
+              
+              // Fechar div do cartão
+              conteudoHTML += `</div>`;
+            });
+          } else {
+            conteudoHTML += `<p class="sem-pendencias">Não há pendências nesta seção.</p>`;
+          }
+          
+          // Fechar div da seção
+          conteudoHTML += `</div>`;
+        });
+      }
+      
+      // Fechar o HTML
+      conteudoHTML += `
+          <div class="no-print">
+            <button onclick="window.print()" style="padding: 12px 24px; margin: 25px auto; cursor: pointer; background-color: #4a7aff; color: white; border: none; border-radius: 4px; font-weight: bold; display: block; font-size: 16px;">
+              Imprimir / Salvar como PDF
+            </button>
+          </div>
+        </body>
+        </html>
+      `;
+      
+      // Escrever o conteúdo na janela de impressão
+      printWindow.document.open();
+      printWindow.document.write(conteudoHTML);
+      printWindow.document.close();
+      
+      // Informar o usuário
       toast({
-        title: "Sucesso",
-        description: "Relatório gerado com sucesso!",
+        title: 'Sucesso',
+        description: 'Relatório gerado! Use a opção de imprimir do navegador para salvar como PDF.'
       });
+      
+      console.log('[DEBUG] Relatório de impressão gerado');
+      
     } catch (error) {
-      console.error('Erro ao gerar PDF:', error);
+      console.error('Erro ao imprimir quadro:', error);
       toast({
-        title: "Erro",
-        description: "Não foi possível gerar o relatório.",
-        variant: "destructive"
+        title: 'Erro',
+        description: 'Não foi possível gerar a impressão.',
+        variant: 'destructive'
       });
     }
+  };
+
+  // Função para lidar com o clique no botão de gerar PDF
+  const handleGerarPDF = async () => {
+    console.log('[DEBUG] Botão Gerar PDF clicado');
+    await gerarPDF();
   };
 
   // Função para compartilhar PDF
   const compartilharPDF = async () => {
-    if (!boardRef.current || !board) {
-      toast({
-        title: "Erro",
-        description: "Não foi possível compartilhar. Conteúdo não encontrado.",
-        variant: "destructive"
-      });
-      return;
-    }
-
     try {
-      toast({
-        title: "Processando",
-        description: "Preparando arquivo para compartilhar...",
-      });
-
-      // Verificar se estamos em ambiente nativo
-      const isNative = Capacitor.isNativePlatform();
-      
-      // Verificar se a API Web Share está disponível para navegadores
-      const canShare = navigator && navigator.share;
-
-      if (!isNative && !canShare) {
+      if (!board) {
         toast({
-          title: "Compartilhamento não disponível",
-          description: "Use a função 'Gerar PDF' para baixar o relatório.",
+          title: 'Erro',
+          description: 'Quadro não carregado.',
+          variant: 'destructive'
         });
-        return gerarPDF();
+        return;
       }
 
-      const dataAtual = new Date().toLocaleDateString('pt-BR');
-      const fileName = `Pendencias_${obraNome.replace(/\s+/g, '_')}_${dataAtual.replace(/\//g, '-')}.pdf`;
+      if (Capacitor.isNativePlatform()) {
+        // Em dispositivos nativos, vamos capturar o conteúdo do quadro
+        if (!boardRef.current) {
+          console.error('Referência do quadro não encontrada');
+          return;
+        }
 
-      // Criando o PDF (código simplificado - reusa a função anterior para isso)
-      const iframe = document.createElement('iframe');
-      iframe.style.width = '100%';
-      iframe.style.height = '0';
-      iframe.style.border = 'none';
-      iframe.style.position = 'fixed';
-      iframe.style.zIndex = '-9999';
-      document.body.appendChild(iframe);
-      
-      // Gerando o PDF
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      });
-      
-      // Se estamos em ambiente nativo com Capacitor
-      if (isNative) {
+        // Salvar configuração original
+        const originalBgColor = boardRef.current.style.backgroundColor;
+        boardRef.current.style.backgroundColor = 'white';
+
+        // Gerar PDF usando jsPDF e html2canvas
         try {
-          // Gerar PDF como base64
-          const pdfBase64 = pdf.output('datauristring').split(',')[1];
-          
-          // Salvar temporariamente no dispositivo
-          const result = await Filesystem.writeFile({
+          const pdf = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: 'a4'
+          });
+
+          const canvas = await html2canvas(boardRef.current, {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            backgroundColor: '#ffffff'
+          });
+
+          const imgData = canvas.toDataURL('image/png');
+          const pdfWidth = pdf.internal.pageSize.getWidth();
+          const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+          const pageHeight = pdf.internal.pageSize.getHeight();
+
+          let position = 0;
+
+          while (position < pdfHeight) {
+            pdf.addImage(imgData, 'PNG', 0, -position, pdfWidth, pdfHeight);
+            if (position + pageHeight < pdfHeight) pdf.addPage();
+            position += pageHeight;
+          }
+
+          // Restaurar configuração original
+          boardRef.current.style.backgroundColor = originalBgColor;
+
+          // Converter para blob e compartilhar
+          const blob = pdf.output('blob');
+          const base64Data = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+            reader.readAsDataURL(blob);
+          });
+
+          const fileName = `pendencias_${obraNome.replace(/\s+/g, '_')}_${format(new Date(), 'dd-MM-yyyy')}.pdf`;
+
+          const filePath = await Filesystem.writeFile({
             path: fileName,
-            data: pdfBase64,
+            data: base64Data,
             directory: Directory.Cache,
             recursive: true
           });
-          
-          // Compartilhar o arquivo usando a API de compartilhamento nativa
+
           await Share.share({
-            title: 'Relatório de Pendências',
-            text: `Relatório de Pendências - ${obraNome}`,
-            url: result.uri,
-            dialogTitle: 'Compartilhar Relatório de Pendências'
+            title: `Pendências - ${obraNome}`,
+            text: `Relatório de pendências da obra ${obraNome}`,
+            url: filePath.uri,
+            dialogTitle: 'Compartilhar PDF'
+          });
+
+          await Filesystem.deleteFile({
+            path: fileName,
+            directory: Directory.Cache
           });
 
           toast({
-            title: "Sucesso",
-            description: "Relatório compartilhado!",
+            title: 'Sucesso',
+            description: 'Relatório compartilhado com sucesso!'
           });
-        } catch (error) {
-          console.error('Erro ao compartilhar:', error);
+        } catch (pdfError) {
+          console.error('Erro ao gerar PDF para compartilhamento:', pdfError);
           toast({
-            title: "Erro",
-            description: "Ocorreu um erro ao compartilhar. Tentando método alternativo...",
-          });
-          
-          // Tentar método alternativo
-          gerarPDF();
-        }
-      } else if (canShare) {
-        // Para navegadores com suporte à API Web Share
-        try {
-          // Criar blob para compartilhar
-          const pdfBlob = pdf.output('blob');
-          
-          // Verificar se o navegador suporta compartilhamento de arquivos
-          const shareData = {
-            title: 'Relatório de Pendências',
-            text: `Relatório de Pendências - ${obraNome}`,
-            files: [new File([pdfBlob], fileName, { type: 'application/pdf' })]
-          };
-          
-          if (navigator.canShare && navigator.canShare(shareData)) {
-            await navigator.share(shareData);
-      } else {
-            // Compartilhar apenas texto e URL se não suportar arquivos
-            await navigator.share({
-              title: 'Relatório de Pendências',
-              text: `Relatório de Pendências - ${obraNome}`
-            });
-            
-            // E fazer download do arquivo
-            pdf.save(fileName);
-      }
-
-      toast({
-        title: "Sucesso",
-            description: "Relatório compartilhado!",
-      });
-    } catch (error) {
-          console.error('Erro ao compartilhar:', error);
-          // Recorrer ao download padrão
-          pdf.save(fileName);
-          
-          toast({
-            title: "Compartilhamento falhou",
-            description: "O PDF foi baixado localmente.",
+            title: 'Erro',
+            description: 'Não foi possível gerar o PDF para compartilhamento.',
+            variant: 'destructive'
           });
         }
       } else {
-        // Método de fallback: download direto
-        pdf.save(fileName);
-        
-        toast({
-          title: "Compartilhamento não disponível",
-          description: "O PDF foi baixado localmente.",
-        });
+        // Em ambiente web, usar a mesma impressão
+        gerarPDF();
       }
-      
-      // Limpar recursos
-      document.body.removeChild(iframe);
     } catch (error) {
-      console.error('Erro ao preparar PDF para compartilhar:', error);
+      console.error('Erro ao compartilhar PDF:', error);
       toast({
-        title: "Erro",
-        description: "Ocorreu um erro ao preparar o arquivo para compartilhar.",
-        variant: "destructive"
+        title: 'Erro',
+        description: 'Ocorreu um erro ao tentar compartilhar o PDF.',
+        variant: 'destructive'
       });
     }
   };
+
+  // Função auxiliar para inicializar um card
+  const initializeCard = (card: Partial<TrelloCard>): TrelloCard => ({
+    id: card.id!,
+    list_id: card.list_id!,
+    title: card.title!,
+    description: card.description || '',
+    position: card.position!,
+    due_date: card.due_date,
+    labels: card.labels || [],
+    checklists: card.checklists || [],
+    comments: card.comments || [],
+    attachments: card.attachments || [],
+    created_at: card.created_at!,
+    updated_at: card.updated_at!
+  });
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
@@ -1209,13 +1291,23 @@ const PendenciasObra = () => {
           <h1 className="text-2xl font-bold">Pendências: {obraNome}</h1>
         </div>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-          <Button onClick={gerarPDF} className="flex-1 sm:flex-none flex items-center gap-2">
-            <FileText className="w-4 h-4" />
-            Gerar PDF
-          </Button>
-          {!!(window as any).Capacitor?.isNativePlatform() && (
-            <Button onClick={compartilharPDF} className="flex-1 sm:flex-none flex items-center gap-2">
-              <ShareIcon className="w-4 h-4" />
+          {!Capacitor.isNativePlatform() && (
+            <Button
+              variant="outline"
+              onClick={handleGerarPDF}
+              className="flex items-center gap-2"
+            >
+              <FileText className="h-4 w-4" />
+              Gerar PDF
+            </Button>
+          )}
+          {Capacitor.isNativePlatform() && (
+            <Button
+              variant="outline"
+              onClick={compartilharPDF}
+              className="flex items-center gap-2"
+            >
+              <ShareIcon className="h-4 w-4" />
               Compartilhar
             </Button>
           )}

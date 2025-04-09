@@ -65,8 +65,9 @@ import html2canvas from 'html2canvas';
 // Importações do Capacitor
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
-import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { supabase } from '@/lib/supabase';
+import { pdfStyles } from '../styles/pdf-styles';
 
 const PendenciasObra = () => {
   const { id } = useParams();
@@ -902,339 +903,170 @@ const PendenciasObra = () => {
   // Função para gerar o PDF usando window.print
   const gerarPDF = async () => {
     try {
-      console.log('[DEBUG] Iniciando impressão do quadro');
-      
-      // Criar uma nova janela para o relatório
-      const printWindow = window.open('', '_blank');
-      if (!printWindow) {
-        console.error('Não foi possível abrir janela de impressão. Verifique se o bloqueador de pop-ups está desativado.');
-        toast({
-          title: 'Erro',
-          description: 'Não foi possível abrir a janela de impressão. Verifique se o bloqueador de pop-ups está desativado.',
-          variant: 'destructive'
-        });
+      if (!board) {
+        toast.error('Nenhum quadro carregado');
         return;
       }
-      
-      // Obter a data atual formatada
-      const dataAtual = format(new Date(), 'dd/MM/yyyy');
-      
-      // Preparar o conteúdo HTML do relatório
-      const styles = `
-        @page {
-          margin: 15mm;
-          size: A4;
-        }
-        
-        body {
-          font-family: Arial, sans-serif;
-          line-height: 1.6;
-          color: #333;
-          margin: 0;
-          padding: 0 0 0 30px;
-        }
 
-        .header-container {
-          page-break-inside: avoid;
-          margin-bottom: 20px;
-        }
-        
-        .cabecalho {
-          background-color: #f8f9fa;
-          padding: 12px;
-          margin-bottom: 12px;
-          border-bottom: 2px solid #dee2e6;
-        }
+      const fileName = `pendencias_${obraNome.replace(/\s+/g, '_')}_${format(new Date(), 'dd-MM-yyyy')}.pdf`;
 
-        .cabecalho h1 {
-          margin: 0 0 8px 0;
-          color: #2c3e50;
-          font-size: 24px;
-        }
-        
-        .cabecalho p {
-          margin: 4px 0;
-          color: #6c757d;
-        }
-
-        .info-obra {
-          background-color: #fff;
-          padding: 12px;
-          margin-bottom: 20px;
-          border: 1px solid #dee2e6;
-          border-radius: 4px;
-        }
-
-        .info-item {
-          display: flex;
-          margin-bottom: 8px;
-        }
-
-        .info-label {
-          font-weight: bold;
-          min-width: 120px;
-        }
-
-        .secao {
-          margin-bottom: 24px;
-          page-break-inside: avoid;
-        }
-
-        .secao h2 {
-          color: #2c3e50;
-          border-bottom: 2px solid #dee2e6;
-          padding-bottom: 8px;
-          margin-bottom: 16px;
-        }
-
-        .cartao {
-          background-color: #fff;
-          border: 1px solid #dee2e6;
-          border-radius: 4px;
-          padding: 16px;
-          margin-bottom: 16px;
-          page-break-inside: avoid;
-        }
-
-        .cartao h3 {
-          margin: 0 0 12px 0;
-          color: #2c3e50;
-        }
-
-        .cartao-descricao {
-          margin-bottom: 12px;
-          white-space: pre-wrap;
-        }
-        
-        .checklist {
-          margin-top: 12px;
-        }
-        
-        .checklist-titulo {
-          font-weight: bold;
-          margin-bottom: 8px;
-        }
-        
-        .checklist-item {
-          margin: 4px 0;
-          padding-left: 24px;
-          position: relative;
-        }
-        
-        .checklist-item::before {
-          content: '';
-          position: absolute;
-          left: 0;
-          top: 50%;
-          transform: translateY(-50%);
-          width: 16px;
-          height: 16px;
-          border: 1px solid #adb5bd;
-          background-color: #fff;
-        }
-        
-        .checklist-item.checked::before {
-          background-color: #28a745;
-          border-color: #28a745;
-        }
-        
-        .checklist-item.checked::after {
-          content: '✓';
-          position: absolute;
-          left: 3px;
-          top: 50%;
-          transform: translateY(-50%);
-          color: white;
-          font-size: 12px;
-        }
-
-        .etiquetas {
-          margin: 8px 0;
-        }
-
-        .etiqueta {
-          display: inline-block;
-          padding: 4px 8px;
-          border-radius: 4px;
-          font-size: 12px;
-          font-weight: 500;
-          margin-right: 8px;
-          margin-bottom: 4px;
-          color: white;
-        }
-        
-        .etiqueta-green { background-color: #28a745; }
-        .etiqueta-yellow { background-color: #ffc107; color: #000; }
-        .etiqueta-orange { background-color: #fd7e14; }
-        .etiqueta-red { background-color: #dc3545; }
-        .etiqueta-purple { background-color: #6f42c1; }
-        .etiqueta-blue { background-color: #007bff; }
-        .etiqueta-sky { background-color: #17a2b8; }
-        .etiqueta-lime { background-color: #84cc16; color: #000; }
-        .etiqueta-pink { background-color: #d63384; }
-        .etiqueta-black { background-color: #000000; }
-        .etiqueta-padrao { background-color: #6c757d; }
-        
-        .sem-pendencias {
-          color: #6c757d;
-          font-style: italic;
-        }
-        
-        .footer {
-          margin-top: 32px;
-          padding-top: 16px;
-          border-top: 1px solid #dee2e6;
-          color: #6c757d;
-          font-size: 12px;
-          text-align: center;
-        }
-      `;
-      
-      let conteudoHTML = `
+      const content = `
         <!DOCTYPE html>
         <html>
-        <head>
-          <title>Relatório de Pendências - ${obraNome}</title>
-          <meta charset="UTF-8">
-          <style>
-            ${styles}
-          </style>
-          <script>
-            function imprimirPDF() {
-              window.print();
-            }
-          </script>
-        </head>
-        <body>
-          <button onclick="imprimirPDF()" class="print-button" style="
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 10px 20px;
-            background-color: #2196f3;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            z-index: 9999;
-          ">Salvar como PDF</button>
-
-          <div class="header-container">
-            <div class="cabecalho">
+          <head>
+            <meta charset="UTF-8">
+            <style>
+              ${pdfStyles}
+              
+              /* Estilos adicionais específicos para o PDF */
+              .card {
+                margin-bottom: 15px;
+                page-break-inside: avoid;
+              }
+              
+              .checklist-item {
+                margin: 5px 0;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+              }
+              
+              .labels-container {
+                margin: 8px 0;
+              }
+              
+              .label {
+                display: inline-block;
+                margin-right: 8px;
+                margin-bottom: 4px;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="report-header">
               <h1>Relatório de Pendências</h1>
-              <p>${obraNome}</p>
+              <p class="obra-nome">${obraNome}</p>
+              <p class="data">Data: ${format(new Date(), 'dd/MM/yyyy')}</p>
             </div>
             
-            <div class="info-obra">
-              <div class="info-item">
-                <span class="info-label">Data:</span>
-                <span>${dataAtual}</span>
-              </div>
-            </div>
-          </div>
-
-          ${board?.lists.map(lista => `
-            <div class="secao">
-              <h2>${lista.title || (lista as any).nome}</h2>
-              ${lista.cards.length === 0 
-                ? '<p class="sem-pendencias">Nenhuma pendência nesta lista.</p>'
-                : lista.cards.map(card => `
-                  <div class="cartao">
-                    <h3>${card.title}</h3>
-                    ${card.description 
-                      ? `<div class="cartao-descricao">${card.description}</div>` 
-                      : ''}
-                      
-                    ${card.labels && card.labels.length > 0 
-                      ? `<div class="etiquetas">
-                          ${card.labels.map(label => {
-                            let cor = '';
-                            let textColor = '#fff';
-                            
-                            // Definir cores específicas para cada etiqueta
-                            if (label.title?.toLowerCase().includes('urgente')) {
-                              cor = '#dc3545'; // vermelho
-                            } else if (label.title?.toLowerCase().includes('fazendo')) {
-                              cor = '#ffc107'; // amarelo
-                              textColor = '#000';
-                            } else if (label.title?.toLowerCase().includes('concluído') || label.title?.toLowerCase().includes('concluido')) {
-                              cor = '#28a745'; // verde
-                            } else if (label.title?.toLowerCase().includes('pendente')) {
-                              cor = '#fd7e14'; // laranja
-                            } else if (label.title?.toLowerCase().includes('aguardando')) {
-                              cor = '#17a2b8'; // azul claro
-                            } else {
-                              cor = '#6c757d'; // cinza (padrão)
-                            }
-
-                            return `<span class="etiqueta" style="
-                              display: inline-block;
-                              padding: 4px 8px;
-                              border-radius: 4px;
-                              font-size: 12px;
-                              font-weight: 500;
-                              margin-right: 8px;
-                              margin-bottom: 4px;
-                              background-color: ${cor};
-                              color: ${textColor};
-                              border: 1px solid ${cor};"
-                            >${label.title || label.name}</span>`;
-                          }).join('')}
-                        </div>`
-                      : ''}
-                      
-                    ${card.checklists && card.checklists.length > 0 
-                      ? card.checklists.map(checklist => `
-                        <div class="checklist">
-                          <div class="checklist-titulo">${checklist.title}</div>
-                          ${checklist.items.map(item => `
-                            <div class="checklist-item ${item.checked ? 'checked' : ''}">${item.title}</div>
-                          `).join('')}
-                        </div>
-                      `).join('')
-                      : ''}
+            ${board.lists.map(list => `
+              <div class="section">
+                <h2 class="section-title">${list.title}</h2>
+                ${list.cards.map(card => `
+                  <div class="card">
+                    <h3 class="card-title">${card.title}</h3>
+                    
+                    ${card.description ? `
+                      <p class="card-description">${card.description}</p>
+                    ` : ''}
+                    
+                    ${card.labels?.length ? `
+                      <div class="labels-container">
+                        ${card.labels.map(label => `
+                          <span class="label label-${label.color || 'default'}">${label.title}</span>
+                        `).join('')}
+                      </div>
+                    ` : ''}
+                    
+                    ${card.checklists?.map(checklist => `
+                      <div class="checklist">
+                        <h4 class="checklist-title">${checklist.title}</h4>
+                        ${checklist.items?.map(item => `
+                          <div class="checklist-item ${item.checked ? 'completed' : ''}">
+                            ${item.checked ? '✓' : '○'} ${item.title}
+                          </div>
+                        `).join('')}
+                      </div>
+                    `).join('')}
+                    
+                    ${card.due_date ? `
+                      <p class="card-due-date">
+                        Data de vencimento: ${formatarData(card.due_date)}
+                      </p>
+                    ` : ''}
                   </div>
                 `).join('')}
-            </div>
-          `).join('')}
-          
-          <div class="footer">
-            <p>Relatório gerado em ${dataAtual}</p>
-          </div>
-
-          <style>
-            @media print {
-              .print-button {
-                display: none;
-              }
-            }
-          </style>
-        </body>
+              </div>
+            `).join('')}
+            
+            <div class="page-number">Página 1</div>
+          </body>
         </html>
       `;
-      
-      // Escrever o conteúdo na janela de impressão
-      printWindow.document.open();
-      printWindow.document.write(conteudoHTML);
-      printWindow.document.close();
-      
-      // Informar o usuário
-      toast({
-        title: 'Sucesso',
-        description: 'Relatório gerado! Use a opção de imprimir do navegador para salvar como PDF.'
-      });
-      
-      console.log('[DEBUG] Relatório de impressão gerado');
-      
+
+      if (Capacitor.isNativePlatform()) {
+        // Criar um elemento temporário para renderizar o HTML
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = content;
+        document.body.appendChild(tempDiv);
+
+        try {
+          // Configurar jsPDF
+          const pdf = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: 'a4',
+            compress: true
+          });
+
+          // Capturar o conteúdo como imagem
+          const canvas = await html2canvas(tempDiv, {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            backgroundColor: '#ffffff'
+          });
+
+          // Converter canvas para imagem
+          const imgData = canvas.toDataURL('image/jpeg', 0.95);
+          
+          // Calcular dimensões
+          const pdfWidth = pdf.internal.pageSize.getWidth();
+          const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+          
+          // Adicionar imagem ao PDF
+          pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+
+          // Converter para base64
+          const pdfOutput = pdf.output('datauristring');
+          const base64Data = pdfOutput.split(',')[1];
+
+          // Salvar arquivo
+          const { uri } = await Filesystem.writeFile({
+            path: fileName,
+            data: base64Data,
+            directory: Directory.Documents,
+            encoding: Encoding.UTF8
+          });
+
+          // Compartilhar
+          await Share.share({
+            title: 'Relatório de Pendências',
+            text: 'Relatório de Pendências da Obra',
+            url: uri,
+            dialogTitle: 'Compartilhar PDF'
+          });
+
+          toast.success('PDF gerado com sucesso!');
+        } finally {
+          // Limpar elemento temporário
+          document.body.removeChild(tempDiv);
+        }
+      } else {
+        const win = window.open('', '_blank');
+        if (win) {
+          win.document.write(content);
+          win.document.close();
+          setTimeout(() => {
+            win.print();
+          }, 250);
+        }
+      }
+
+      toast.success('PDF gerado com sucesso!');
     } catch (error) {
-      console.error('Erro ao imprimir quadro:', error);
-      toast({
-        title: 'Erro',
-        description: 'Não foi possível gerar a impressão.',
-        variant: 'destructive'
-      });
+      console.error('Erro ao gerar PDF:', error);
+      toast.error('Erro ao gerar o PDF');
     }
   };
 
@@ -1272,27 +1104,44 @@ const PendenciasObra = () => {
           const pdf = new jsPDF({
             orientation: 'portrait',
             unit: 'mm',
-            format: 'a4'
+            format: 'a4',
+            compress: true
           });
 
+          // Configurar fonte e tamanho
+          pdf.setFont('helvetica');
+          pdf.setFontSize(12);
+
+          // Adicionar cabeçalho
+          pdf.setFontSize(16);
+          pdf.text(`Relatório de Pendências - ${obraNome}`, 20, 20);
+          pdf.setFontSize(12);
+          pdf.text(`Data: ${format(new Date(), 'dd/MM/yyyy')}`, 20, 30);
+
+          // Capturar o conteúdo do quadro
           const canvas = await html2canvas(boardRef.current, {
             scale: 2,
             useCORS: true,
             logging: false,
-            backgroundColor: '#ffffff'
+            backgroundColor: '#ffffff',
+            windowWidth: boardRef.current.scrollWidth,
+            windowHeight: boardRef.current.scrollHeight
           });
 
-          const imgData = canvas.toDataURL('image/png');
+          const imgData = canvas.toDataURL('image/jpeg', 0.95);
           const pdfWidth = pdf.internal.pageSize.getWidth();
           const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
           const pageHeight = pdf.internal.pageSize.getHeight();
 
-          let position = 0;
+          let position = 40; // Começar após o cabeçalho
 
+          // Adicionar o conteúdo em múltiplas páginas se necessário
           while (position < pdfHeight) {
-            pdf.addImage(imgData, 'PNG', 0, -position, pdfWidth, pdfHeight);
-            if (position + pageHeight < pdfHeight) pdf.addPage();
-            position += pageHeight;
+            pdf.addImage(imgData, 'JPEG', 0, -position + 40, pdfWidth, pdfHeight);
+            position += pageHeight - 40;
+            if (position < pdfHeight) {
+              pdf.addPage();
+            }
           }
 
           // Restaurar configuração original
@@ -1308,6 +1157,7 @@ const PendenciasObra = () => {
 
           const fileName = `pendencias_${obraNome.replace(/\s+/g, '_')}_${format(new Date(), 'dd-MM-yyyy')}.pdf`;
 
+          // Salvar o arquivo no sistema de arquivos do dispositivo
           const filePath = await Filesystem.writeFile({
             path: fileName,
             data: base64Data,
@@ -1315,6 +1165,7 @@ const PendenciasObra = () => {
             recursive: true
           });
 
+          // Compartilhar o arquivo
           await Share.share({
             title: `Pendências - ${obraNome}`,
             text: `Relatório de pendências da obra ${obraNome}`,
@@ -1322,6 +1173,7 @@ const PendenciasObra = () => {
             dialogTitle: 'Compartilhar PDF'
           });
 
+          // Limpar o arquivo temporário
           await Filesystem.deleteFile({
             path: fileName,
             directory: Directory.Cache

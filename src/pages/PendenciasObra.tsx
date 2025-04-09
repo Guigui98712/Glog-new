@@ -66,6 +66,7 @@ import html2canvas from 'html2canvas';
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { supabase } from '@/lib/supabase';
 
 const PendenciasObra = () => {
   const { id } = useParams();
@@ -73,7 +74,8 @@ const PendenciasObra = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [board, setBoard] = useState<TrelloBoard | null>(null);
-  const [obraNome, setObraNome] = useState('');
+  const [obraNome, setObraNome] = useState<string>('');
+  const [obra, setObra] = useState<any>(null);
   
   // Estados para diálogos
   const [showAddCardDialog, setShowAddCardDialog] = useState(false);
@@ -149,49 +151,56 @@ const PendenciasObra = () => {
   const carregarDados = async () => {
     try {
       setLoading(true);
-      console.log('Iniciando carregamento de dados para obra ID:', id);
-      
-      // Buscar dados da obra
-      const obra = await buscarObra(Number(id));
-      console.log('Dados da obra:', obra);
-      
+      const { data: obra, error } = await supabase
+        .from('obras')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
       if (!obra) {
-        console.error('Obra não encontrada');
-        toast({
-          title: "Erro",
-          description: "Obra não encontrada",
-          variant: "destructive"
-        });
+        toast.warning('Obra não encontrada');
         return;
       }
-      
+
+      setObra(obra);
       setObraNome(obra.nome);
-      await carregarQuadro();
+      
+      // Carregar o quadro antes de finalizar o carregamento
+      await carregarQuadro(obra.id);
+      
     } catch (error) {
-      console.error('Erro detalhado ao carregar dados:', error);
-      toast({
-        title: "Erro",
-        description: error instanceof Error ? error.message : "Não foi possível carregar os dados.",
-        variant: "destructive"
-      });
+      console.error('Erro ao carregar dados:', error);
+      toast.error('Erro ao carregar dados da obra');
     } finally {
       setLoading(false);
     }
   };
 
-  const carregarQuadro = async () => {
+  const carregarQuadro = async (id: number) => {
+    if (!id) {
+      setLoading(false);
+      return;
+    }
+
     try {
+      setLoading(true);
       console.log('Carregando quadro da obra:', id);
-      const quadro = await obterQuadroObra(Number(id));
-      console.log('Quadro carregado:', quadro);
-      setBoard(quadro as unknown as TrelloBoard);
+      
+      const quadro = await obterQuadroObra(id);
+      if (!quadro || !quadro.lists) {
+        toast.warning('Não foi possível carregar o quadro da obra');
+        setLoading(false);
+        return;
+      }
+
+      setBoard(quadro);
+      console.log('Quadro carregado com sucesso:', quadro);
     } catch (error) {
-      console.error('Erro detalhado ao carregar quadro:', error);
-      toast({
-        title: "Erro",
-        description: error instanceof Error ? error.message : "Não foi possível carregar o quadro.",
-        variant: "destructive"
-      });
+      console.error('Erro ao carregar quadro:', error);
+      toast.error('Erro ao carregar o quadro da obra');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -234,7 +243,7 @@ const PendenciasObra = () => {
       });
       
       setShowAddListDialog(false);
-      await carregarQuadro();
+      await carregarQuadro(Number(id));
     } catch (error) {
       console.error('Erro ao criar seção:', error);
       toast({
@@ -284,7 +293,7 @@ const PendenciasObra = () => {
       });
       
       setShowEditListDialog(false);
-      await carregarQuadro();
+      await carregarQuadro(Number(id));
     } catch (error) {
       console.error('[DEBUG] Erro ao renomear seção:', error);
       toast({
@@ -323,7 +332,7 @@ const PendenciasObra = () => {
       });
       
       setShowDeleteListDialog(false);
-      await carregarQuadro();
+      await carregarQuadro(Number(id));
     } catch (error) {
       console.error('Erro ao excluir seção:', error);
       toast({
@@ -389,7 +398,7 @@ const PendenciasObra = () => {
       });
 
       setShowAddCardDialog(false);
-      await carregarQuadro();
+      await carregarQuadro(Number(id));
     } catch (error) {
       console.error('Erro ao criar card:', error);
       toast({
@@ -424,7 +433,7 @@ const PendenciasObra = () => {
       });
 
       setShowDeleteCardDialog(false);
-      await carregarQuadro();
+      await carregarQuadro(Number(id));
     } catch (error) {
       console.error('Erro ao excluir card:', error);
       toast({
@@ -442,7 +451,7 @@ const PendenciasObra = () => {
         title: "Sucesso",
         description: "Card movido com sucesso!",
       });
-      await carregarQuadro();
+      await carregarQuadro(Number(id));
     } catch (error) {
       console.error('Erro ao mover card:', error);
       toast({
@@ -478,8 +487,15 @@ const PendenciasObra = () => {
   
   // Função auxiliar para obter a classe de cor da etiqueta
   const getEtiquetaCor = (nome: string) => {
-    const etiqueta = etiquetas.find(e => e.nome === nome);
-    return etiqueta ? etiqueta.cor : "bg-gray-500 text-white";
+    const nomeNormalizado = nome.toLowerCase().trim();
+    
+    if (nomeNormalizado.includes('urgente')) return 'etiqueta-urgente';
+    if (nomeNormalizado.includes('fazendo')) return 'etiqueta-fazendo';
+    if (nomeNormalizado.includes('concluído') || nomeNormalizado.includes('concluido')) return 'etiqueta-concluido';
+    if (nomeNormalizado.includes('pendente')) return 'etiqueta-pendente';
+    if (nomeNormalizado.includes('aguardando')) return 'etiqueta-aguardando';
+    
+    return 'etiqueta-padrao';
   };
   
   // Função auxiliar para renderizar labels
@@ -518,7 +534,7 @@ const PendenciasObra = () => {
       });
       
       setNovoChecklistNome('');
-      await carregarQuadro();
+      await carregarQuadro(Number(id));
       
       // Recarregar o card atual para mostrar a nova checklist
       const quadro = await obterQuadroObra(Number(id));
@@ -562,7 +578,7 @@ const PendenciasObra = () => {
 
       await adicionarItemChecklist(checklistId, capitalizarPrimeiraLetra(novoChecklistItem));
       setNovoChecklistItem('');
-      await carregarQuadro();
+      await carregarQuadro(Number(id));
       
       toast({
         title: "Sucesso",
@@ -741,7 +757,7 @@ const PendenciasObra = () => {
       }
       
       // Recarregar o quadro para atualizar os dados
-      await carregarQuadro();
+      await carregarQuadro(Number(id));
       
       // Atualizar o estado local do card atual
       const quadro = await obterQuadroObra(Number(id));
@@ -879,7 +895,7 @@ const PendenciasObra = () => {
         variant: "destructive"
       });
       // Recarregar o quadro em caso de erro
-      await carregarQuadro();
+      await carregarQuadro(Number(id));
     }
   };
 
@@ -904,221 +920,297 @@ const PendenciasObra = () => {
       const dataAtual = format(new Date(), 'dd/MM/yyyy');
       
       // Preparar o conteúdo HTML do relatório
+      const styles = `
+        @page {
+          margin: 15mm;
+          size: A4;
+        }
+        
+        body {
+          font-family: Arial, sans-serif;
+          line-height: 1.6;
+          color: #333;
+          margin: 0;
+          padding: 0 0 0 30px;
+        }
+
+        .header-container {
+          page-break-inside: avoid;
+          margin-bottom: 20px;
+        }
+        
+        .cabecalho {
+          background-color: #f8f9fa;
+          padding: 12px;
+          margin-bottom: 12px;
+          border-bottom: 2px solid #dee2e6;
+        }
+
+        .cabecalho h1 {
+          margin: 0 0 8px 0;
+          color: #2c3e50;
+          font-size: 24px;
+        }
+        
+        .cabecalho p {
+          margin: 4px 0;
+          color: #6c757d;
+        }
+
+        .info-obra {
+          background-color: #fff;
+          padding: 12px;
+          margin-bottom: 20px;
+          border: 1px solid #dee2e6;
+          border-radius: 4px;
+        }
+
+        .info-item {
+          display: flex;
+          margin-bottom: 8px;
+        }
+
+        .info-label {
+          font-weight: bold;
+          min-width: 120px;
+        }
+
+        .secao {
+          margin-bottom: 24px;
+          page-break-inside: avoid;
+        }
+
+        .secao h2 {
+          color: #2c3e50;
+          border-bottom: 2px solid #dee2e6;
+          padding-bottom: 8px;
+          margin-bottom: 16px;
+        }
+
+        .cartao {
+          background-color: #fff;
+          border: 1px solid #dee2e6;
+          border-radius: 4px;
+          padding: 16px;
+          margin-bottom: 16px;
+          page-break-inside: avoid;
+        }
+
+        .cartao h3 {
+          margin: 0 0 12px 0;
+          color: #2c3e50;
+        }
+
+        .cartao-descricao {
+          margin-bottom: 12px;
+          white-space: pre-wrap;
+        }
+        
+        .checklist {
+          margin-top: 12px;
+        }
+        
+        .checklist-titulo {
+          font-weight: bold;
+          margin-bottom: 8px;
+        }
+        
+        .checklist-item {
+          margin: 4px 0;
+          padding-left: 24px;
+          position: relative;
+        }
+        
+        .checklist-item::before {
+          content: '';
+          position: absolute;
+          left: 0;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 16px;
+          height: 16px;
+          border: 1px solid #adb5bd;
+          background-color: #fff;
+        }
+        
+        .checklist-item.checked::before {
+          background-color: #28a745;
+          border-color: #28a745;
+        }
+        
+        .checklist-item.checked::after {
+          content: '✓';
+          position: absolute;
+          left: 3px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: white;
+          font-size: 12px;
+        }
+
+        .etiquetas {
+          margin: 8px 0;
+        }
+
+        .etiqueta {
+          display: inline-block;
+          padding: 4px 8px;
+          border-radius: 4px;
+          font-size: 12px;
+          font-weight: 500;
+          margin-right: 8px;
+          margin-bottom: 4px;
+          color: white;
+        }
+        
+        .etiqueta-green { background-color: #28a745; }
+        .etiqueta-yellow { background-color: #ffc107; color: #000; }
+        .etiqueta-orange { background-color: #fd7e14; }
+        .etiqueta-red { background-color: #dc3545; }
+        .etiqueta-purple { background-color: #6f42c1; }
+        .etiqueta-blue { background-color: #007bff; }
+        .etiqueta-sky { background-color: #17a2b8; }
+        .etiqueta-lime { background-color: #84cc16; color: #000; }
+        .etiqueta-pink { background-color: #d63384; }
+        .etiqueta-black { background-color: #000000; }
+        .etiqueta-padrao { background-color: #6c757d; }
+        
+        .sem-pendencias {
+          color: #6c757d;
+          font-style: italic;
+        }
+        
+        .footer {
+          margin-top: 32px;
+          padding-top: 16px;
+          border-top: 1px solid #dee2e6;
+          color: #6c757d;
+          font-size: 12px;
+          text-align: center;
+        }
+      `;
+      
       let conteudoHTML = `
         <!DOCTYPE html>
         <html>
         <head>
           <title>Relatório de Pendências - ${obraNome}</title>
+          <meta charset="UTF-8">
           <style>
-            body {
-              font-family: Arial, sans-serif;
-              margin: 0;
-              padding: 20px;
-              color: #333;
+            ${styles}
+          </style>
+          <script>
+            function imprimirPDF() {
+              window.print();
             }
-            .cabecalho {
-              border-bottom: 2px solid #ddd;
-              padding-bottom: 15px;
-              margin-bottom: 25px;
-              text-align: center;
-            }
-            .cabecalho h1 {
-              font-size: 22px;
-              margin: 0 0 8px 0;
-              color: #222;
-            }
-            .cabecalho p {
-              font-size: 14px;
-              margin: 5px 0;
-              color: #666;
-            }
-            .secao {
-              margin-bottom: 30px;
-              border: 1px solid #eee;
-              border-radius: 6px;
-              padding-bottom: 15px;
-            }
-            .secao h2 {
-              font-size: 16px;
-              background-color: #f5f5f5;
-              padding: 12px;
-              margin: 0 0 15px 0;
-              border-radius: 6px 6px 0 0;
-              border-bottom: 2px solid #e0e0e0;
-            }
-            .cartao {
-              padding: 12px;
-              margin: 0 15px 15px 15px;
-              border: 1px solid #eee;
-              border-radius: 4px;
-              box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-            }
-            .cartao h3 {
-              font-size: 15px;
-              margin: 0 0 8px 0;
-              color: #333;
-              font-weight: 600;
-              border-bottom: 1px solid #f0f0f0;
-              padding-bottom: 6px;
-            }
-            .cartao p {
-              font-size: 12px;
-              margin: 0 0 5px 0;
-              color: #666;
-            }
-            .etiquetas {
-              display: flex;
-              flex-wrap: wrap;
-              gap: 5px;
-              margin-top: 8px;
-              margin-bottom: 8px;
-            }
-            .etiqueta {
-              font-size: 10px;
-              padding: 3px 8px;
-              border-radius: 3px;
-              background-color: #eee;
-            }
-            .etiqueta-urgente {
-              background-color: #ffcccc;
-              color: #cc0000;
-            }
-            .etiqueta-fazendo {
-              background-color: #fff8cc;
-              color: #806600;
-            }
-            .etiqueta-concluido {
-              background-color: #ccffcc;
-              color: #006600;
-            }
-            .checklist {
-              margin-top: 10px;
-              font-size: 12px;
-              background-color: #f9f9f9;
-              padding: 8px;
-              border-radius: 4px;
-            }
-            .checklist-titulo {
-              font-weight: bold;
-              margin-bottom: 5px;
-              font-size: 13px;
-              color: #555;
-            }
-            .checklist-item {
-              margin-left: 15px;
-              margin-bottom: 4px;
-              line-height: 1.4;
-            }
-            .checklist-item.checked {
-              text-decoration: line-through;
-              color: #999;
-            }
-            .sem-pendencias {
-              text-align: center;
-              padding: 15px;
-              font-style: italic;
-              color: #888;
-              background-color: #f9f9f9;
-              border-radius: 4px;
-              margin: 0 15px;
-            }
+          </script>
+        </head>
+        <body>
+          <button onclick="imprimirPDF()" class="print-button" style="
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background-color: #2196f3;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            z-index: 9999;
+          ">Salvar como PDF</button>
+
+          <div class="header-container">
+            <div class="cabecalho">
+              <h1>Relatório de Pendências</h1>
+              <p>${obraNome}</p>
+            </div>
+            
+            <div class="info-obra">
+              <div class="info-item">
+                <span class="info-label">Data:</span>
+                <span>${dataAtual}</span>
+              </div>
+            </div>
+          </div>
+
+          ${board?.lists.map(lista => `
+            <div class="secao">
+              <h2>${lista.title || (lista as any).nome}</h2>
+              ${lista.cards.length === 0 
+                ? '<p class="sem-pendencias">Nenhuma pendência nesta lista.</p>'
+                : lista.cards.map(card => `
+                  <div class="cartao">
+                    <h3>${card.title}</h3>
+                    ${card.description 
+                      ? `<div class="cartao-descricao">${card.description}</div>` 
+                      : ''}
+                      
+                    ${card.labels && card.labels.length > 0 
+                      ? `<div class="etiquetas">
+                          ${card.labels.map(label => {
+                            let cor = '';
+                            let textColor = '#fff';
+                            
+                            // Definir cores específicas para cada etiqueta
+                            if (label.title?.toLowerCase().includes('urgente')) {
+                              cor = '#dc3545'; // vermelho
+                            } else if (label.title?.toLowerCase().includes('fazendo')) {
+                              cor = '#ffc107'; // amarelo
+                              textColor = '#000';
+                            } else if (label.title?.toLowerCase().includes('concluído') || label.title?.toLowerCase().includes('concluido')) {
+                              cor = '#28a745'; // verde
+                            } else if (label.title?.toLowerCase().includes('pendente')) {
+                              cor = '#fd7e14'; // laranja
+                            } else if (label.title?.toLowerCase().includes('aguardando')) {
+                              cor = '#17a2b8'; // azul claro
+                            } else {
+                              cor = '#6c757d'; // cinza (padrão)
+                            }
+
+                            return `<span class="etiqueta" style="
+                              display: inline-block;
+                              padding: 4px 8px;
+                              border-radius: 4px;
+                              font-size: 12px;
+                              font-weight: 500;
+                              margin-right: 8px;
+                              margin-bottom: 4px;
+                              background-color: ${cor};
+                              color: ${textColor};
+                              border: 1px solid ${cor};"
+                            >${label.title || label.name}</span>`;
+                          }).join('')}
+                        </div>`
+                      : ''}
+                      
+                    ${card.checklists && card.checklists.length > 0 
+                      ? card.checklists.map(checklist => `
+                        <div class="checklist">
+                          <div class="checklist-titulo">${checklist.title}</div>
+                          ${checklist.items.map(item => `
+                            <div class="checklist-item ${item.checked ? 'checked' : ''}">${item.title}</div>
+                          `).join('')}
+                        </div>
+                      `).join('')
+                      : ''}
+                  </div>
+                `).join('')}
+            </div>
+          `).join('')}
+          
+          <div class="footer">
+            <p>Relatório gerado em ${dataAtual}</p>
+          </div>
+
+          <style>
             @media print {
-              body {
-                width: 100%;
-                height: 100%;
-                margin: 0;
-                padding: 15px;
-              }
-              .no-print {
-                display: none !important;
-              }
-              .page-break {
-                page-break-after: always;
+              .print-button {
+                display: none;
               }
             }
           </style>
-        </head>
-        <body>
-          <div class="cabecalho">
-            <h1>Relatório de Pendências</h1>
-            <p>Obra: ${obraNome}</p>
-            <p>Data: ${dataAtual}</p>
-          </div>
-      `;
-      
-      // Adicionar cada seção (lista) ao relatório
-      if (board?.lists) {
-        board.lists.forEach(lista => {
-          conteudoHTML += `
-            <div class="secao">
-              <h2>${lista.title || (lista as any).nome}</h2>
-          `;
-          
-          if (lista.cards && lista.cards.length > 0) {
-            lista.cards.forEach(card => {
-              conteudoHTML += `
-                <div class="cartao">
-                  <h3>${card.title}</h3>
-              `;
-              
-              if (card.description) {
-                conteudoHTML += `<p>${card.description}</p>`;
-              }
-              
-              // Adicionar etiquetas
-              if (card.labels && card.labels.length > 0) {
-                conteudoHTML += `<div class="etiquetas">`;
-                card.labels.forEach(label => {
-                  const classeEtiqueta = label.title.toLowerCase().includes('urgente') 
-                    ? 'etiqueta-urgente' 
-                    : label.title.toLowerCase().includes('concluído') 
-                      ? 'etiqueta-concluido'
-                      : 'etiqueta-fazendo';
-                  
-                  conteudoHTML += `<span class="etiqueta ${classeEtiqueta}">${label.title}</span>`;
-                });
-                conteudoHTML += `</div>`;
-              }
-              
-              // Adicionar checklists
-              if (card.checklists && card.checklists.length > 0) {
-                card.checklists.forEach(checklist => {
-                  conteudoHTML += `
-                    <div class="checklist">
-                      <div class="checklist-titulo">${checklist.title}</div>
-                  `;
-                  
-                  checklist.items.forEach(item => {
-                    conteudoHTML += `
-                      <div class="checklist-item ${item.checked ? 'checked' : ''}">
-                        ${item.checked ? '✓' : '○'} ${item.title}
-                      </div>
-                    `;
-                  });
-                  
-                  conteudoHTML += `</div>`;
-                });
-              }
-              
-              // Fechar div do cartão
-              conteudoHTML += `</div>`;
-            });
-          } else {
-            conteudoHTML += `<p class="sem-pendencias">Não há pendências nesta seção.</p>`;
-          }
-          
-          // Fechar div da seção
-          conteudoHTML += `</div>`;
-        });
-      }
-      
-      // Fechar o HTML
-      conteudoHTML += `
-          <div class="no-print">
-            <button onclick="window.print()" style="padding: 12px 24px; margin: 25px auto; cursor: pointer; background-color: #4a7aff; color: white; border: none; border-radius: 4px; font-weight: bold; display: block; font-size: 16px;">
-              Imprimir / Salvar como PDF
-            </button>
-          </div>
         </body>
         </html>
       `;

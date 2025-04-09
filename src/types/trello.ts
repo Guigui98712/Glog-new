@@ -29,6 +29,9 @@ export interface TrelloCard {
   updated_at: string;
 }
 
+// Tipo utilitário para inicializar um TrelloCard
+export type InitializedTrelloCard = Required<TrelloCard>;
+
 export interface TrelloChecklist {
   id: number;
   card_id: number;

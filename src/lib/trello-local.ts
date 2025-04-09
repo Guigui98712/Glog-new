@@ -24,6 +24,7 @@ interface TrelloCard {
 
 interface TrelloBoard {
   lists: (TrelloList & { cards: TrelloCard[] })[];
+  nome: string;
 }
 
 interface TrelloChecklist {
@@ -182,28 +183,36 @@ export const criarListasPadrao = async (obraId: number): Promise<void> => {
 };
 
 // Função para obter o quadro de uma obra
-export const obterQuadroObra = async (obraId: number): Promise<TrelloBoard> => {
+export const obterQuadroObra = async (obraId: number, onProgress?: (message: string, progress: number) => void): Promise<TrelloBoard> => {
   try {
+    onProgress?.('Iniciando carregamento do quadro...', 0);
     console.log('[DEBUG] Iniciando obterQuadroObra para obra ID:', obraId);
     
+    if (!obraId) {
+      throw new Error('ID da obra não fornecido');
+    }
+    
     // Obter o board_id da obra
+    onProgress?.('Buscando informações da obra...', 10);
     const { data: obra, error: obraError } = await supabase
       .from('obras')
-      .select('trello_board_id')
+      .select('trello_board_id, nome')
       .eq('id', obraId)
       .single();
     
     if (obraError) {
       console.error('[DEBUG] Erro ao buscar obra:', obraError);
-      throw obraError;
+      throw new Error(`Erro ao buscar obra: ${obraError.message}`);
     }
     
     if (!obra || !obra.trello_board_id) {
+      onProgress?.('Criando novo quadro para a obra...', 20);
       console.log('[DEBUG] Obra não tem board_id, criando board...');
       // Apenas criar o board sem criar listas padrão
       const boardId = await obterOuCriarBoard(obraId);
       
       // Buscar novamente após criar o board
+      onProgress?.('Carregando listas do novo quadro...', 30);
       const { data: lists, error: listsError } = await supabase
         .from('trello_lists')
         .select('*')
@@ -212,18 +221,21 @@ export const obterQuadroObra = async (obraId: number): Promise<TrelloBoard> => {
       
       if (listsError) {
         console.error('[DEBUG] Erro ao buscar listas:', listsError);
-        throw listsError;
+        throw new Error(`Erro ao buscar listas: ${listsError.message}`);
       }
       
+      onProgress?.('Quadro criado com sucesso', 100);
       // Retornar um quadro vazio ou com as listas encontradas
       return { 
-        lists: lists ? lists.map(list => ({ ...list, title: list.nome, cards: [] })) : [] 
+        lists: lists ? lists.map(list => ({ ...list, title: list.nome, cards: [] })) : [],
+        nome: obra.nome
       };
     }
     
     console.log('[DEBUG] Board ID encontrado:', obra.trello_board_id);
     
     // Buscar as listas do board
+    onProgress?.('Carregando listas do quadro...', 40);
     const { data: lists, error: listsError } = await supabase
       .from('trello_lists')
       .select('*')
@@ -232,21 +244,24 @@ export const obterQuadroObra = async (obraId: number): Promise<TrelloBoard> => {
     
     if (listsError) {
       console.error('[DEBUG] Erro ao buscar listas:', listsError);
-      throw listsError;
+      throw new Error(`Erro ao buscar listas: ${listsError.message}`);
     }
     
     if (!lists || lists.length === 0) {
       console.log('[DEBUG] Nenhuma lista encontrada para o board');
+      onProgress?.('Quadro carregado (sem listas)', 100);
       // Retornar um quadro vazio sem listas
-      return { lists: [] };
+      return { lists: [], nome: obra.nome };
     }
     
     console.log('[DEBUG] Listas encontradas:', lists.length);
-    console.log('[DEBUG] Detalhes das listas:', JSON.stringify(lists));
     
     // Para cada lista, buscar os cards
+    onProgress?.('Carregando cartões...', 50);
+    const totalLists = lists.length;
     const listsWithCards = await Promise.all(
-      lists.map(async (list) => {
+      lists.map(async (list, index) => {
+        onProgress?.(`Carregando cartões da lista ${list.nome}...`, 50 + (30 * (index / totalLists)));
         console.log('[DEBUG] Buscando cards para lista ID:', list.id, 'Nome:', list.nome);
         
         const { data: cards, error: cardsError } = await supabase
@@ -260,100 +275,96 @@ export const obterQuadroObra = async (obraId: number): Promise<TrelloBoard> => {
           return { ...list, title: list.nome, cards: [] };
         }
         
-        console.log(`[DEBUG] Cards encontrados para lista ${list.id}:`, cards?.length || 0);
-        if (cards && cards.length > 0) {
-          console.log(`[DEBUG] Primeiro card da lista ${list.nome}:`, JSON.stringify(cards[0]));
-        }
-        
         // Para cada card, buscar checklists, labels, comments e attachments
+        const totalCards = cards?.length || 0;
         const cardsWithDetails = await Promise.all(
-          (cards || []).map(async (card) => {
-            console.log('[DEBUG] Carregando detalhes do card:', card.id);
+          (cards || []).map(async (card, cardIndex) => {
+            onProgress?.(`Carregando detalhes do cartão ${cardIndex + 1}/${totalCards} em ${list.nome}...`, 
+              80 + (20 * (cardIndex / totalCards)));
             
-            // Buscar etiquetas do card
-            const { data: cardLabels, error: cardLabelsError } = await supabase
-              .from('trello_card_labels')
-              .select(`
-                label_id,
-                trello_labels (
-                  id,
-                  title,
-                  color,
-                  created_at
-                )
-              `)
-              .eq('card_id', card.id);
-              
-            if (cardLabelsError) {
-              console.error(`[DEBUG] Erro ao buscar etiquetas do card ${card.id}:`, cardLabelsError);
-            }
-            
-            const labels = cardLabels
-              ? cardLabels
-                  .map(cl => cl.trello_labels)
-                  .filter(label => label !== null)
-              : [];
-            
-            console.log(`[DEBUG] Etiquetas encontradas para o card ${card.id}:`, labels);
-
-            // Buscar checklists
-            const { data: checklists, error: checklistsError } = await supabase
-              .from('trello_checklists')
-              .select('*')
-              .eq('card_id', card.id)
-              .order('position', { ascending: true });
-              
-            if (checklistsError) {
-              console.error(`[DEBUG] Erro ao buscar checklists para card ${card.id}:`, checklistsError);
-            }
-            
-            // Para cada checklist, buscar seus itens
-            const checklistsWithItems = await Promise.all(
-              (checklists || []).map(async (checklist) => {
-                const { data: items, error: itemsError } = await supabase
-                  .from('trello_checklist_items')
-                  .select('*')
-                  .eq('checklist_id', checklist.id)
-                  .order('position', { ascending: true });
+            try {
+              // Buscar etiquetas, checklists, comentários e anexos em paralelo
+              const [
+                cardLabelsResult,
+                checklistsResult,
+                commentsResult,
+                attachmentsResult
+              ] = await Promise.all([
+                supabase
+                  .from('trello_card_labels')
+                  .select(`
+                    label_id,
+                    trello_labels (
+                      id,
+                      title,
+                      color,
+                      created_at
+                    )
+                  `)
+                  .eq('card_id', card.id),
                   
-                if (itemsError) {
-                  console.error(`[DEBUG] Erro ao buscar itens para checklist ${checklist.id}:`, itemsError);
-                  return { ...checklist, items: [] };
-                }
+                supabase
+                  .from('trello_checklists')
+                  .select('*')
+                  .eq('card_id', card.id)
+                  .order('position', { ascending: true }),
+                  
+                supabase
+                  .from('trello_comments')
+                  .select('*')
+                  .eq('card_id', card.id)
+                  .order('created_at', { ascending: false }),
+                  
+                supabase
+                  .from('trello_attachments')
+                  .select('*')
+                  .eq('card_id', card.id)
+                  .order('created_at', { ascending: false })
+              ]);
+              
+              const labels = cardLabelsResult.data
+                ? cardLabelsResult.data
+                    .map(cl => cl.trello_labels)
+                    .filter(label => label !== null)
+                : [];
                 
-                return { ...checklist, items: items || [] };
-              })
-            );
-            
-            // Buscar comentários
-            const { data: comments, error: commentsError } = await supabase
-              .from('trello_comments')
-              .select('*')
-              .eq('card_id', card.id)
-              .order('created_at', { ascending: false });
+              // Buscar itens das checklists em paralelo
+              const checklistsWithItems = checklistsResult.data
+                ? await Promise.all(
+                    checklistsResult.data.map(async (checklist) => {
+                      const { data: items, error: itemsError } = await supabase
+                        .from('trello_checklist_items')
+                        .select('*')
+                        .eq('checklist_id', checklist.id)
+                        .order('position', { ascending: true });
+                        
+                      if (itemsError) {
+                        console.error(`[DEBUG] Erro ao buscar itens para checklist ${checklist.id}:`, itemsError);
+                        return { ...checklist, items: [] };
+                      }
+                      
+                      return { ...checklist, items: items || [] };
+                    })
+                  )
+                : [];
               
-            if (commentsError) {
-              console.error(`[DEBUG] Erro ao buscar comentários para card ${card.id}:`, commentsError);
+              return {
+                ...card,
+                labels,
+                checklists: checklistsWithItems,
+                comments: commentsResult.data || [],
+                attachments: attachmentsResult.data || []
+              };
+            } catch (error) {
+              console.error(`[DEBUG] Erro ao carregar detalhes do card ${card.id}:`, error);
+              return {
+                ...card,
+                labels: [],
+                checklists: [],
+                comments: [],
+                attachments: []
+              };
             }
-            
-            // Buscar anexos
-            const { data: attachments, error: attachmentsError } = await supabase
-              .from('trello_attachments')
-              .select('*')
-              .eq('card_id', card.id)
-              .order('created_at', { ascending: false });
-              
-            if (attachmentsError) {
-              console.error(`[DEBUG] Erro ao buscar anexos para card ${card.id}:`, attachmentsError);
-            }
-            
-            return {
-              ...card,
-              labels: labels,
-              checklists: checklistsWithItems || [],
-              comments: comments || [],
-              attachments: attachments || []
-            };
           })
         );
         
@@ -361,10 +372,12 @@ export const obterQuadroObra = async (obraId: number): Promise<TrelloBoard> => {
       })
     );
     
+    onProgress?.('Quadro carregado com sucesso', 100);
     console.log('[DEBUG] Quadro completo carregado com sucesso');
-    return { lists: listsWithCards };
+    return { lists: listsWithCards, nome: obra.nome };
   } catch (error) {
     console.error('[DEBUG] Erro ao obter quadro da obra:', error);
+    onProgress?.(`Erro ao carregar quadro: ${error instanceof Error ? error.message : 'Erro desconhecido'}`, 0);
     throw error;
   }
 };

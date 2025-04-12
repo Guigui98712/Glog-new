@@ -385,21 +385,21 @@ const ObraDetalhes = () => {
           
           // Contar todos os cards, exceto os que estão em listas chamadas "Concluído"
           if (listaNome !== 'Concluído' && lista.cards && Array.isArray(lista.cards)) {
-            // Filtrar cards que não têm a etiqueta "Feito"
-            const cardsSemFeito = lista.cards.filter(card => {
+            // Filtrar cards que não têm a etiqueta "Feito" ou "Concluído"
+            const cardsSemConclusao = lista.cards.filter(card => {
               if (!card.labels || !Array.isArray(card.labels) || card.labels.length === 0) {
                 return true; // Incluir cards sem etiquetas
               }
               
-              // Verificar se alguma etiqueta é "Feito"
+              // Verificar se alguma etiqueta é "Feito" ou "Concluído"
               return !card.labels.some(label => {
                 const labelText = typeof label === 'string' ? label : (label.title || label.nome || String(label));
-                return labelText === 'Feito';
+                return labelText.toLowerCase() === 'feito' || labelText.toLowerCase() === 'concluído';
               });
             });
             
-            console.log(`[DEBUG] Lista ${listaNome}: ${cardsSemFeito.length} cards sem etiqueta "Feito"`);
-            totalPendencias += cardsSemFeito.length;
+            console.log(`[DEBUG] Lista ${listaNome}: ${cardsSemConclusao.length} cards sem etiqueta de conclusão`);
+            totalPendencias += cardsSemConclusao.length;
           }
         });
       } else {

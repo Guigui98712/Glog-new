@@ -163,7 +163,7 @@ const PendenciasObra = () => {
         toast.warning('Obra não encontrada');
         return;
       }
-
+      
       setObra(obra);
       setObraNome(obra.nome);
       
@@ -907,15 +907,15 @@ const PendenciasObra = () => {
         toast.error('Nenhum quadro carregado');
         return;
       }
-
+      
       const fileName = `pendencias_${obraNome.replace(/\s+/g, '_')}_${format(new Date(), 'dd-MM-yyyy')}.pdf`;
-
+      
       const content = `
         <!DOCTYPE html>
         <html>
-          <head>
+        <head>
             <meta charset="UTF-8">
-            <style>
+          <style>
               ${pdfStyles}
               
               /* Estilos adicionais específicos para o PDF */
@@ -925,8 +925,8 @@ const PendenciasObra = () => {
               }
               
               .checklist-item {
-                margin: 5px 0;
-                display: flex;
+              margin: 5px 0;
+              display: flex;
                 align-items: center;
                 gap: 8px;
               }
@@ -938,16 +938,16 @@ const PendenciasObra = () => {
               .label {
                 display: inline-block;
                 margin-right: 8px;
-                margin-bottom: 4px;
-              }
-            </style>
-          </head>
-          <body>
+              margin-bottom: 4px;
+            }
+          </style>
+        </head>
+        <body>
             <div class="report-header">
-              <h1>Relatório de Pendências</h1>
+            <h1>Relatório de Pendências</h1>
               <p class="obra-nome">${obraNome}</p>
               <p class="data">Data: ${format(new Date(), 'dd/MM/yyyy')}</p>
-            </div>
+          </div>
             
             ${board.lists.map(list => `
               <div class="section">
@@ -969,12 +969,12 @@ const PendenciasObra = () => {
                     ` : ''}
                     
                     ${card.checklists?.map(checklist => `
-                      <div class="checklist">
+                    <div class="checklist">
                         <h4 class="checklist-title">${checklist.title}</h4>
                         ${checklist.items?.map(item => `
                           <div class="checklist-item ${item.checked ? 'completed' : ''}">
-                            ${item.checked ? '✓' : '○'} ${item.title}
-                          </div>
+                        ${item.checked ? '✓' : '○'} ${item.title}
+                      </div>
                         `).join('')}
                       </div>
                     `).join('')}
@@ -1009,23 +1009,36 @@ const PendenciasObra = () => {
             compress: true
           });
 
-          // Capturar o conteúdo como imagem
+          // Capturar o conteúdo como imagem com qualidade aprimorada
           const canvas = await html2canvas(tempDiv, {
-            scale: 2,
+            scale: 3,
             useCORS: true,
             logging: false,
-            backgroundColor: '#ffffff'
+            backgroundColor: '#ffffff',
+            windowWidth: 1200,
+            windowHeight: tempDiv.scrollHeight,
+            allowTaint: true,
+            foreignObjectRendering: true
           });
 
-          // Converter canvas para imagem
-          const imgData = canvas.toDataURL('image/jpeg', 0.95);
+          // Converter canvas para imagem com alta qualidade
+          const imgData = canvas.toDataURL('image/jpeg', 1.0);
           
-          // Calcular dimensões
+          // Calcular dimensões para múltiplas páginas
           const pdfWidth = pdf.internal.pageSize.getWidth();
-          const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+          const pdfHeight = pdf.internal.pageSize.getHeight();
+          const imgWidth = canvas.width;
+          const imgHeight = canvas.height;
+          const ratio = imgWidth / pdfWidth;
+          const totalPages = Math.ceil(imgHeight / ratio / pdfHeight);
           
-          // Adicionar imagem ao PDF
-          pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+          // Adicionar imagem ao PDF em múltiplas páginas
+          for (let page = 0; page < totalPages; page++) {
+            if (page > 0) pdf.addPage();
+            
+            const position = -page * pdfHeight * ratio;
+            pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, imgHeight / ratio);
+          }
 
           // Converter para base64
           const pdfOutput = pdf.output('datauristring');
@@ -1089,15 +1102,93 @@ const PendenciasObra = () => {
       }
 
       if (Capacitor.isNativePlatform()) {
-        // Em dispositivos nativos, vamos capturar o conteúdo do quadro
-        if (!boardRef.current) {
-          console.error('Referência do quadro não encontrada');
-          return;
-        }
+        // Criar o conteúdo HTML com estilos
+        const content = `
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <meta charset="UTF-8">
+              <style>
+                ${pdfStyles}
+                
+                /* Estilos adicionais específicos para o PDF */
+                .card {
+                  margin-bottom: 15px;
+                  page-break-inside: avoid;
+                }
+                
+                .checklist-item {
+                  margin: 5px 0;
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                }
+                
+                .labels-container {
+                  margin: 8px 0;
+                }
+                
+                .label {
+                  display: inline-block;
+                  margin-right: 8px;
+                  margin-bottom: 4px;
+                }
+              </style>
+            </head>
+            <body>
+              <div class="report-header">
+                <h1>Relatório de Pendências</h1>
+                <p class="obra-nome">${obraNome}</p>
+                <p class="data">Data: ${format(new Date(), 'dd/MM/yyyy')}</p>
+              </div>
+              
+              ${board.lists.map(list => `
+                <div class="section">
+                  <h2 class="section-title">${list.title}</h2>
+                  ${list.cards.map(card => `
+                    <div class="card">
+                      <h3 class="card-title">${card.title}</h3>
+                      
+                      ${card.description ? `
+                        <p class="card-description">${card.description}</p>
+                      ` : ''}
+                      
+                      ${card.labels?.length ? `
+                        <div class="labels-container">
+                          ${card.labels.map(label => `
+                            <span class="label label-${label.color || 'default'}">${label.title}</span>
+                          `).join('')}
+                        </div>
+                      ` : ''}
+                      
+                      ${card.checklists?.map(checklist => `
+                        <div class="checklist">
+                          <h4 class="checklist-title">${checklist.title}</h4>
+                          ${checklist.items?.map(item => `
+                            <div class="checklist-item ${item.checked ? 'completed' : ''}">
+                              ${item.checked ? '✓' : '○'} ${item.title}
+                            </div>
+                          `).join('')}
+                        </div>
+                      `).join('')}
+                      
+                      ${card.due_date ? `
+                        <p class="card-due-date">
+                          Data de vencimento: ${formatarData(card.due_date)}
+                        </p>
+                      ` : ''}
+                    </div>
+                  `).join('')}
+                </div>
+              `).join('')}
+            </body>
+          </html>
+        `;
 
-        // Salvar configuração original
-        const originalBgColor = boardRef.current.style.backgroundColor;
-        boardRef.current.style.backgroundColor = 'white';
+        // Criar elemento temporário para renderizar o HTML
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = content;
+        document.body.appendChild(tempDiv);
 
         // Gerar PDF usando jsPDF e html2canvas
         try {
@@ -1118,14 +1209,12 @@ const PendenciasObra = () => {
           pdf.setFontSize(12);
           pdf.text(`Data: ${format(new Date(), 'dd/MM/yyyy')}`, 20, 30);
 
-          // Capturar o conteúdo do quadro
-          const canvas = await html2canvas(boardRef.current, {
+          // Capturar o conteúdo do HTML gerado
+          const canvas = await html2canvas(tempDiv, {
             scale: 2,
             useCORS: true,
             logging: false,
-            backgroundColor: '#ffffff',
-            windowWidth: boardRef.current.scrollWidth,
-            windowHeight: boardRef.current.scrollHeight
+            backgroundColor: '#ffffff'
           });
 
           const imgData = canvas.toDataURL('image/jpeg', 0.95);

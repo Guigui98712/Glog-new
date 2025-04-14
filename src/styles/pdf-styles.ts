@@ -1,142 +1,138 @@
 export const pdfStyles = `
   /* Estilos gerais */
   body {
-    font-family: 'Helvetica', sans-serif;
+    font-family: 'Helvetica', Arial, sans-serif;
     line-height: 1.6;
     color: #333;
-    max-width: 800px;
+    max-width: 210mm;
     margin: 0 auto;
     padding: 20px;
+    background-color: #fff;
   }
 
   /* Cabeçalho do relatório */
-  .report-header {
+  .header {
     margin-bottom: 30px;
-    border-bottom: 2px solid #e2e8f0;
+    border-bottom: 2px solid #eee;
     padding-bottom: 15px;
+    text-align: center;
   }
 
-  .report-header h1 {
+  .header h1 {
+    margin: 0 0 10px;
+    color: #2c3e50;
     font-size: 24px;
-    color: #1a365d;
-    margin: 0 0 10px 0;
   }
 
-  .report-header .obra-nome {
-    font-size: 18px;
-    color: #4a5568;
-    margin: 0 0 5px 0;
-  }
-
-  .report-header .data {
-    color: #718096;
+  .obra-info, .data {
+    margin: 5px 0;
+    color: #666;
     font-size: 14px;
   }
 
   /* Seções */
   .section {
-    margin-bottom: 25px;
+    margin: 20px 0;
     padding: 15px;
-    background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    page-break-inside: avoid;
   }
 
   .section-title {
-    font-size: 20px;
-    color: #2d3748;
-    margin: 0 0 15px 0;
+    margin: 0 0 15px;
+    color: #2c3e50;
+    font-size: 18px;
+    border-bottom: 1px solid #dee2e6;
     padding-bottom: 8px;
-    border-bottom: 1px solid #e2e8f0;
   }
 
   /* Cards */
   .card {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    padding: 12px;
-    margin-bottom: 12px;
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 15px;
+    margin: 10px 0;
+    page-break-inside: avoid;
   }
 
   .card-title {
+    margin: 0 0 10px;
+    color: #2c3e50;
     font-size: 16px;
-    font-weight: bold;
-    color: #2d3748;
-    margin: 0 0 8px 0;
+  }
+
+  .card-description {
+    margin: 10px 0;
+    color: #666;
+    font-size: 14px;
+    white-space: pre-wrap;
   }
 
   /* Etiquetas */
   .labels-container {
     display: flex;
-    gap: 8px;
     flex-wrap: wrap;
-    margin-bottom: 8px;
+    gap: 5px;
+    margin: 10px 0;
   }
 
   .label {
-    padding: 4px 8px;
-    border-radius: 4px;
+    padding: 3px 8px;
+    border-radius: 3px;
     font-size: 12px;
     font-weight: 500;
   }
 
-  .label-green { background: #C6F6D5; color: #22543D; }
-  .label-yellow { background: #FEFCBF; color: #744210; }
-  .label-red { background: #FED7D7; color: #822727; }
-  .label-blue { background: #BEE3F8; color: #2A4365; }
-  .label-purple { background: #E9D8FD; color: #44337A; }
-  .label-orange { background: #FEEBC8; color: #7B341E; }
+  .label-green { background-color: #e3fcef; color: #0a7b3e; }
+  .label-yellow { background-color: #fff8e6; color: #946800; }
+  .label-red { background-color: #ffe9e9; color: #c92a2a; }
+  .label-blue { background-color: #e7f5ff; color: #1864ab; }
+  .label-purple { background-color: #f3f0ff; color: #5f3dc4; }
+  .label-default { background-color: #f8f9fa; color: #495057; }
 
   /* Checklist */
   .checklist {
-    margin-top: 10px;
+    margin: 15px 0;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    padding: 10px;
+    background-color: #f8f9fa;
   }
 
   .checklist-title {
+    margin: 0 0 10px;
     font-size: 14px;
-    font-weight: 600;
-    color: #4a5568;
-    margin-bottom: 8px;
+    color: #495057;
   }
 
   .checklist-item {
-    display: flex;
-    align-items: center;
-    margin-bottom: 4px;
+    margin: 5px 0;
+    font-size: 13px;
+    color: #495057;
   }
 
   .checklist-item.completed {
-    color: #718096;
+    color: #82c91e;
     text-decoration: line-through;
   }
 
-  /* Status */
-  .status {
-    display: inline-block;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 14px;
-    font-weight: 500;
-  }
-
-  .status-concluido {
-    background: #C6F6D5;
-    color: #22543D;
-  }
-
-  .status-fazendo {
-    background: #FEFCBF;
-    color: #744210;
-  }
-
-  /* Paginação */
-  .page-number {
-    text-align: center;
+  /* Data de vencimento */
+  .card-due-date {
+    margin: 10px 0 0;
     font-size: 12px;
-    color: #718096;
-    margin-top: 20px;
-    padding-top: 10px;
-    border-top: 1px solid #e2e8f0;
+    color: #666;
+  }
+
+  /* Estilos de impressão */
+  @media print {
+    body {
+      background-color: #fff !important;
+    }
+
+    .section, .card, .checklist {
+      page-break-inside: avoid;
+    }
   }
 `; 

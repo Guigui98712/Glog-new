@@ -107,6 +107,10 @@ const PendenciasObra = () => {
 
   const boardRef = useRef<HTMLDivElement>(null);
 
+  const [error, setError] = useState<string | null>(null);
+  const [lastLoadTime, setLastLoadTime] = useState<number>(0);
+  const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos em milissegundos
+
   // Função para capitalizar a primeira letra de cada frase
   const capitalizarPrimeiraLetra = (texto: string) => {
     if (!texto) return texto;
@@ -178,27 +182,39 @@ const PendenciasObra = () => {
     }
   };
 
-  const carregarQuadro = async (id: number) => {
+  const carregarQuadro = async (id: number, forceReload = false) => {
     if (!id) {
+      setLoading(false);
+      return;
+    }
+
+    // Verificar se podemos usar o cache
+    const now = Date.now();
+    if (!forceReload && board && lastLoadTime && (now - lastLoadTime) < CACHE_DURATION) {
+      console.log('Usando cache do quadro');
       setLoading(false);
       return;
     }
 
     try {
       setLoading(true);
+      setError(null);
       console.log('Carregando quadro da obra:', id);
       
-      const quadro = await obterQuadroObra(id);
+      const quadro = await obterQuadroObra(id, (message, progress) => {
+        console.log(`Progresso: ${message} (${progress}%)`);
+      });
+
       if (!quadro || !quadro.lists) {
-        toast.warning('Não foi possível carregar o quadro da obra');
-        setLoading(false);
-        return;
+        throw new Error('Não foi possível carregar o quadro da obra');
       }
 
       setBoard(quadro);
+      setLastLoadTime(now);
       console.log('Quadro carregado com sucesso:', quadro);
     } catch (error) {
       console.error('Erro ao carregar quadro:', error);
+      setError(error instanceof Error ? error.message : 'Erro ao carregar o quadro da obra');
       toast.error('Erro ao carregar o quadro da obra');
     } finally {
       setLoading(false);
@@ -904,51 +920,27 @@ const PendenciasObra = () => {
   const gerarPDF = async () => {
     try {
       if (!board) {
-        toast.error('Nenhum quadro carregado');
+        toast.error('Nenhum dado disponível para gerar o PDF');
         return;
       }
-      
-      const fileName = `pendencias_${obraNome.replace(/\s+/g, '_')}_${format(new Date(), 'dd-MM-yyyy')}.pdf`;
-      
+
+      // Criar o conteúdo HTML para o PDF
       const content = `
         <!DOCTYPE html>
         <html>
-        <head>
+          <head>
             <meta charset="UTF-8">
-          <style>
+            <style>
               ${pdfStyles}
-              
-              /* Estilos adicionais específicos para o PDF */
-              .card {
-                margin-bottom: 15px;
-                page-break-inside: avoid;
-              }
-              
-              .checklist-item {
-              margin: 5px 0;
-              display: flex;
-                align-items: center;
-                gap: 8px;
-              }
-              
-              .labels-container {
-                margin: 8px 0;
-              }
-              
-              .label {
-                display: inline-block;
-                margin-right: 8px;
-              margin-bottom: 4px;
-            }
-          </style>
-        </head>
-        <body>
-            <div class="report-header">
-            <h1>Relatório de Pendências</h1>
-              <p class="obra-nome">${obraNome}</p>
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h1>Relatório de Pendências</h1>
+              <p class="obra-info">Obra: ${obraNome}</p>
               <p class="data">Data: ${format(new Date(), 'dd/MM/yyyy')}</p>
-          </div>
-            
+            </div>
+ 
             ${board.lists.map(list => `
               <div class="section">
                 <h2 class="section-title">${list.title}</h2>
@@ -969,12 +961,12 @@ const PendenciasObra = () => {
                     ` : ''}
                     
                     ${card.checklists?.map(checklist => `
-                    <div class="checklist">
+                      <div class="checklist">
                         <h4 class="checklist-title">${checklist.title}</h4>
                         ${checklist.items?.map(item => `
                           <div class="checklist-item ${item.checked ? 'completed' : ''}">
-                        ${item.checked ? '✓' : '○'} ${item.title}
-                      </div>
+                            ${item.checked ? '✓' : '○'} ${item.title}
+                          </div>
                         `).join('')}
                       </div>
                     `).join('')}
@@ -988,95 +980,72 @@ const PendenciasObra = () => {
                 `).join('')}
               </div>
             `).join('')}
-            
-            <div class="page-number">Página 1</div>
           </body>
         </html>
       `;
 
-      if (Capacitor.isNativePlatform()) {
-        // Criar um elemento temporário para renderizar o HTML
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = content;
-        document.body.appendChild(tempDiv);
+      // Criar elemento temporário para renderizar o HTML
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = content;
+      document.body.appendChild(tempDiv);
 
-        try {
-          // Configurar jsPDF
-          const pdf = new jsPDF({
-            orientation: 'portrait',
-            unit: 'mm',
-            format: 'a4',
-            compress: true
-          });
+      try {
+        // Configurar opções do html2canvas
+        const options = {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          backgroundColor: '#ffffff',
+          width: tempDiv.scrollWidth,
+          height: tempDiv.scrollHeight
+        };
 
-          // Capturar o conteúdo como imagem com qualidade aprimorada
-          const canvas = await html2canvas(tempDiv, {
-            scale: 3,
-            useCORS: true,
-            logging: false,
-            backgroundColor: '#ffffff',
-            windowWidth: 1200,
-            windowHeight: tempDiv.scrollHeight,
-            allowTaint: true,
-            foreignObjectRendering: true
-          });
+        // Gerar imagem do conteúdo
+        const canvas = await html2canvas(tempDiv, options);
+        
+        // Criar PDF
+        const pdf = new jsPDF({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: 'a4',
+          compress: true
+        });
 
-          // Converter canvas para imagem com alta qualidade
-          const imgData = canvas.toDataURL('image/jpeg', 1.0);
-          
-          // Calcular dimensões para múltiplas páginas
-          const pdfWidth = pdf.internal.pageSize.getWidth();
-          const pdfHeight = pdf.internal.pageSize.getHeight();
-          const imgWidth = canvas.width;
-          const imgHeight = canvas.height;
-          const ratio = imgWidth / pdfWidth;
-          const totalPages = Math.ceil(imgHeight / ratio / pdfHeight);
-          
-          // Adicionar imagem ao PDF em múltiplas páginas
-          for (let page = 0; page < totalPages; page++) {
-            if (page > 0) pdf.addPage();
-            
-            const position = -page * pdfHeight * ratio;
-            pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, imgHeight / ratio);
-          }
+        // Configurar fonte e tamanho
+        pdf.setFont('helvetica');
+        pdf.setFontSize(12);
 
-          // Converter para base64
-          const pdfOutput = pdf.output('datauristring');
-          const base64Data = pdfOutput.split(',')[1];
+        // Adicionar a imagem ao PDF
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+        const imgWidth = 210; // A4 width in mm
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        
+        let heightLeft = imgHeight;
+        let position = 0;
 
-          // Salvar arquivo
-          const { uri } = await Filesystem.writeFile({
-            path: fileName,
-            data: base64Data,
-            directory: Directory.Documents,
-            encoding: Encoding.UTF8
-          });
+        // Primeira página
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+        heightLeft -= 297; // A4 height in mm
 
-          // Compartilhar
-          await Share.share({
-            title: 'Relatório de Pendências',
-            text: 'Relatório de Pendências da Obra',
-            url: uri,
-            dialogTitle: 'Compartilhar PDF'
-          });
-
-          toast.success('PDF gerado com sucesso!');
-        } finally {
-          // Limpar elemento temporário
-          document.body.removeChild(tempDiv);
+        // Adicionar páginas adicionais se necessário
+        while (heightLeft >= 0) {
+          position = heightLeft - imgHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+          heightLeft -= 297;
         }
-      } else {
-        const win = window.open('', '_blank');
-        if (win) {
-          win.document.write(content);
-          win.document.close();
-          setTimeout(() => {
-            win.print();
-          }, 250);
-        }
+
+        // Salvar o PDF
+        pdf.save(`pendencias_${obraNome.replace(/\s+/g, '_')}_${format(new Date(), 'dd-MM-yyyy')}.pdf`);
+
+        toast.success('PDF gerado com sucesso!');
+      } catch (error) {
+        console.error('Erro ao gerar PDF:', error);
+        toast.error('Erro ao gerar o PDF');
+      } finally {
+        // Limpar elemento temporário
+        document.body.removeChild(tempDiv);
       }
-
-      toast.success('PDF gerado com sucesso!');
     } catch (error) {
       console.error('Erro ao gerar PDF:', error);
       toast.error('Erro ao gerar o PDF');
@@ -1323,28 +1292,22 @@ const PendenciasObra = () => {
           </Button>
           <h1 className="text-2xl font-bold">Pendências: {obraNome}</h1>
         </div>
-        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-          {!Capacitor.isNativePlatform() && (
-            <Button
-              variant="outline"
-              onClick={handleGerarPDF}
-              className="flex items-center gap-2"
-            >
-              <FileText className="h-4 w-4" />
-              Gerar PDF
-            </Button>
-          )}
-          {Capacitor.isNativePlatform() && (
-            <Button
-              variant="outline"
-              onClick={compartilharPDF}
-              className="flex items-center gap-2"
-            >
-              <ShareIcon className="h-4 w-4" />
-              Compartilhar
-            </Button>
-          )}
-          <Button onClick={handleAddList} className="flex-1 sm:flex-none flex items-center gap-2">
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={gerarPDF}
+            className="flex items-center gap-2"
+          >
+            <FileText className="h-4 w-4" />
+            Gerar PDF
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setShowAddListDialog(true)}
+            className="flex items-center gap-2"
+          >
             <Plus className="h-4 w-4" />
             Nova Seção
           </Button>

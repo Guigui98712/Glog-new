@@ -191,7 +191,7 @@ export const obterQuadroObra = async (obraId: number, onProgress?: (message: str
     if (!obraId) {
       throw new Error('ID da obra não fornecido');
     }
-    
+
     // Obter o board_id da obra
     onProgress?.('Buscando informações da obra...', 10);
     const { data: obra, error: obraError } = await supabase
@@ -199,12 +199,12 @@ export const obterQuadroObra = async (obraId: number, onProgress?: (message: str
       .select('trello_board_id, nome')
       .eq('id', obraId)
       .single();
-    
+
     if (obraError) {
       console.error('[DEBUG] Erro ao buscar obra:', obraError);
       throw new Error(`Erro ao buscar obra: ${obraError.message}`);
     }
-    
+
     if (!obra || !obra.trello_board_id) {
       onProgress?.('Criando novo quadro para a obra...', 20);
       console.log('[DEBUG] Obra não tem board_id, criando board...');
@@ -241,12 +241,12 @@ export const obterQuadroObra = async (obraId: number, onProgress?: (message: str
       .select('*')
       .eq('board_id', obra.trello_board_id)
       .order('position', { ascending: true });
-    
+
     if (listsError) {
       console.error('[DEBUG] Erro ao buscar listas:', listsError);
       throw new Error(`Erro ao buscar listas: ${listsError.message}`);
     }
-    
+
     if (!lists || lists.length === 0) {
       console.log('[DEBUG] Nenhuma lista encontrada para o board');
       onProgress?.('Quadro carregado (sem listas)', 100);
@@ -255,7 +255,7 @@ export const obterQuadroObra = async (obraId: number, onProgress?: (message: str
     }
     
     console.log('[DEBUG] Listas encontradas:', lists.length);
-    
+
     // Para cada lista, buscar os cards
     onProgress?.('Carregando cartões...', 50);
     const totalLists = lists.length;
@@ -269,12 +269,12 @@ export const obterQuadroObra = async (obraId: number, onProgress?: (message: str
           .select('*')
           .eq('list_id', list.id)
           .order('position', { ascending: true });
-        
+
         if (cardsError) {
           console.error(`[DEBUG] Erro ao buscar cards da lista ${list.id}:`, cardsError);
           return { ...list, title: list.nome, cards: [] };
         }
-        
+
         // Para cada card, buscar checklists, labels, comments e attachments
         const totalCards = cards?.length || 0;
         const cardsWithDetails = await Promise.all(
@@ -347,7 +347,7 @@ export const obterQuadroObra = async (obraId: number, onProgress?: (message: str
                     })
                   )
                 : [];
-              
+
               return {
                 ...card,
                 labels,

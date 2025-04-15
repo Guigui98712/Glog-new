@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Plus, ArrowRight, ArrowLeft as ArrowLeftIcon, X, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Plus, ArrowRight, ArrowLeft as ArrowLeftIcon, X, Image as ImageIcon, FileText, FolderOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { DemandaItem } from '@/types/demanda';
@@ -11,6 +11,7 @@ import { MoverParaEntregueDialog } from '@/components/dialogs/MoverParaEntregueD
 import { formatDistanceToNow, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { pdfStyles } from '@/styles/pdf-styles';
 
 export function DemandaObra() {
   const { id } = useParams();
@@ -190,6 +191,171 @@ export function DemandaObra() {
     }
   };
 
+  const handleGerarRelatorio = async () => {
+    try {
+      // Filtrar apenas os itens pagos
+      const itensPagos = itens.filter(item => item.status === 'pago');
+      
+      if (itensPagos.length === 0) {
+        toast.error('Não há itens pagos para gerar o relatório');
+        return;
+      }
+
+      // Calcular valor total
+      const valorTotal = itensPagos.reduce((total, item) => total + (item.valor || 0), 0);
+
+      // Gerar o HTML do relatório
+      const html = `
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Relatório de Demandas Pagas - ${obraNome}</title>
+          <style>
+            ${pdfStyles}
+            .valor-total {
+              font-size: 1.2em;
+              font-weight: bold;
+              color: #15803d;
+              text-align: right;
+              margin-top: 20px;
+              padding-top: 10px;
+              border-top: 2px solid #eee;
+            }
+            .nota-fiscal {
+              margin-top: 10px;
+              max-width: 100%;
+              border: 1px solid #eee;
+              border-radius: 4px;
+              padding: 10px;
+            }
+            .nota-fiscal img {
+              max-width: 100%;
+              height: auto;
+              border-radius: 4px;
+            }
+            .card-description {
+              font-weight: bold;
+              font-size: 1.1em;
+              margin: 10px 0;
+              white-space: pre-line;
+            }
+            .info-grid {
+              display: grid;
+              grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+              gap: 10px;
+              margin-top: 15px;
+            }
+            .info-item {
+              padding: 8px;
+              border: 1px solid #eee;
+              border-radius: 4px;
+            }
+            .info-label {
+              font-size: 0.8em;
+              color: #666;
+              margin-bottom: 2px;
+            }
+            .info-value {
+              font-size: 0.9em;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Relatório de Demandas Pagas</h1>
+              <p class="obra-info">Obra: ${obraNome}</p>
+              <p class="data">Data: ${format(new Date(), 'dd/MM/yyyy')}</p>
+            </div>
+
+            <div class="content">
+              <div class="info-block">
+                <h3>Itens Pagos</h3>
+                <div class="items-container">
+                  ${itensPagos.map(item => `
+                    <div class="card">
+                      <div class="card-title">${item.titulo}</div>
+                      ${item.descricao ? `<div class="card-description">${item.descricao}</div>` : ''}
+                      <div class="info-grid">
+                        <div class="info-item">
+                          <div class="info-label">Data do Pedido</div>
+                          <div class="info-value">${format(new Date(item.data_pedido!), 'dd/MM/yyyy')}</div>
+                        </div>
+                        <div class="info-item">
+                          <div class="info-label">Data de Entrega</div>
+                          <div class="info-value">${format(new Date(item.data_entrega!), 'dd/MM/yyyy')}</div>
+                        </div>
+                        <div class="info-item">
+                          <div class="info-label">Valor</div>
+                          <div class="info-value">R$ ${item.valor?.toFixed(2)}</div>
+                        </div>
+                        ${item.tempo_entrega ? `
+                          <div class="info-item">
+                            <div class="info-label">Tempo de Entrega</div>
+                            <div class="info-value">${item.tempo_entrega}</div>
+                          </div>
+                        ` : ''}
+                      </div>
+                      ${item.nota_fiscal ? `
+                        <div class="nota-fiscal">
+                          <img src="${item.nota_fiscal}" alt="Nota Fiscal" />
+                        </div>
+                      ` : ''}
+                    </div>
+                  `).join('')}
+                </div>
+                <div class="valor-total">
+                  Valor Total: R$ ${valorTotal.toFixed(2)}
+                </div>
+              </div>
+            </div>
+
+            <div class="footer">
+              <p>Relatório gerado em ${format(new Date(), 'dd/MM/yyyy')}</p>
+              <p>${obraNome} - Todos os direitos reservados</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      // Salvar o relatório no banco de dados
+      const { error: saveError } = await supabase
+        .from('relatorios')
+        .insert({
+          obra_id: Number(id),
+          data_inicio: format(new Date(), 'yyyy-MM-dd'),
+          data_fim: format(new Date(), 'yyyy-MM-dd'),
+          tipo: 'demanda',
+          conteudo: html
+        });
+
+      if (saveError) {
+        console.error('Erro ao salvar relatório:', saveError);
+        throw new Error('Erro ao salvar o relatório');
+      }
+
+      // Criar uma nova janela para o PDF
+      const printWindow = window.open('', '_blank');
+      
+      if (!printWindow) {
+        throw new Error('Não foi possível abrir uma nova janela. Verifique se o bloqueador de pop-ups está desativado.');
+      }
+      
+      // Escrever o conteúdo HTML na nova janela
+      printWindow.document.write(html);
+      printWindow.document.close();
+      
+      toast.success('Relatório gerado com sucesso!');
+
+    } catch (error) {
+      console.error('Erro ao gerar relatório:', error);
+      toast.error('Erro ao gerar o relatório');
+    }
+  };
+
   return (
     <div className="container mx-auto py-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -212,6 +378,24 @@ export function DemandaObra() {
           >
             <Plus className="h-4 w-4" />
             Nova Demanda
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleGerarRelatorio}
+            className="flex items-center gap-2"
+          >
+            <FileText className="h-4 w-4" />
+            Gerar Relatório
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => navigate(`/demandas/${id}/relatorios`)}
+            className="flex items-center gap-2"
+          >
+            <FolderOpen className="h-4 w-4" />
+            Ver Relatórios
           </Button>
         </div>
       </div>

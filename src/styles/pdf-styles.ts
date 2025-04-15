@@ -135,4 +135,28 @@ export const pdfStyles = `
       page-break-inside: avoid;
     }
   }
+
+  /* Estilos para relatório de demandas */
+  .info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  .items-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .valor-total {
+    font-size: 1.2em;
+    font-weight: bold;
+    color: #15803d;
+    text-align: right;
+    margin-top: 20px;
+    padding-top: 10px;
+    border-top: 2px solid #eee;
+  }
 `; 

@@ -179,11 +179,11 @@ export function DemandaObra() {
       } catch (headError) {
         console.error('Erro ao verificar existência do arquivo:', headError);
         throw new Error('Não foi possível verificar se a imagem existe');
-      }
-      
-      // Se chegou até aqui, a imagem existe e pode ser carregada
-      setNotaFiscalUrl(urlFinal);
-      setShowNotaFiscal(true);
+        }
+        
+        // Se chegou até aqui, a imagem existe e pode ser carregada
+        setNotaFiscalUrl(urlFinal);
+        setShowNotaFiscal(true);
       
     } catch (error) {
       console.error('Erro ao carregar imagem:', error);
@@ -337,6 +337,18 @@ export function DemandaObra() {
         throw new Error('Erro ao salvar o relatório');
       }
 
+      // Excluir os itens pagos que foram incluídos no relatório
+      const idsParaExcluir = itensPagos.map(item => item.id);
+      const { error: deleteError } = await supabase
+        .from('demanda_itens')
+        .delete()
+        .in('id', idsParaExcluir);
+
+      if (deleteError) {
+        console.error('Erro ao excluir itens:', deleteError);
+        throw new Error('Erro ao excluir os itens do relatório');
+      }
+
       // Criar uma nova janela para o PDF
       const printWindow = window.open('', '_blank');
       
@@ -348,7 +360,10 @@ export function DemandaObra() {
       printWindow.document.write(html);
       printWindow.document.close();
       
-      toast.success('Relatório gerado com sucesso!');
+      toast.success('Relatório gerado com sucesso! Os itens foram removidos da lista.');
+
+      // Recarregar os dados para atualizar a lista
+      await carregarDados();
 
     } catch (error) {
       console.error('Erro ao gerar relatório:', error);
@@ -612,8 +627,8 @@ export function DemandaObra() {
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                   </div>
-                  <img 
-                    src={notaFiscalUrl} 
+                <img 
+                  src={notaFiscalUrl} 
                     alt="Imagem do item" 
                     className="w-full h-full object-contain relative z-10"
                     style={{ maxHeight: '70vh' }}
@@ -626,11 +641,11 @@ export function DemandaObra() {
                         spinner.remove();
                       }
                     }}
-                    onError={(e) => {
+                  onError={(e) => {
                       console.error('Erro ao carregar imagem no modal');
                       const target = e.target as HTMLImageElement;
                       target.style.display = 'none';
-                      toast.error('Erro ao exibir a imagem');
+                    toast.error('Erro ao exibir a imagem');
                       // Adiciona mensagem de erro no lugar da imagem
                       const errorDiv = document.createElement('div');
                       errorDiv.className = 'text-red-500 text-center p-4';
@@ -645,12 +660,12 @@ export function DemandaObra() {
                   />
                 </div>
                 <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => window.open(notaFiscalUrl, '_blank')}
-                  >
-                    Abrir em nova aba
-                  </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => window.open(notaFiscalUrl, '_blank')}
+                >
+                  Abrir em nova aba
+                </Button>
                   <Button
                     variant="outline"
                     onClick={() => {

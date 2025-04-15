@@ -49,6 +49,7 @@ interface Obra {
   responsavel?: string;
   trello_board_id?: string;
   definicoes_board_id?: string;
+  numero_demandas: number;
 }
 
 interface EtapaComDatas {
@@ -768,11 +769,15 @@ const ObraDetalhes = () => {
               >
                 <h3 className="text-xs md:text-sm font-medium text-gray-500">Demanda</h3>
                 <div className="mt-1 flex items-center justify-between">
-                  <p className="text-base md:text-lg font-semibold">0</p>
+                  <p className="text-base md:text-lg font-semibold">{obra?.numero_demandas || 0}</p>
                   <ShoppingCart className="w-4 h-4 md:w-5 md:h-5 text-blue-500" />
                 </div>
                 <p className="text-xs md:text-sm text-gray-500 mt-1">
-                  Itens em demanda
+                  {obra?.numero_demandas === 0 
+                    ? 'Nenhum item em demanda' 
+                    : obra?.numero_demandas === 1 
+                      ? '1 item em demanda' 
+                      : `${obra?.numero_demandas} itens em demanda`}
                 </p>
               </div>
             </div>

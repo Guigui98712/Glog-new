@@ -20,6 +20,7 @@ import DefinicoesObra from "@/pages/DefinicoesObra";
 import { Toaster } from "./components/ui/toaster";
 import "./App.css";
 import { supabase } from "@/lib/supabase";
+import { DemandaObra } from './pages/DemandaObra';
 
 // Componente para redirecionar com base no estado de autenticação
 const RedirectBasedOnAuth = () => {
@@ -130,6 +131,7 @@ function App() {
             <Route path=":id/diario" element={<DiarioObra />} />
             <Route path=":id/relatorios" element={<Relatorios />} />
             <Route path=":id/definicoes" element={<DefinicoesObra />} />
+            <Route path=":id/demanda" element={<DemandaObra />} />
           </Route>
           
           <Route 

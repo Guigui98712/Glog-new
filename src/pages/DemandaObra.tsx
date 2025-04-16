@@ -27,10 +27,13 @@ export function DemandaObra() {
   const [notaFiscalUrl, setNotaFiscalUrl] = useState('');
 
   useEffect(() => {
-    if (id) {
-      carregarDados();
+    if (!id || isNaN(Number(id))) {
+      toast.error('ID da obra inválido');
+      navigate('/obras');
+      return;
     }
-  }, [id]);
+    carregarDados();
+  }, [id, navigate]);
 
   const carregarDados = async () => {
     try {

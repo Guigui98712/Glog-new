@@ -43,7 +43,6 @@ export function DemandaObra() {
   const [showDialog, setShowDialog] = useState(false);
   const [showRelatoriosDialog, setShowRelatoriosDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [showPagoDialog, setShowPagoDialog] = useState(false);
   const [showImagemDialog, setShowImagemDialog] = useState(false);
   const [imagemUrl, setImagemUrl] = useState('');
   const [itemParaEditar, setItemParaEditar] = useState<DemandaItem | null>(null);
@@ -176,6 +175,11 @@ export function DemandaObra() {
       // Remove o id e created_at antes de atualizar
       const { id, created_at, ...itemParaAtualizar } = item;
 
+      // Garante que nota_fiscal seja um array
+      if (itemParaAtualizar.nota_fiscal && !Array.isArray(itemParaAtualizar.nota_fiscal)) {
+        itemParaAtualizar.nota_fiscal = [itemParaAtualizar.nota_fiscal];
+      }
+
       const { error } = await supabase
         .from('demanda_itens')
         .update(itemParaAtualizar)
@@ -261,15 +265,17 @@ export function DemandaObra() {
     pago: itens.filter(item => item.status === 'pago')
   };
 
+  const getImageUrl = (imagePath: string) => {
+    return supabase.storage.from('notas-fiscais').getPublicUrl(imagePath).data.publicUrl;
+  };
+
   const handleVisualizarNotaFiscal = async (notaFiscalPath: string) => {
     try {
       console.log('Caminho original da imagem:', notaFiscalPath);
       
       let urlFinal = notaFiscalPath;
       
-      // Verifica se o caminho não é uma URL completa
       if (!notaFiscalPath.startsWith('http')) {
-        // Se não for URL completa, obtém a URL pública do bucket
         const { data, error } = await supabase.storage
           .from('notas-fiscais')
           .createSignedUrl(notaFiscalPath, 60);
@@ -286,23 +292,8 @@ export function DemandaObra() {
         urlFinal = data.signedUrl;
       }
       
-      console.log('URL final da imagem:', urlFinal);
-      
-      // Primeiro verifica se o arquivo existe usando um HEAD request
-      try {
-        const response = await fetch(urlFinal, { method: 'HEAD' });
-        if (!response.ok) {
-          console.error('Erro na verificação HEAD:', response.status, response.statusText);
-          throw new Error(`Arquivo não encontrado (${response.status})`);
-        }
-      } catch (headError) {
-        console.error('Erro ao verificar existência do arquivo:', headError);
-        throw new Error('Não foi possível verificar se a imagem existe');
-        }
-        
-        // Se chegou até aqui, a imagem existe e pode ser carregada
-        setNotaFiscalUrl(urlFinal);
-        setShowNotaFiscal(true);
+      setNotaFiscalUrl(urlFinal);
+      setShowNotaFiscal(true);
       
     } catch (error) {
       console.error('Erro ao carregar imagem:', error);
@@ -419,36 +410,14 @@ export function DemandaObra() {
                       </div>
                       ${item.nota_fiscal && item.nota_fiscal.length > 0 ? `
                         <div class="nota-fiscal">
-                          <div class="grid grid-cols-2 gap-2">
+                          <div class="grid grid-cols-2 gap-4">
                             ${item.nota_fiscal.map((imagem, index) => `
-                              <div key=${index} className="relative group">
-                                <div className="relative aspect-square rounded-lg border border-input overflow-hidden">
-                                  <img
-                                    src=${`${supabase.storage.from('notas-fiscais').getPublicUrl(imagem).data.publicUrl}`}
-                                    alt=${`Imagem ${index + 1}`}
-                                    className="object-cover w-full h-full"
-                                  />
-                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8 bg-white/80 hover:bg-white"
-                                      onClick={() => handleVisualizarNotaFiscal(imagem)}
-                                    >
-                                      <ImageIcon className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8 bg-white/80 hover:bg-white text-destructive"
-                                      onClick={() => handleRemoverImagem(imagem)}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                </div>
+                              <div class="relative aspect-square rounded-lg border border-gray-200 overflow-hidden">
+                                <img
+                                  src="${getImageUrl(imagem)}"
+                                  alt="Nota Fiscal ${index + 1}"
+                                  class="w-full h-full object-contain"
+                                />
                               </div>
                             `).join('')}
                           </div>
@@ -617,6 +586,36 @@ export function DemandaObra() {
       console.error('Erro ao remover imagem:', error);
       toast.error('Erro ao remover imagem');
     }
+  };
+
+  // Função para renderizar a miniatura da imagem
+  const renderImagemMiniatura = (imagem: string, index: number) => {
+    return (
+      <div key={index} className="relative group">
+        <div className="relative w-16 h-16 rounded-lg border border-input overflow-hidden bg-gray-50">
+          <img
+            src={imagem.startsWith('http') ? imagem : getImageUrl(imagem)}
+            alt={`Nota Fiscal ${index + 1}`}
+            className="w-full h-full object-contain"
+            onError={(e) => {
+              const target = e.target as HTMLImageElement;
+              target.src = 'https://placehold.co/64x64?text=Erro';
+            }}
+          />
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 bg-white/80 hover:bg-white"
+              onClick={() => handleVisualizarNotaFiscal(imagem)}
+            >
+              <ImageIcon className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -906,38 +905,14 @@ export function DemandaObra() {
                           <p className="text-yellow-600">Obs: {item.observacao_entrega}</p>
                         )}
                         {item.nota_fiscal && item.nota_fiscal.length > 0 && (
-                          <div className="grid grid-cols-2 gap-2 mb-2">
-                            {item.nota_fiscal.map((imagem, index) => (
-                              <div key={index} className="relative group">
-                                <div className="relative aspect-square rounded-lg border border-input overflow-hidden">
-                                  <img
-                                    src={`${supabase.storage.from('notas-fiscais').getPublicUrl(imagem).data.publicUrl}`}
-                                    alt={`Imagem ${index + 1}`}
-                                    className="object-cover w-full h-full"
-                                  />
-                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8 bg-white/80 hover:bg-white"
-                                      onClick={() => handleVisualizarNotaFiscal(imagem)}
-                                    >
-                                      <ImageIcon className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8 bg-white/80 hover:bg-white text-destructive"
-                                      onClick={() => handleRemoverImagem(imagem)}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
+                          <div className="mt-2">
+                            <div className="text-sm text-muted-foreground mb-1">Notas Fiscais / Comprovantes:</div>
+                            <div className="flex flex-wrap gap-2">
+                              {Array.isArray(item.nota_fiscal) 
+                                ? item.nota_fiscal.map((imagem, index) => renderImagemMiniatura(imagem, index))
+                                : renderImagemMiniatura(item.nota_fiscal, 0)
+                              }
+                            </div>
                           </div>
                         )}
                       </div>
@@ -983,38 +958,14 @@ export function DemandaObra() {
                           <p className="text-yellow-600">Obs: {item.observacao_entrega}</p>
                         )}
                         {item.nota_fiscal && item.nota_fiscal.length > 0 && (
-                          <div className="grid grid-cols-2 gap-2 mb-2">
-                            {item.nota_fiscal.map((imagem, index) => (
-                              <div key={index} className="relative group">
-                                <div className="relative aspect-square rounded-lg border border-input overflow-hidden">
-                                  <img
-                                    src={`${supabase.storage.from('notas-fiscais').getPublicUrl(imagem).data.publicUrl}`}
-                                    alt={`Imagem ${index + 1}`}
-                                    className="object-cover w-full h-full"
-                                  />
-                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8 bg-white/80 hover:bg-white"
-                                      onClick={() => handleVisualizarNotaFiscal(imagem)}
-                                    >
-                                      <ImageIcon className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8 bg-white/80 hover:bg-white text-destructive"
-                                      onClick={() => handleRemoverImagem(imagem)}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
+                          <div className="mt-2">
+                            <div className="text-sm text-muted-foreground mb-1">Notas Fiscais / Comprovantes:</div>
+                            <div className="flex flex-wrap gap-2">
+                              {Array.isArray(item.nota_fiscal) 
+                                ? item.nota_fiscal.map((imagem, index) => renderImagemMiniatura(imagem, index))
+                                : renderImagemMiniatura(item.nota_fiscal, 0)
+                              }
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1033,7 +984,7 @@ export function DemandaObra() {
                       size="sm"
                       onClick={() => {
                         setSelectedItem(item);
-                        setShowPagoDialog(true);
+                        setShowMoverParaPagoDialog(true);
                       }}
                     >
                       Mover para pago
@@ -1074,38 +1025,14 @@ export function DemandaObra() {
                       <p>Tempo de entrega: {item.tempo_entrega}</p>
                     )}
                     {item.nota_fiscal && item.nota_fiscal.length > 0 && (
-                      <div className="grid grid-cols-2 gap-2 mb-2">
-                        {item.nota_fiscal.map((imagem, index) => (
-                          <div key={index} className="relative group">
-                            <div className="relative aspect-square rounded-lg border border-input overflow-hidden">
-                              <img
-                                src={`${supabase.storage.from('notas-fiscais').getPublicUrl(imagem).data.publicUrl}`}
-                                alt={`Imagem ${index + 1}`}
-                                className="object-cover w-full h-full"
-                              />
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 bg-white/80 hover:bg-white"
-                                  onClick={() => handleVisualizarNotaFiscal(imagem)}
-                                >
-                                  <ImageIcon className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 bg-white/80 hover:bg-white text-destructive"
-                                  onClick={() => handleRemoverImagem(imagem)}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
+                      <div className="mt-2">
+                        <div className="text-sm text-muted-foreground mb-1">Notas Fiscais / Comprovantes:</div>
+                        <div className="flex flex-wrap gap-2">
+                          {Array.isArray(item.nota_fiscal) 
+                            ? item.nota_fiscal.map((imagem, index) => renderImagemMiniatura(imagem, index))
+                            : renderImagemMiniatura(item.nota_fiscal, 0)
+                          }
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1154,7 +1081,10 @@ export function DemandaObra() {
       <Dialog open={showNotaFiscal} onOpenChange={setShowNotaFiscal}>
         <DialogContent className="max-w-4xl">
           <DialogHeader>
-            <DialogTitle>Visualizar Imagem</DialogTitle>
+            <DialogTitle>Visualizar Nota Fiscal</DialogTitle>
+            <DialogDescription>
+              Visualização em tamanho completo da nota fiscal ou comprovante
+            </DialogDescription>
           </DialogHeader>
           <div className="relative w-full h-full flex items-center justify-center p-4">
             {notaFiscalUrl && (
@@ -1163,63 +1093,27 @@ export function DemandaObra() {
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                   </div>
-                <img 
-                  src={notaFiscalUrl} 
-                    alt="Imagem do item" 
+                  <img 
+                    src={notaFiscalUrl} 
+                    alt="Nota Fiscal" 
                     className="w-full h-full object-contain relative z-10"
-                    style={{ maxHeight: '70vh' }}
+                    style={{ maxHeight: '70vh', opacity: 0, transition: 'opacity 0.3s ease-in-out' }}
                     onLoad={(e) => {
-                      // Remove o spinner quando a imagem carregar
                       const target = e.target as HTMLImageElement;
                       target.style.opacity = '1';
                       const spinner = target.parentElement?.querySelector('.animate-spin');
-                      if (spinner) {
-                        spinner.remove();
-                      }
+                      if (spinner) spinner.remove();
                     }}
-                  onError={(e) => {
-                      console.error('Erro ao carregar imagem no modal');
+                    onError={(e) => {
                       const target = e.target as HTMLImageElement;
                       target.style.display = 'none';
-                    toast.error('Erro ao exibir a imagem');
-                      // Adiciona mensagem de erro no lugar da imagem
+                      toast.error('Erro ao exibir a imagem');
                       const errorDiv = document.createElement('div');
                       errorDiv.className = 'text-red-500 text-center p-4';
                       errorDiv.textContent = 'Não foi possível carregar a imagem';
                       target.parentElement?.appendChild(errorDiv);
                     }}
-                    style={{
-                      maxHeight: '70vh',
-                      opacity: 0,
-                      transition: 'opacity 0.3s ease-in-out'
-                    }}
                   />
-                </div>
-                <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => window.open(notaFiscalUrl, '_blank')}
-                >
-                  Abrir em nova aba
-                </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      try {
-                        const link = document.createElement('a');
-                        link.href = notaFiscalUrl;
-                        link.download = 'imagem.jpg';
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                      } catch (error) {
-                        console.error('Erro ao baixar imagem:', error);
-                        toast.error('Erro ao baixar a imagem');
-                      }
-                    }}
-                  >
-                    Baixar imagem
-                  </Button>
                 </div>
               </div>
             )}
@@ -1230,9 +1124,9 @@ export function DemandaObra() {
       <AlertDialog open={showMoverParaPagoDialog} onOpenChange={setShowMoverParaPagoDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Mover para Pago</AlertDialogTitle>
+            <AlertDialogTitle>Confirmar pagamento</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja mover este item para pago? Esta ação não pode ser desfeita.
+              Deseja realmente marcar este item como pago?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1283,28 +1177,6 @@ export function DemandaObra() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={showPagoDialog} onOpenChange={setShowPagoDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar pagamento</AlertDialogTitle>
-            <AlertDialogDescription>
-              Deseja realmente marcar este item como pago?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => {
-              if (selectedItem) {
-                handleMoverParaPago(selectedItem);
-              }
-              setShowPagoDialog(false);
-            }}>
-              Confirmar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       <Dialog open={showEditarDialog} onOpenChange={setShowEditarDialog}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
@@ -1350,37 +1222,80 @@ export function DemandaObra() {
                   </label>
                   {itemParaEditar.nota_fiscal && itemParaEditar.nota_fiscal.length > 0 && (
                     <div className="grid grid-cols-2 gap-2 mb-2">
-                      {itemParaEditar.nota_fiscal.map((imagem, index) => (
-                        <div key={index} className="relative group">
-                          <div className="relative aspect-square rounded-lg border border-input overflow-hidden">
-                            <img
-                              src={`${supabase.storage.from('notas-fiscais').getPublicUrl(imagem).data.publicUrl}`}
-                              alt={`Imagem ${index + 1}`}
-                              className="object-cover w-full h-full"
-                            />
-                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 bg-white/80 hover:bg-white"
-                                onClick={() => handleVisualizarNotaFiscal(imagem)}
-                              >
-                                <ImageIcon className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 bg-white/80 hover:bg-white text-destructive"
-                                onClick={() => handleRemoverImagem(imagem)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                      {Array.isArray(itemParaEditar.nota_fiscal) 
+                        ? itemParaEditar.nota_fiscal.map((imagem, index) => (
+                            <div key={index} className="relative group">
+                              <div className="relative aspect-square rounded-lg border border-input overflow-hidden bg-gray-50">
+                                <img
+                                  src={imagem.startsWith('http') ? imagem : getImageUrl(imagem)}
+                                  alt={`Nota Fiscal ${index + 1}`}
+                                  className="w-full h-full object-contain"
+                                  onError={(e) => {
+                                    const target = e.target as HTMLImageElement;
+                                    target.src = 'https://placehold.co/64x64?text=Erro';
+                                  }}
+                                />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 bg-white/80 hover:bg-white"
+                                    onClick={() => handleVisualizarNotaFiscal(imagem)}
+                                  >
+                                    <ImageIcon className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 bg-white/80 hover:bg-white text-destructive"
+                                    onClick={() => handleRemoverImagem(imagem)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                        </div>
-                      ))}
+                          ))
+                        : (
+                            <div className="relative group">
+                              <div className="relative aspect-square rounded-lg border border-input overflow-hidden bg-gray-50">
+                                <img
+                                  src={itemParaEditar.nota_fiscal.startsWith('http') 
+                                    ? itemParaEditar.nota_fiscal 
+                                    : getImageUrl(itemParaEditar.nota_fiscal)}
+                                  alt="Nota Fiscal"
+                                  className="w-full h-full object-contain"
+                                  onError={(e) => {
+                                    const target = e.target as HTMLImageElement;
+                                    target.src = 'https://placehold.co/64x64?text=Erro';
+                                  }}
+                                />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 bg-white/80 hover:bg-white"
+                                    onClick={() => handleVisualizarNotaFiscal(itemParaEditar.nota_fiscal)}
+                                  >
+                                    <ImageIcon className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 bg-white/80 hover:bg-white text-destructive"
+                                    onClick={() => handleRemoverImagem(itemParaEditar.nota_fiscal)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                      }
                     </div>
                   )}
                   <div className="flex gap-2">

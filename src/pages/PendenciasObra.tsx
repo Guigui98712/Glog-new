@@ -68,6 +68,7 @@ import { Share } from '@capacitor/share';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { supabase } from '@/lib/supabase';
 import { pdfStyles } from '../styles/pdf-styles';
+import NotificationService from '@/services/NotificationService';
 
 const PendenciasObra = () => {
   const { id } = useParams();
@@ -110,6 +111,8 @@ const PendenciasObra = () => {
   const [error, setError] = useState<string | null>(null);
   const [lastLoadTime, setLastLoadTime] = useState<number>(0);
   const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos em milissegundos
+
+  const notificationService = NotificationService.getInstance();
 
   // Função para capitalizar a primeira letra de cada frase
   const capitalizarPrimeiraLetra = (texto: string) => {
@@ -464,18 +467,21 @@ const PendenciasObra = () => {
   const handleMoveCard = async (card: TrelloCard, novaListaId: number) => {
     try {
       await moverCard(card.id, novaListaId);
-      toast({
-        title: "Sucesso",
-        description: "Card movido com sucesso!",
-      });
-      await carregarQuadro(Number(id));
+      
+      // Se o card foi movido para a lista "Concluído"
+      const listaDestino = board?.lists.find(l => l.id === novaListaId);
+      if (listaDestino?.name.toLowerCase() === 'concluído') {
+        await notificationService.notificarPendenciaConcluida(
+          Number(id),
+          card.name
+        );
+      }
+
+      await carregarQuadro(Number(id), true);
+      toast.success('Card movido com sucesso');
     } catch (error) {
       console.error('Erro ao mover card:', error);
-      toast({
-        title: "Erro",
-        description: error instanceof Error ? error.message : "Não foi possível mover o card.",
-        variant: "destructive"
-      });
+      toast.error('Erro ao mover card');
     }
   };
 

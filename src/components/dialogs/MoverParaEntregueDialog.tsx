@@ -12,6 +12,7 @@ import { ptBR } from 'date-fns/locale';
 import { Input } from '@/components/ui/input';
 import { Loader2, Camera } from 'lucide-react';
 import { Camera as CapacitorCamera, CameraResultType, CameraSource } from '@capacitor/camera';
+import { NotificationService } from '@/services/NotificationService';
 
 interface MoverParaEntregueDialogProps {
   item: DemandaItem;
@@ -122,6 +123,15 @@ export function MoverParaEntregueDialog({
         return;
       }
 
+      // Buscar informações da obra
+      const { data: obra, error: obraError } = await supabase
+        .from('obras')
+        .select('nome, responsavel_id')
+        .eq('id', item.obra_id)
+        .single();
+
+      if (obraError) throw obraError;
+
       let notaFiscalUrl = '';
       if (notaFiscal) {
         try {
@@ -183,6 +193,16 @@ export function MoverParaEntregueDialog({
       if (updateError) {
         console.error('Erro detalhado ao atualizar item:', updateError);
         throw updateError;
+      }
+
+      // Enviar notificação
+      if (obra.responsavel_id) {
+        const notificationService = NotificationService.getInstance();
+        await notificationService.sendNotification(
+          obra.responsavel_id,
+          'Demanda Entregue',
+          `Um item foi entregue na obra ${obra.nome}: ${item.titulo}`
+        );
       }
 
       toast.success('Item movido para Entregue');

@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { DemandaItem } from '@/types/demanda';
 import { EditarPedidoDialog } from './EditarPedidoDialog';
+import { NotificationService } from '@/services/NotificationService';
 
 interface MoverParaPedidoDialogProps {
   item: DemandaItem;
@@ -38,6 +39,15 @@ export function MoverParaPedidoDialog({
         return;
       }
 
+      // Buscar informações da obra
+      const { data: obra, error: obraError } = await supabase
+        .from('obras')
+        .select('nome, responsavel_id')
+        .eq('id', item.obra_id)
+        .single();
+
+      if (obraError) throw obraError;
+
       const { error } = await supabase
         .from('demanda_itens')
         .update({
@@ -50,6 +60,16 @@ export function MoverParaPedidoDialog({
         .eq('id', item.id);
 
       if (error) throw error;
+
+      // Enviar notificação
+      if (obra.responsavel_id) {
+        const notificationService = NotificationService.getInstance();
+        await notificationService.sendNotification(
+          obra.responsavel_id,
+          'Demanda Movida para Pedido',
+          `Um item foi movido para pedido na obra ${obra.nome}: ${item.titulo}`
+        );
+      }
 
       toast.success('Item movido para Pedido');
       onItemMovido();

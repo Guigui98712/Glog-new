@@ -23,6 +23,7 @@ import {
   AlertDialogAction,
 } from "@/components/ui/alert-dialog";
 import { Camera } from '@capacitor/camera';
+import NotificationService from '@/services/NotificationService';
 
 export function DemandaObra() {
   const { id } = useParams();
@@ -46,6 +47,7 @@ export function DemandaObra() {
   const [showImagemDialog, setShowImagemDialog] = useState(false);
   const [imagemUrl, setImagemUrl] = useState('');
   const [itemParaEditar, setItemParaEditar] = useState<DemandaItem | null>(null);
+  const notificationService = NotificationService.getInstance();
 
   useEffect(() => {
     if (!id || isNaN(Number(id))) {
@@ -616,6 +618,74 @@ export function DemandaObra() {
         </div>
       </div>
     );
+  };
+
+  const handleAdicionarDemanda = async (novaDemanda: DemandaItem) => {
+    try {
+      const { data, error } = await supabase
+        .from('demanda_itens')
+        .insert([novaDemanda])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setItens([data, ...itens]);
+      toast.success('Demanda adicionada com sucesso');
+      
+      // Enviar notificação
+      await notificationService.notificarNovaDemanda(
+        Number(id),
+        novaDemanda.descricao
+      );
+    } catch (error) {
+      console.error('Erro ao adicionar demanda:', error);
+      toast.error('Erro ao adicionar demanda');
+    }
+  };
+
+  const handleMoverParaPedido = async (item: DemandaItem) => {
+    try {
+      const { error } = await supabase
+        .from('demanda_itens')
+        .update({ status: 'pedido' })
+        .eq('id', item.id);
+
+      if (error) throw error;
+
+      await notificationService.notificarDemandaParaPedido(
+        Number(id),
+        item.descricao
+      );
+
+      toast.success('Item movido para pedido');
+      carregarDados();
+    } catch (error) {
+      console.error('Erro ao mover item:', error);
+      toast.error('Erro ao mover item');
+    }
+  };
+
+  const handleMoverParaEntregue = async (item: DemandaItem) => {
+    try {
+      const { error } = await supabase
+        .from('demanda_itens')
+        .update({ status: 'entregue' })
+        .eq('id', item.id);
+
+      if (error) throw error;
+
+      await notificationService.notificarDemandaParaEntregue(
+        Number(id),
+        item.descricao
+      );
+
+      toast.success('Item movido para entregue');
+      carregarDados();
+    } catch (error) {
+      console.error('Erro ao mover item:', error);
+      toast.error('Erro ao mover item');
+    }
   };
 
   return (

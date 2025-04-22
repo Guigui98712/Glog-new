@@ -1,4 +1,4 @@
-import type { CapacitorConfig } from '@capacitor/cli';
+import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.glog.app',
@@ -25,9 +25,15 @@ const config: CapacitorConfig = {
       iconColor: "#488AFF",
       sound: "beep.wav"
     },
+    PushNotifications: {
+      presentationOptions: ["badge", "sound", "alert"]
+    },
     Camera: {
       androidPermissions: ['android.permission.CAMERA']
     }
+  },
+  android: {
+    allowMixedContent: true
   }
 };
 

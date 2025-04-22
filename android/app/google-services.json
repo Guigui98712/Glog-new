@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "19946419586",
+    "project_id": "glog-a2338",
+    "storage_bucket": "glog-a2338.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:19946419586:android:02c53f53d523dbcb0acb9b",
+        "android_client_info": {
+          "package_name": "com.glog.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBtWY3vKr-6APG5aIiHs1CH2sOcx958Zv4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

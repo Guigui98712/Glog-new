@@ -8,10 +8,9 @@ import { ptBR } from "date-fns/locale";
 import { useToast } from "@/components/ui/use-toast";
 import { gerarRelatorioSemanal, excluirRelatorio } from "@/lib/api";
 import { gerarRelatorioSemanalV2 } from "@/lib/relatorio";
-import Calendar from "react-calendar";
+import { Calendar } from "@/components/ui/calendar";
 import type { RelatorioSemanal } from "@/types/obra";
 import { supabase } from "@/lib/supabase";
-import "react-calendar/dist/Calendar.css";
 import {
   Select,
   SelectContent,
@@ -137,6 +136,7 @@ const Relatorios = () => {
   // Efeito para carregar dados iniciais
   useEffect(() => {
     if (id) {
+      console.log('[DEBUG] useEffect - Carregando dados para obra:', id);
       carregarRelatoriosAnteriores();
       carregarDiarios();
       carregarEtapasFluxograma();
@@ -318,29 +318,31 @@ const Relatorios = () => {
     if (!id) return;
 
     try {
-      console.log('[DEBUG] Carregando diários da obra:', id);
+      console.log('[DEBUG] carregarDiarios - Iniciando carregamento para obra:', id);
       const { data, error } = await supabase
         .from('diario_obra')
         .select('*')
         .eq('obra_id', id);
 
       if (error) {
-        console.error('[DEBUG] Erro ao carregar diários:', error);
+        console.error('[DEBUG] carregarDiarios - Erro:', error);
         throw error;
       }
+
+      console.log('[DEBUG] carregarDiarios - Dados recebidos:', data);
 
       // Converter as datas dos diários para objetos Date
       const datas = (data || []).map(d => {
         const data = parseISO(d.data);
-        console.log('[DEBUG] Data do diário:', format(data, 'dd/MM/yyyy'));
+        console.log('[DEBUG] carregarDiarios - Data do diário:', format(data, 'dd/MM/yyyy'));
         return data;
       });
 
-      console.log('[DEBUG] Total de diários encontrados:', datas.length);
+      console.log('[DEBUG] carregarDiarios - Total de diários:', datas.length);
       setDiasComDiario(datas);
       setDiariosCompletos(data || []);
     } catch (error) {
-      console.error('[DEBUG] Erro ao carregar diários:', error);
+      console.error('[DEBUG] carregarDiarios - Erro ao carregar diários:', error);
       toast({
         title: "Erro",
         description: "Não foi possível carregar os diários da obra.",
@@ -870,17 +872,32 @@ const Relatorios = () => {
     });
   };
 
-  // Função para lidar com o clique em um dia do calendário
-  const handleDiaClick = (date: Date) => {
-    // Formatar a data para comparação
-    const dataFormatada = format(date, 'yyyy-MM-dd');
+  // Atualizar a função handleDiaClick para ser exatamente igual à da página de diário
+  const handleDiaClick = (date: Date | undefined) => {
+    if (!date) return;
     
-    // Buscar o diário correspondente à data clicada
+    console.log('[DEBUG] handleDiaClick - Data recebida:', date);
+    
+    // Ajustar para meio-dia UTC para evitar problemas de fuso horário
+    const dataAjustada = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0));
+    console.log('[DEBUG] handleDiaClick - Data ajustada:', dataAjustada);
+    
+    setSemanaAtual(dataAjustada);
+    
+    // Verificar se já existe um registro para esta data
+    const dataFormatada = format(dataAjustada, 'yyyy-MM-dd');
+    console.log('[DEBUG] handleDiaClick - Data formatada:', dataFormatada);
+    console.log('[DEBUG] handleDiaClick - Diários completos:', diariosCompletos);
+    
     const diario = diariosCompletos.find(d => d.data === dataFormatada);
+    console.log('[DEBUG] handleDiaClick - Diário encontrado:', diario);
     
     if (diario) {
+      console.log('[DEBUG] handleDiaClick - Abrindo diálogo com diário:', diario);
       setDiarioSelecionado(diario);
       setShowDiarioDialog(true);
+    } else {
+      console.log('[DEBUG] handleDiaClick - Nenhum diário encontrado para a data:', dataFormatada);
     }
   };
 
@@ -906,13 +923,40 @@ const Relatorios = () => {
             <Calendar
               mode="single"
               selected={semanaAtual}
-              onSelect={(value) => {
-                if (value instanceof Date) setSemanaAtual(value);
-              }}
-              className="rounded-md border mx-auto p-3 sm:p-6 bg-white shadow-lg"
+              onSelect={handleDiaClick}
+              className="mx-auto rounded-lg border-2 border-primary/20 p-3 sm:p-6 bg-white shadow-lg"
               locale={ptBR}
-              tileClassName={tileClassName}
+              modifiers={{ 
+                hasRegistro: (date) => {
+                  try {
+                    const dataFormatada = format(date, 'yyyy-MM-dd');
+                    return diariosCompletos.some(reg => reg.data === dataFormatada);
+                  } catch (error) {
+                    console.error('Erro ao verificar registros:', error);
+                    return false;
+                  }
+                }
+              }}
+              modifiersClassNames={{
+                hasRegistro: 'bg-primary text-primary-foreground font-bold hover:bg-primary/80',
+                today: 'bg-secondary/20 font-bold border-2 border-secondary',
+                selected: 'bg-primary/80 text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground'
+              }}
+              defaultMonth={semanaAtual}
+              fromDate={new Date(2024, 0, 1)}
+              toDate={new Date(2025, 11, 31)}
+              disabled={(date) => date > new Date()}
             />
+          </div>
+          <div className="flex items-center justify-center space-x-4 mt-4">
+            <div className="flex items-center">
+              <div className="w-4 h-4 rounded-full bg-primary mr-2"></div>
+              <span className="text-sm">Com Registro</span>
+            </div>
+            <div className="flex items-center">
+              <div className="w-4 h-4 rounded-full bg-secondary/20 border-2 border-secondary mr-2"></div>
+              <span className="text-sm">Hoje</span>
+            </div>
           </div>
 
           <div className="flex justify-between items-center gap-4">

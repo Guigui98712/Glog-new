@@ -10,7 +10,8 @@ import { DemandaItem } from '@/types/demanda';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Input } from '@/components/ui/input';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Camera } from 'lucide-react';
+import { Camera as CapacitorCamera, CameraResultType, CameraSource } from '@capacitor/camera';
 
 interface MoverParaEntregueDialogProps {
   item: DemandaItem;
@@ -195,6 +196,44 @@ export function MoverParaEntregueDialog({
     }
   };
 
+  const tirarFoto = async () => {
+    try {
+      // Solicitar permissão da câmera
+      await CapacitorCamera.requestPermissions();
+
+      // Tirar a foto
+      const image = await CapacitorCamera.getPhoto({
+        quality: 90,
+        allowEditing: false,
+        resultType: CameraResultType.Base64,
+        source: CameraSource.Camera
+      });
+
+      if (!image.base64String) {
+        throw new Error('Falha ao capturar imagem');
+      }
+
+      // Converter Base64 para Blob
+      const byteCharacters = atob(image.base64String);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'image/jpeg' });
+
+      // Criar arquivo a partir do Blob
+      const file = new File([blob], `foto_${Date.now()}.jpg`, { type: 'image/jpeg' });
+      
+      setNotaFiscal(file);
+      const url = URL.createObjectURL(file);
+      setPreviewUrl(url);
+    } catch (error) {
+      console.error('Erro ao tirar foto:', error);
+      toast.error('Erro ao tirar foto');
+    }
+  };
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -232,13 +271,24 @@ export function MoverParaEntregueDialog({
 
             <div className="space-y-2">
               <Label htmlFor="nota-fiscal">Imagem do Item (opcional)</Label>
-              <input
-                type="file"
-                id="nota-fiscal"
-                accept="image/*"
-                onChange={handleFileChange}
-                className="w-full"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="file"
+                  id="nota-fiscal"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  className="w-full"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={tirarFoto}
+                  title="Tirar foto"
+                >
+                  <Camera className="h-4 w-4" />
+                </Button>
+              </div>
               {previewUrl && (
                 <div className="mt-2">
                   <img 

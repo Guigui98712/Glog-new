@@ -301,6 +301,14 @@ export function List({ list, allLists, onUpdate, onDelete }: ListProps) {
       console.log('[DEBUG] Estado atual das etiquetas:', card.labels);
       console.log('[DEBUG] Tentando alternar etiqueta:', labelId);
       
+      // Encontrar a etiqueta que está sendo alternada
+      const labelToToggle = availableLabels.find(l => l.id === labelId);
+      if (!labelToToggle) return;
+
+      // Encontrar as etiquetas "Fazendo" e "Concluído"
+      const labelFazendo = availableLabels.find(l => l.title.toLowerCase() === "fazendo");
+      const labelConcluido = availableLabels.find(l => l.title.toLowerCase() === "concluído");
+      
       const hasLabel = card.labels.some(l => l.id === labelId);
       console.log('[DEBUG] Card possui a etiqueta?', hasLabel);
       
@@ -331,13 +339,21 @@ export function List({ list, allLists, onUpdate, onDelete }: ListProps) {
         console.log('[DEBUG] Adicionando etiqueta ao card');
         await adicionarEtiqueta(cardId, labelId);
         
+        // Se estamos adicionando a etiqueta "Concluído" e existe a etiqueta "Fazendo", remover "Fazendo"
+        if (labelToToggle.title.toLowerCase() === "concluído" && 
+            labelFazendo && 
+            card.labels.some(l => l.id === labelFazendo.id)) {
+          await removerEtiqueta(cardId, labelFazendo.id);
+          card.labels = card.labels.filter(l => l.id !== labelFazendo.id);
+        }
+        
         // Buscar a etiqueta completa
         const label = availableLabels.find(l => l.id === labelId);
         if (label) {
           // Atualizar o estado local adicionando a etiqueta
           const updatedCard = {
             ...card,
-            labels: [...card.labels, label]
+            labels: [...card.labels.filter(l => l.id !== labelFazendo?.id), label]
           };
           
           // Atualizar a lista com o card modificado
@@ -355,9 +371,6 @@ export function List({ list, allLists, onUpdate, onDelete }: ListProps) {
           });
         }
       }
-
-      // Recarregar as etiquetas disponíveis
-      await loadLabels();
     } catch (error) {
       console.error('[DEBUG] Erro ao alternar etiqueta:', error);
       toast({

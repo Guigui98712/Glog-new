@@ -29,13 +29,13 @@ class NotificationService {
 
   public async notificarNovaDemanda(obraId: number, demandaDescricao: string) {
     try {
-      const responsavelId = await this.getResponsavelObra(obraId);
-      if (responsavelId) {
+    const responsavelId = await this.getResponsavelObra(obraId);
+    if (responsavelId) {
         await this.sendNotification(
-          'Nova Demanda Adicionada',
-          `Uma nova demanda foi adicionada: ${demandaDescricao}`,
-          responsavelId
-        );
+        'Nova Demanda Adicionada',
+        `Uma nova demanda foi adicionada: ${demandaDescricao}`,
+        responsavelId
+      );
       }
     } catch (error) {
       console.error('Erro ao enviar notificação de nova demanda:', error);
@@ -44,13 +44,13 @@ class NotificationService {
 
   public async notificarDemandaParaPedido(obraId: number, demandaDescricao: string) {
     try {
-      const responsavelId = await this.getResponsavelObra(obraId);
-      if (responsavelId) {
+    const responsavelId = await this.getResponsavelObra(obraId);
+    if (responsavelId) {
         await this.sendNotification(
-          'Demanda Movida para Pedido',
-          `A demanda "${demandaDescricao}" foi movida para pedido`,
-          responsavelId
-        );
+        'Demanda Movida para Pedido',
+        `A demanda "${demandaDescricao}" foi movida para pedido`,
+        responsavelId
+      );
       }
     } catch (error) {
       console.error('Erro ao enviar notificação de demanda para pedido:', error);
@@ -59,13 +59,13 @@ class NotificationService {
 
   public async notificarDemandaParaEntregue(obraId: number, demandaDescricao: string) {
     try {
-      const responsavelId = await this.getResponsavelObra(obraId);
-      if (responsavelId) {
+    const responsavelId = await this.getResponsavelObra(obraId);
+    if (responsavelId) {
         await this.sendNotification(
-          'Demanda Entregue',
-          `A demanda "${demandaDescricao}" foi marcada como entregue`,
-          responsavelId
-        );
+        'Demanda Entregue',
+        `A demanda "${demandaDescricao}" foi marcada como entregue`,
+        responsavelId
+      );
       }
     } catch (error) {
       console.error('Erro ao enviar notificação de demanda entregue:', error);
@@ -74,13 +74,13 @@ class NotificationService {
 
   public async notificarPendenciaConcluida(obraId: number, pendenciaDescricao: string) {
     try {
-      const responsavelId = await this.getResponsavelObra(obraId);
-      if (responsavelId) {
+    const responsavelId = await this.getResponsavelObra(obraId);
+    if (responsavelId) {
         await this.sendNotification(
-          'Pendência Concluída',
-          `A pendência "${pendenciaDescricao}" foi marcada como concluída`,
-          responsavelId
-        );
+        'Pendência Concluída',
+        `A pendência "${pendenciaDescricao}" foi marcada como concluída`,
+        responsavelId
+      );
       }
     } catch (error) {
       console.error('Erro ao enviar notificação de pendência concluída:', error);

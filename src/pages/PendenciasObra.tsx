@@ -183,6 +183,9 @@ const PendenciasObra = () => {
     queryKey: ['etiquetas'],
     queryFn: buscarEtiquetas,
     staleTime: 1000 * 60 * 60, // 60 minutos (etiquetas mudam com menos frequência)
+    gcTime: 1000 * 60 * 60 * 24, // 24 horas
+    refetchOnMount: false, // Não recarregar ao montar o componente
+    refetchOnWindowFocus: false, // Não recarregar quando a janela recebe foco
   });
 
   // Mutação para criar lista
@@ -241,8 +244,11 @@ const PendenciasObra = () => {
         title: "Sucesso",
         description: "Seção excluída com sucesso!",
       });
+      // Invalidar a query e forçar um refetch
       queryClient.invalidateQueries({ queryKey: ['board', id] });
+      queryClient.refetchQueries({ queryKey: ['board', id] });
       setShowDeleteListDialog(false);
+      setListaAtual(null); // Limpar a lista atual
     },
     onError: (error) => {
       console.error('Erro ao excluir seção:', error);
@@ -386,26 +392,6 @@ const PendenciasObra = () => {
     { nome: "Fazendo", cor: "bg-yellow-500 text-white" },
     { nome: "Concluído", cor: "bg-green-500 text-white" }
   ];
-
-  // Função para criar listas padrão
-  const criarListasPadrao = async () => {
-    try {
-      if (!board || board.lists.length === 0) {
-        await criarLista(Number(id), "Urgente");
-        await criarLista(Number(id), "Fazendo");
-        await criarLista(Number(id), "Concluído");
-        refetchBoard();
-      }
-    } catch (error) {
-      console.error('Erro ao criar listas padrão:', error);
-    }
-  };
-
-  useEffect(() => {
-    if (board && board.lists.length === 0) {
-      criarListasPadrao();
-    }
-  }, [board]);
 
   // Funções para gerenciar listas (seções)
   const handleAddList = () => {
@@ -823,6 +809,7 @@ const PendenciasObra = () => {
       // Buscar etiquetas atuais do card
       const etiquetasAtuais = await buscarEtiquetas();
       const etiquetaObj = etiquetasAtuais.find(e => e.title === label);
+      const etiquetaFazendo = etiquetasAtuais.find(e => e.title.toLowerCase() === 'fazendo');
       
       if (!etiquetaObj) {
         console.error('Etiqueta não encontrada:', label);
@@ -834,6 +821,15 @@ const PendenciasObra = () => {
       const hasLabel = cardLabels.some(l => 
         (typeof l === 'string' ? l === label : l.title === label)
       );
+      
+      // Se estamos adicionando a etiqueta "Concluído" e o card tem a etiqueta "Fazendo"
+      if (!hasLabel && 
+          label.toLowerCase() === 'concluído' && 
+          etiquetaFazendo && 
+          cardLabels.some(l => (typeof l === 'string' ? l === 'Fazendo' : l.title === 'Fazendo'))) {
+        // Primeiro remover a etiqueta "Fazendo"
+        await removerEtiqueta(cardAtual.id, etiquetaFazendo.id);
+      }
       
       // Atualizar etiquetas no banco de dados
       if (hasLabel) {

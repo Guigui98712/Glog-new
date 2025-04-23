@@ -322,12 +322,15 @@ export const obterQuadroObra = async (obraId: number, onProgress?: (message: str
                   .order('created_at', { ascending: false })
               ]);
               
-              const labels = cardLabelsResult.data
-                ? cardLabelsResult.data
-                    .map(cl => cl.trello_labels)
-                    .filter(label => label !== null)
-                : [];
-                
+              // Usar um Map para garantir unicidade das etiquetas por ID
+              const labelsMap = new Map();
+              cardLabelsResult.data?.forEach(relation => {
+                if (relation.trello_labels) {
+                  labelsMap.set(relation.trello_labels.id, relation.trello_labels);
+                }
+              });
+              const labels = Array.from(labelsMap.values());
+              
               // Buscar itens das checklists em paralelo
               const checklistsWithItems = checklistsResult.data
                 ? await Promise.all(
@@ -933,13 +936,6 @@ export const excluirAnexo = async (attachmentId: number): Promise<void> => {
 // Função para buscar etiquetas disponíveis
 export const buscarEtiquetas = async (): Promise<TrelloLabel[]> => {
   try {
-    // Definir as etiquetas padrão
-    const etiquetasPadrao = [
-      { title: "Urgente", color: "bg-red-500" },
-      { title: "Fazendo", color: "bg-yellow-500" },
-      { title: "Concluído", color: "bg-green-500" }
-    ];
-
     // Buscar etiquetas existentes
     const { data: etiquetasExistentes, error: selectError } = await supabase
       .from('trello_labels')
@@ -950,46 +946,18 @@ export const buscarEtiquetas = async (): Promise<TrelloLabel[]> => {
       throw selectError;
     }
 
-    // Se não existem etiquetas, criar as padrão
-    if (!etiquetasExistentes || etiquetasExistentes.length === 0) {
-      const { data: novasEtiquetas, error: insertError } = await supabase
-        .from('trello_labels')
-        .insert(etiquetasPadrao)
-        .select();
-
-      if (insertError) {
-        console.error('[DEBUG] Erro ao criar etiquetas padrão:', insertError);
-        throw insertError;
-      }
-
-      return novasEtiquetas || [];
+    // Usar um Map para garantir unicidade das etiquetas existentes por título (case insensitive)
+    const etiquetasMap = new Map();
+    if (etiquetasExistentes) {
+      etiquetasExistentes.forEach(etiqueta => {
+        etiquetasMap.set(etiqueta.title.toLowerCase(), etiqueta);
+      });
     }
 
-    // Verificar quais etiquetas padrão estão faltando, verificando pelo título
-    const etiquetasFaltantes = etiquetasPadrao.filter(padrao => 
-      !etiquetasExistentes.some(existente => existente.title.toLowerCase() === padrao.title.toLowerCase())
-    );
-
-    // Se faltam algumas etiquetas padrão, criar apenas as que faltam
-    if (etiquetasFaltantes.length > 0) {
-      const { data: novasEtiquetas, error: insertError } = await supabase
-        .from('trello_labels')
-        .insert(etiquetasFaltantes)
-        .select();
-
-      if (insertError) {
-        console.error('[DEBUG] Erro ao criar etiquetas faltantes:', insertError);
-        throw insertError;
-      }
-
-      // Retornar todas as etiquetas (existentes + novas)
-      return [...etiquetasExistentes, ...(novasEtiquetas || [])];
-    }
-
-    // Se todas as etiquetas padrão já existem, retornar as existentes
-    return etiquetasExistentes;
+    // Retornar todas as etiquetas do Map, garantindo unicidade
+    return Array.from(etiquetasMap.values());
   } catch (error) {
-    console.error('[DEBUG] Erro ao buscar/criar etiquetas:', error);
+    console.error('[DEBUG] Erro ao buscar etiquetas:', error);
     throw error;
   }
 };
@@ -1003,7 +971,12 @@ export const buscarEtiquetasDoCard = async (cardId: number): Promise<TrelloLabel
       .from('trello_card_labels')
       .select(`
         label_id,
-        trello_labels (*)
+        trello_labels (
+          id,
+          title,
+          color,
+          created_at
+        )
       `)
       .eq('card_id', cardId);
 
@@ -1012,8 +985,17 @@ export const buscarEtiquetasDoCard = async (cardId: number): Promise<TrelloLabel
       throw error;
     }
 
-    const labels = data?.map(relation => relation.trello_labels) || [];
-    console.log('[DEBUG] Etiquetas encontradas para o card:', labels);
+    // Usar um Map para garantir unicidade das etiquetas por ID
+    const labelsMap = new Map();
+    data?.forEach(relation => {
+      if (relation.trello_labels) {
+        labelsMap.set(relation.trello_labels.id, relation.trello_labels);
+      }
+    });
+    
+    // Converter o Map de volta para array
+    const labels = Array.from(labelsMap.values());
+    console.log('[DEBUG] Etiquetas encontradas para o card (após remoção de duplicatas):', labels);
     
     return labels;
   } catch (error) {

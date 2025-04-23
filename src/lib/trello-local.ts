@@ -965,9 +965,9 @@ export const buscarEtiquetas = async (): Promise<TrelloLabel[]> => {
       return novasEtiquetas || [];
     }
 
-    // Verificar quais etiquetas padrão estão faltando
+    // Verificar quais etiquetas padrão estão faltando, verificando pelo título
     const etiquetasFaltantes = etiquetasPadrao.filter(padrao => 
-      !etiquetasExistentes.some(existente => existente.title === padrao.title)
+      !etiquetasExistentes.some(existente => existente.title.toLowerCase() === padrao.title.toLowerCase())
     );
 
     // Se faltam algumas etiquetas padrão, criar apenas as que faltam

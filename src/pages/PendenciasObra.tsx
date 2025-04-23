@@ -69,15 +69,15 @@ import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { supabase } from '@/lib/supabase';
 import { pdfStyles } from '../styles/pdf-styles';
 import NotificationService from '@/services/NotificationService';
+// Importar React Query
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 const PendenciasObra = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [loading, setLoading] = useState(true);
-  const [board, setBoard] = useState<TrelloBoard | null>(null);
-  const [obraNome, setObraNome] = useState<string>('');
-  const [obra, setObra] = useState<any>(null);
+  const queryClient = useQueryClient();
+  const notificationService = NotificationService.getInstance();
   
   // Estados para diálogos
   const [showAddCardDialog, setShowAddCardDialog] = useState(false);
@@ -91,7 +91,6 @@ const PendenciasObra = () => {
   const [cardAtual, setCardAtual] = useState<InitializedTrelloCard | null>(null);
   const [listaAtual, setListaAtual] = useState<TrelloList | null>(null);
   const [novaListaNome, setNovaListaNome] = useState('');
-  const [etiquetasDisponiveis, setEtiquetasDisponiveis] = useState<TrelloLabel[]>([]);
   
   // Estado para novo card
   const [novoCard, setNovoCard] = useState({
@@ -108,11 +107,266 @@ const PendenciasObra = () => {
 
   const boardRef = useRef<HTMLDivElement>(null);
 
-  const [error, setError] = useState<string | null>(null);
-  const [lastLoadTime, setLastLoadTime] = useState<number>(0);
-  const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos em milissegundos
+  // Função para editar o título do card diretamente na visualização
+  const [editandoTitulo, setEditandoTitulo] = useState(false);
+  const [novoTitulo, setNovoTitulo] = useState('');
 
-  const notificationService = NotificationService.getInstance();
+  // Consulta da obra
+  const { data: obra, isLoading: obraLoading, error: obraError } = useQuery({
+    queryKey: ['obra', id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('obras')
+        .select('*')
+        .eq('id', id)
+        .single();
+        
+      if (error) throw error;
+      if (!data) throw new Error('Obra não encontrada');
+      
+      return data;
+    },
+    staleTime: 1000 * 60 * 10, // 10 minutos
+  });
+
+  // Lidar com erros da consulta da obra
+  useEffect(() => {
+    if (obraError) {
+      console.error('Erro ao carregar dados:', obraError);
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar dados da obra",
+        variant: "destructive"
+      });
+    }
+  }, [obraError, toast]);
+
+  // Consulta do quadro de pendências
+  const { 
+    data: board, 
+    isLoading: boardLoading, 
+    error: boardError,
+    refetch: refetchBoard
+  } = useQuery({
+    queryKey: ['board', id],
+    queryFn: async () => {
+      console.log('Carregando quadro da obra:', id);
+      const quadro = await obterQuadroObra(Number(id), (message, progress) => {
+        console.log(`Progresso: ${message} (${progress}%)`);
+      });
+
+      if (!quadro || !quadro.lists) {
+        throw new Error('Não foi possível carregar o quadro da obra');
+      }
+
+      console.log('Quadro carregado com sucesso:', quadro);
+      return quadro;
+    },
+    staleTime: 1000 * 60 * 5, // 5 minutos
+    enabled: !!id // Só executa se o ID estiver disponível
+  });
+
+  // Lidar com erros da consulta do quadro
+  useEffect(() => {
+    if (boardError) {
+      console.error('Erro ao carregar quadro:', boardError);
+      toast({
+        title: "Erro",
+        description: boardError instanceof Error ? boardError.message : 'Erro ao carregar o quadro da obra',
+        variant: "destructive"
+      });
+    }
+  }, [boardError, toast]);
+
+  // Consulta de etiquetas
+  const { data: etiquetasDisponiveis = [] } = useQuery({
+    queryKey: ['etiquetas'],
+    queryFn: buscarEtiquetas,
+    staleTime: 1000 * 60 * 60, // 60 minutos (etiquetas mudam com menos frequência)
+  });
+
+  // Mutação para criar lista
+  const criarListaMutation = useMutation({
+    mutationFn: async ({ obraId, nome }: { obraId: number, nome: string }) => {
+      return await criarLista(obraId, nome);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Sucesso",
+        description: "Seção criada com sucesso!",
+      });
+      queryClient.invalidateQueries({ queryKey: ['board', id] });
+      setShowAddListDialog(false);
+    },
+    onError: (error) => {
+      console.error('Erro ao criar seção:', error);
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : "Não foi possível criar a seção.",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Mutação para renomear lista
+  const renomearListaMutation = useMutation({
+    mutationFn: async ({ listaId, novoNome }: { listaId: number, novoNome: string }) => {
+      return await renomearLista(listaId, novoNome);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Sucesso",
+        description: "Seção renomeada com sucesso!",
+      });
+      queryClient.invalidateQueries({ queryKey: ['board', id] });
+      setShowEditListDialog(false);
+    },
+    onError: (error) => {
+      console.error('Erro ao renomear seção:', error);
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : "Não foi possível renomear a seção.",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Mutação para excluir lista
+  const excluirListaMutation = useMutation({
+    mutationFn: async (listaId: number) => {
+      return await excluirLista(listaId);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Sucesso",
+        description: "Seção excluída com sucesso!",
+      });
+      queryClient.invalidateQueries({ queryKey: ['board', id] });
+      setShowDeleteListDialog(false);
+    },
+    onError: (error) => {
+      console.error('Erro ao excluir seção:', error);
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : "Não foi possível excluir a seção.",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Mutação para criar card
+  const criarCardMutation = useMutation({
+    mutationFn: async (params: { 
+      listaId: number, 
+      titulo: string, 
+      descricao: string, 
+      dataVencimento: string | null,
+      etiquetas: string[]
+    }) => {
+      const { listaId, titulo, descricao, dataVencimento, etiquetas } = params;
+      return await criarCard(listaId, titulo, descricao, dataVencimento, etiquetas);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Sucesso",
+        description: "Card criado com sucesso!",
+      });
+      queryClient.invalidateQueries({ queryKey: ['board', id] });
+      setShowAddCardDialog(false);
+    },
+    onError: (error) => {
+      console.error('Erro ao criar card:', error);
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : "Não foi possível criar o card.",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Mutação para excluir card
+  const excluirCardMutation = useMutation({
+    mutationFn: async (cardId: number) => {
+      return await excluirCard(cardId);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Sucesso",
+        description: "Card excluído com sucesso!",
+      });
+      queryClient.invalidateQueries({ queryKey: ['board', id] });
+      setShowDeleteCardDialog(false);
+    },
+    onError: (error) => {
+      console.error('Erro ao excluir card:', error);
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : "Não foi possível excluir o card.",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Mutação para mover card
+  const moverCardMutation = useMutation({
+    mutationFn: async ({ cardId, novaListaId }: { cardId: number, novaListaId: number }) => {
+      return await moverCard(cardId, novaListaId);
+    },
+    onSuccess: async (_, variables) => {
+      // Atualizações otimistas: podemos usar o queryClient.setQueryData para atualizar o estado sem recarregar
+      queryClient.invalidateQueries({ queryKey: ['board', id] });
+      
+      // Notificar sobre conclusão se o card foi movido para lista "Concluído"
+      if (board) {
+        const listaDestino = board.lists.find(l => l.id === variables.novaListaId);
+        if (listaDestino?.title?.toLowerCase() === 'concluído') {
+          const card = board.lists
+            .flatMap(lista => lista.cards)
+            .find(c => c.id === variables.cardId);
+            
+          if (card) {
+            await notificationService.notificarPendenciaConcluida(
+              Number(id),
+              card.title
+            );
+          }
+        }
+      }
+      
+      toast({
+        title: "Sucesso",
+        description: "Card movido com sucesso!",
+      });
+    },
+    onError: (error) => {
+      console.error('Erro ao mover card:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao mover card",
+        variant: "destructive"
+      });
+      // Recarregar dados em caso de erro
+      queryClient.invalidateQueries({ queryKey: ['board', id] });
+    }
+  });
+
+  // Mutação para atualizar posição do card
+  const atualizarPosicaoCardMutation = useMutation({
+    mutationFn: async ({ cardId, listId, posicao }: { 
+      cardId: number, 
+      listId: number, 
+      posicao: number 
+    }) => {
+      return await atualizarPosicaoCard(cardId, listId, posicao);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['board', id] });
+    },
+    onError: (error) => {
+      console.error('Erro ao atualizar posição do card:', error);
+      queryClient.invalidateQueries({ queryKey: ['board', id] });
+    }
+  });
 
   // Função para capitalizar a primeira letra de cada frase
   const capitalizarPrimeiraLetra = (texto: string) => {
@@ -133,10 +387,6 @@ const PendenciasObra = () => {
     { nome: "Concluído", cor: "bg-green-500 text-white" }
   ];
 
-  // Função para editar o título do card diretamente na visualização
-  const [editandoTitulo, setEditandoTitulo] = useState(false);
-  const [novoTitulo, setNovoTitulo] = useState('');
-
   // Função para criar listas padrão
   const criarListasPadrao = async () => {
     try {
@@ -144,7 +394,7 @@ const PendenciasObra = () => {
         await criarLista(Number(id), "Urgente");
         await criarLista(Number(id), "Fazendo");
         await criarLista(Number(id), "Concluído");
-        await carregarQuadro();
+        refetchBoard();
       }
     } catch (error) {
       console.error('Erro ao criar listas padrão:', error);
@@ -152,91 +402,10 @@ const PendenciasObra = () => {
   };
 
   useEffect(() => {
-    carregarDados();
-    carregarEtiquetas();
-  }, [id]);
-
-  const carregarDados = async () => {
-    try {
-      setLoading(true);
-      const { data: obra, error } = await supabase
-        .from('obras')
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (error) throw error;
-      if (!obra) {
-        toast.warning('Obra não encontrada');
-        return;
-      }
-      
-      setObra(obra);
-      setObraNome(obra.nome);
-      
-      // Carregar o quadro antes de finalizar o carregamento
-      await carregarQuadro(obra.id);
-      
-    } catch (error) {
-      console.error('Erro ao carregar dados:', error);
-      toast.error('Erro ao carregar dados da obra');
-    } finally {
-      setLoading(false);
+    if (board && board.lists.length === 0) {
+      criarListasPadrao();
     }
-  };
-
-  const carregarQuadro = async (id: number, forceReload = false) => {
-    if (!id) {
-      setLoading(false);
-      return;
-    }
-
-    // Verificar se podemos usar o cache
-    const now = Date.now();
-    if (!forceReload && board && lastLoadTime && (now - lastLoadTime) < CACHE_DURATION) {
-      console.log('Usando cache do quadro');
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-      console.log('Carregando quadro da obra:', id);
-      
-      const quadro = await obterQuadroObra(id, (message, progress) => {
-        console.log(`Progresso: ${message} (${progress}%)`);
-      });
-
-      if (!quadro || !quadro.lists) {
-        throw new Error('Não foi possível carregar o quadro da obra');
-      }
-
-      setBoard(quadro);
-      setLastLoadTime(now);
-      console.log('Quadro carregado com sucesso:', quadro);
-    } catch (error) {
-      console.error('Erro ao carregar quadro:', error);
-      setError(error instanceof Error ? error.message : 'Erro ao carregar o quadro da obra');
-      toast.error('Erro ao carregar o quadro da obra');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const carregarEtiquetas = async () => {
-    try {
-      const etiquetas = await buscarEtiquetas();
-      setEtiquetasDisponiveis(etiquetas);
-    } catch (error) {
-      console.error('Erro ao carregar etiquetas:', error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível carregar as etiquetas.",
-        variant: "destructive"
-      });
-    }
-  };
+  }, [board]);
 
   // Funções para gerenciar listas (seções)
   const handleAddList = () => {
@@ -245,33 +414,19 @@ const PendenciasObra = () => {
   };
 
   const handleSaveNewList = async () => {
-    try {
-      if (!novaListaNome.trim()) {
-        toast({
-          title: "Erro",
-          description: "O nome da seção é obrigatório.",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      await criarLista(Number(id), novaListaNome);
-      
-      toast({
-        title: "Sucesso",
-        description: "Seção criada com sucesso!",
-      });
-      
-      setShowAddListDialog(false);
-      await carregarQuadro(Number(id));
-    } catch (error) {
-      console.error('Erro ao criar seção:', error);
+    if (!novaListaNome.trim()) {
       toast({
         title: "Erro",
-        description: error instanceof Error ? error.message : "Não foi possível criar a seção.",
+        description: "O nome da seção é obrigatório.",
         variant: "destructive"
       });
+      return;
     }
+
+    criarListaMutation.mutate({ 
+      obraId: Number(id), 
+      nome: novaListaNome 
+    });
   };
 
   const handleEditList = (lista: TrelloList) => {
@@ -282,46 +437,28 @@ const PendenciasObra = () => {
   };
 
   const handleSaveEditList = async () => {
-    try {
-      console.log('[DEBUG] Salvando edição da lista. Lista atual:', listaAtual);
-      console.log('[DEBUG] Novo nome da lista:', novaListaNome);
-      
-      if (!listaAtual) {
-        toast({
-          title: "Erro",
-          description: "Seção não selecionada.",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      if (!novaListaNome.trim()) {
-        toast({
-          title: "Erro",
-          description: "O nome da seção é obrigatório.",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      console.log('[DEBUG] Chamando renomearLista com ID:', listaAtual.id, 'e novo nome:', novaListaNome);
-      await renomearLista(listaAtual.id, novaListaNome);
-      
-      toast({
-        title: "Sucesso",
-        description: "Seção renomeada com sucesso!",
-      });
-      
-      setShowEditListDialog(false);
-      await carregarQuadro(Number(id));
-    } catch (error) {
-      console.error('[DEBUG] Erro ao renomear seção:', error);
+    if (!listaAtual) {
       toast({
         title: "Erro",
-        description: error instanceof Error ? error.message : "Não foi possível renomear a seção.",
+        description: "Seção não selecionada.",
         variant: "destructive"
       });
+      return;
     }
+
+    if (!novaListaNome.trim()) {
+      toast({
+        title: "Erro",
+        description: "O nome da seção é obrigatório.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    renomearListaMutation.mutate({ 
+      listaId: listaAtual.id, 
+      novoNome: novaListaNome
+    });
   };
 
   const handleDeleteList = (lista: TrelloList) => {
@@ -330,37 +467,16 @@ const PendenciasObra = () => {
   };
 
   const handleConfirmDeleteList = async () => {
-    try {
-      if (!listaAtual) {
-        toast({
-          title: "Erro",
-          description: "Seção não selecionada.",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      // Garantir que estamos usando o ID correto da lista
-      const listaId = listaAtual.id;
-      console.log('[DEBUG] Excluindo lista com ID:', listaId);
-
-      await excluirLista(listaId);
-      
-      toast({
-        title: "Sucesso",
-        description: "Seção excluída com sucesso!",
-      });
-      
-      setShowDeleteListDialog(false);
-      await carregarQuadro(Number(id));
-    } catch (error) {
-      console.error('Erro ao excluir seção:', error);
+    if (!listaAtual) {
       toast({
         title: "Erro",
-        description: error instanceof Error ? error.message : "Não foi possível excluir a seção.",
+        description: "Seção não selecionada.",
         variant: "destructive"
       });
+      return;
     }
+
+    excluirListaMutation.mutate(listaAtual.id);
   };
 
   // Funções para gerenciar cards
@@ -376,57 +492,38 @@ const PendenciasObra = () => {
   };
 
   const handleSaveNewCard = async () => {
-    try {
-      if (!listaAtual) {
-        toast({
-          title: "Erro",
-          description: "Lista não selecionada.",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      if (!novoCard.title.trim()) {
-        toast({
-          title: "Erro",
-          description: "O título do card é obrigatório.",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      // Aplicar capitalização
-      const titleCapitalizado = capitalizarPrimeiraLetra(novoCard.title);
-      const descriptionCapitalizada = capitalizarPrimeiraLetra(novoCard.description);
-      
-      // Convertendo "" para null no due_date
-      const formattedDueDate = novoCard.due_date.trim() === '' ? null : novoCard.due_date;
-      
-      console.log('[DEBUG] Criando card com due_date:', formattedDueDate);
-      
-      await criarCard(
-        listaAtual.id,
-        titleCapitalizado,
-        descriptionCapitalizada,
-        formattedDueDate,
-        novoCard.labels
-      );
-
-      toast({
-        title: "Sucesso",
-        description: "Card criado com sucesso!",
-      });
-
-      setShowAddCardDialog(false);
-      await carregarQuadro(Number(id));
-    } catch (error) {
-      console.error('Erro ao criar card:', error);
+    if (!listaAtual) {
       toast({
         title: "Erro",
-        description: error instanceof Error ? error.message : "Não foi possível criar o card.",
+        description: "Lista não selecionada.",
         variant: "destructive"
       });
+      return;
     }
+
+    if (!novoCard.title.trim()) {
+      toast({
+        title: "Erro",
+        description: "O título do card é obrigatório.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Aplicar capitalização
+    const titleCapitalizado = capitalizarPrimeiraLetra(novoCard.title);
+    const descriptionCapitalizada = capitalizarPrimeiraLetra(novoCard.description);
+    
+    // Convertendo "" para null no due_date
+    const formattedDueDate = novoCard.due_date.trim() === '' ? null : novoCard.due_date;
+    
+    criarCardMutation.mutate({
+      listaId: listaAtual.id,
+      titulo: titleCapitalizado,
+      descricao: descriptionCapitalizada,
+      dataVencimento: formattedDueDate,
+      etiquetas: novoCard.labels
+    });
   };
 
   const handleDeleteCard = (card: TrelloCard) => {
@@ -435,54 +532,20 @@ const PendenciasObra = () => {
   };
 
   const handleConfirmDeleteCard = async () => {
-    try {
-      if (!cardAtual) {
-        toast({
-          title: "Erro",
-          description: "Card não selecionado.",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      await excluirCard(cardAtual.id);
-
-      toast({
-        title: "Sucesso",
-        description: "Card excluído com sucesso!",
-      });
-
-      setShowDeleteCardDialog(false);
-      await carregarQuadro(Number(id));
-    } catch (error) {
-      console.error('Erro ao excluir card:', error);
+    if (!cardAtual) {
       toast({
         title: "Erro",
-        description: error instanceof Error ? error.message : "Não foi possível excluir o card.",
+        description: "Card não selecionado.",
         variant: "destructive"
       });
+      return;
     }
+
+    excluirCardMutation.mutate(cardAtual.id);
   };
 
   const handleMoveCard = async (card: TrelloCard, novaListaId: number) => {
-    try {
-      await moverCard(card.id, novaListaId);
-      
-      // Se o card foi movido para a lista "Concluído"
-      const listaDestino = board?.lists.find(l => l.id === novaListaId);
-      if (listaDestino?.name.toLowerCase() === 'concluído') {
-        await notificationService.notificarPendenciaConcluida(
-          Number(id),
-          card.name
-        );
-      }
-
-      await carregarQuadro(Number(id), true);
-      toast.success('Card movido com sucesso');
-    } catch (error) {
-      console.error('Erro ao mover card:', error);
-      toast.error('Erro ao mover card');
-    }
+    moverCardMutation.mutate({ cardId: card.id, novaListaId });
   };
 
   const formatarData = (dataString: string | null) => {
@@ -557,7 +620,7 @@ const PendenciasObra = () => {
       });
       
       setNovoChecklistNome('');
-      await carregarQuadro(Number(id));
+      await refetchBoard();
       
       // Recarregar o card atual para mostrar a nova checklist
       const quadro = await obterQuadroObra(Number(id));
@@ -601,7 +664,7 @@ const PendenciasObra = () => {
 
       await adicionarItemChecklist(checklistId, capitalizarPrimeiraLetra(novoChecklistItem));
       setNovoChecklistItem('');
-      await carregarQuadro(Number(id));
+      await refetchBoard();
       
       toast({
         title: "Sucesso",
@@ -780,7 +843,7 @@ const PendenciasObra = () => {
       }
       
       // Recarregar o quadro para atualizar os dados
-      await carregarQuadro(Number(id));
+      await refetchBoard();
       
       // Atualizar o estado local do card atual
       const quadro = await obterQuadroObra(Number(id));
@@ -886,11 +949,11 @@ const PendenciasObra = () => {
       // Adicionar o card na lista de destino
       newBoard.lists[destListIndex].cards.splice(result.destination.index, 0, movedCard);
 
-      // Atualizar o estado local imediatamente para feedback visual
-      setBoard(newBoard);
+      // Atualizar o estado local imediatamente para feedback visual (atualização otimista)
+      queryClient.setQueryData(['board', id], newBoard);
 
       // Atualizar no backend
-      await moverCard(cardId, destListId);
+      await moverCardMutation.mutateAsync({ cardId, novaListaId: destListId });
 
       // Atualizar a posição no backend
       const destList = board.lists.find(l => l.id === destListId);
@@ -903,13 +966,12 @@ const PendenciasObra = () => {
           : prevCard + 2000;
         const novaPosicao = (prevCard + nextCard) / 2;
 
-        await atualizarPosicaoCard(cardId, destListId, novaPosicao);
+        await atualizarPosicaoCardMutation.mutateAsync({
+          cardId,
+          listId: destListId,
+          posicao: novaPosicao
+        });
       }
-
-      toast({
-        title: "Sucesso",
-        description: "Card movido com sucesso!",
-      });
     } catch (error) {
       console.error('Erro ao mover card:', error);
       toast({
@@ -918,7 +980,7 @@ const PendenciasObra = () => {
         variant: "destructive"
       });
       // Recarregar o quadro em caso de erro
-      await carregarQuadro(Number(id));
+      queryClient.invalidateQueries({ queryKey: ['board', id] });
     }
   };
 
@@ -943,7 +1005,7 @@ const PendenciasObra = () => {
           <body>
             <div class="header">
               <h1>Relatório de Pendências</h1>
-              <p class="obra-info">Obra: ${obraNome}</p>
+              <p class="obra-info">Obra: ${obra?.nome}</p>
               <p class="data">Data: ${format(new Date(), 'dd/MM/yyyy')}</p>
             </div>
  
@@ -1042,7 +1104,7 @@ const PendenciasObra = () => {
         }
 
         // Salvar o PDF
-        pdf.save(`pendencias_${obraNome.replace(/\s+/g, '_')}_${format(new Date(), 'dd-MM-yyyy')}.pdf`);
+        pdf.save(`pendencias_${obra?.nome?.replace(/\s+/g, '_')}_${format(new Date(), 'dd-MM-yyyy')}.pdf`);
 
         toast.success('PDF gerado com sucesso!');
       } catch (error) {
@@ -1113,7 +1175,7 @@ const PendenciasObra = () => {
             <body>
               <div class="report-header">
                 <h1>Relatório de Pendências</h1>
-                <p class="obra-nome">${obraNome}</p>
+                <p class="obra-nome">${obra?.nome}</p>
                 <p class="data">Data: ${format(new Date(), 'dd/MM/yyyy')}</p>
               </div>
               
@@ -1180,7 +1242,7 @@ const PendenciasObra = () => {
 
           // Adicionar cabeçalho
           pdf.setFontSize(16);
-          pdf.text(`Relatório de Pendências - ${obraNome}`, 20, 20);
+          pdf.text(`Relatório de Pendências - ${obra?.nome}`, 20, 20);
           pdf.setFontSize(12);
           pdf.text(`Data: ${format(new Date(), 'dd/MM/yyyy')}`, 20, 30);
 
@@ -1219,7 +1281,7 @@ const PendenciasObra = () => {
             reader.readAsDataURL(blob);
           });
 
-          const fileName = `pendencias_${obraNome.replace(/\s+/g, '_')}_${format(new Date(), 'dd-MM-yyyy')}.pdf`;
+          const fileName = `pendencias_${obra?.nome?.replace(/\s+/g, '_')}_${format(new Date(), 'dd-MM-yyyy')}.pdf`;
 
           // Salvar o arquivo no sistema de arquivos do dispositivo
           const filePath = await Filesystem.writeFile({
@@ -1231,8 +1293,8 @@ const PendenciasObra = () => {
 
           // Compartilhar o arquivo
           await Share.share({
-            title: `Pendências - ${obraNome}`,
-            text: `Relatório de pendências da obra ${obraNome}`,
+            title: `Pendências - ${obra?.nome}`,
+            text: `Relatório de pendências da obra ${obra?.nome}`,
             url: filePath.uri,
             dialogTitle: 'Compartilhar PDF'
           });
@@ -1285,6 +1347,40 @@ const PendenciasObra = () => {
     updated_at: card.updated_at!
   });
 
+  // Unificação do estado de carregamento
+  const isLoading = obraLoading || boardLoading;
+  const obraNome = obra?.nome || '';
+
+  // Renderização dos botões com estados de carregamento
+  const renderizarBotaoNovaLista = () => (
+    <Button 
+      variant="outline" 
+      size="sm" 
+      onClick={() => setShowAddListDialog(true)}
+      className="flex items-center gap-2"
+      disabled={criarListaMutation.isPending}
+    >
+      {criarListaMutation.isPending ? (
+        <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-1" />
+      ) : (
+        <Plus className="h-4 w-4" />
+      )}
+      Nova Seção
+    </Button>
+  );
+
+  // Botão salvar nova lista com estado de carregamento
+  const renderizarBotaoSalvarLista = () => (
+    <Button 
+      onClick={handleSaveNewList}
+      disabled={criarListaMutation.isPending}
+    >
+      {criarListaMutation.isPending ? (
+        <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-1" />
+      ) : 'Salvar'}
+    </Button>
+  );
+
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -1308,21 +1404,18 @@ const PendenciasObra = () => {
             <FileText className="h-4 w-4" />
             Gerar PDF
           </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => setShowAddListDialog(true)}
-            className="flex items-center gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            Nova Seção
-          </Button>
+          {renderizarBotaoNovaLista()}
         </div>
       </div>
 
-      {loading ? (
+      {isLoading ? (
         <div className="flex justify-center items-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        </div>
+      ) : boardError ? (
+        <div className="flex flex-col items-center justify-center p-8 bg-red-50 rounded-lg">
+          <p className="text-red-600 mb-4">Erro ao carregar quadro: {boardError instanceof Error ? boardError.message : 'Erro desconhecido'}</p>
+          <Button onClick={() => refetchBoard()}>Tentar Novamente</Button>
         </div>
       ) : (
         <div ref={boardRef} className="w-full">
@@ -1498,7 +1591,7 @@ const PendenciasObra = () => {
             <DialogClose asChild>
               <Button variant="outline">Cancelar</Button>
             </DialogClose>
-            <Button onClick={handleSaveNewList}>Salvar</Button>
+            {renderizarBotaoSalvarLista()}
           </DialogFooter>
         </DialogContent>
       </Dialog>

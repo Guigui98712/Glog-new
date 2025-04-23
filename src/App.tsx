@@ -15,6 +15,7 @@ import ComparativoOrcamento from "./pages/ComparativoOrcamento";
 import NotFound from "./pages/NotFound";
 import SelecionarObraDiario from "./pages/SelecionarObraDiario";
 import SelecionarObraRelatorio from "./pages/SelecionarObraRelatorio";
+import SelecionarObraProjetos from "./pages/SelecionarObraProjetos";
 import PendenciasObra from "./pages/PendenciasObra";
 import DefinicoesObra from "@/pages/DefinicoesObra";
 import { Toaster } from "./components/ui/toaster";
@@ -22,6 +23,7 @@ import "./App.css";
 import { supabase } from "@/lib/supabase";
 import DemandaObra from './pages/DemandaObra';
 import { DemandaRelatorios } from "./pages/DemandaRelatorios";
+import Projetos from "./pages/Projetos";
 
 // Componente para redirecionar com base no estado de autenticação
 const RedirectBasedOnAuth = () => {
@@ -134,6 +136,7 @@ function App() {
             <Route path=":id/definicoes" element={<DefinicoesObra />} />
             <Route path=":id/demanda" element={<DemandaObra />} />
             <Route path=":id/demanda/relatorios" element={<DemandaRelatorios />} />
+            <Route path=":id/projetos" element={<Projetos />} />
           </Route>
           
           <Route 
@@ -171,6 +174,17 @@ function App() {
             <Route path="editar/:id" element={<NovoOrcamento />} />
             <Route path=":id" element={<ComparativoOrcamento />} />
             <Route path="comparativo/:id" element={<ComparativoOrcamento />} />
+          </Route>
+          
+          <Route 
+            path="/projetos" 
+            element={
+              <ProtectedRoute>
+                <Layout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<SelecionarObraProjetos />} />
           </Route>
           
           <Route 

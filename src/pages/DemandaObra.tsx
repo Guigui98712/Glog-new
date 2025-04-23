@@ -559,6 +559,38 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
 
       const valorTotal = itensPagos.reduce((total, item) => total + (item.valor || 0), 0);
 
+      // Gerar os elementos HTML para cada item
+      const itensHtml = await Promise.all(itensPagos.map(async item => {
+        const notasFiscaisHtml = await renderNotasFiscais(item.nota_fiscal);
+        return `
+          <div class="card">
+            <div class="card-title">${item.titulo}</div>
+            ${item.descricao ? `<div class="card-description">${item.descricao}</div>` : ''}
+            <div class="info-grid">
+              <div class="info-item">
+                <div class="info-label">Data do Pedido</div>
+                <div class="info-value">${format(new Date(item.data_pedido!), 'dd/MM/yyyy')}</div>
+              </div>
+              <div class="info-item">
+                <div class="info-label">Data de Entrega</div>
+                <div class="info-value">${format(new Date(item.data_entrega!), 'dd/MM/yyyy')}</div>
+              </div>
+              <div class="info-item">
+                <div class="info-label">Valor</div>
+                <div class="info-value">R$ ${item.valor?.toFixed(2)}</div>
+              </div>
+              ${item.tempo_entrega ? `
+                <div class="info-item">
+                  <div class="info-label">Tempo de Entrega</div>
+                  <div class="info-value">${item.tempo_entrega}</div>
+                </div>
+              ` : ''}
+            </div>
+            ${notasFiscaisHtml}
+          </div>
+        `;
+      }));
+
       // Gerar HTML do relatório
       const html = `
         <!DOCTYPE html>
@@ -629,33 +661,7 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
               <div class="info-block">
                 <h3>Itens Pagos</h3>
                 <div class="items-container">
-                  ${await Promise.all(itensPagos.map(async item => `
-                    <div class="card">
-                      <div class="card-title">${item.titulo}</div>
-                      ${item.descricao ? `<div class="card-description">${item.descricao}</div>` : ''}
-                      <div class="info-grid">
-                        <div class="info-item">
-                          <div class="info-label">Data do Pedido</div>
-                          <div class="info-value">${format(new Date(item.data_pedido!), 'dd/MM/yyyy')}</div>
-                        </div>
-                        <div class="info-item">
-                          <div class="info-label">Data de Entrega</div>
-                          <div class="info-value">${format(new Date(item.data_entrega!), 'dd/MM/yyyy')}</div>
-                        </div>
-                        <div class="info-item">
-                          <div class="info-label">Valor</div>
-                          <div class="info-value">R$ ${item.valor?.toFixed(2)}</div>
-                        </div>
-                        ${item.tempo_entrega ? `
-                          <div class="info-item">
-                            <div class="info-label">Tempo de Entrega</div>
-                            <div class="info-value">${item.tempo_entrega}</div>
-                          </div>
-                        ` : ''}
-                      </div>
-                      ${await renderNotasFiscais(item.nota_fiscal)}
-                    </div>
-                  `)).join('')}
+                  ${itensHtml.join('')}
                 </div>
                 <div class="valor-total">
                   Valor Total: R$ ${valorTotal.toFixed(2)}
@@ -669,7 +675,6 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
             </div>
           </div>
           <script>
-            // Adiciona tratamento de erro para todas as imagens
             document.addEventListener('DOMContentLoaded', function() {
               const images = document.getElementsByTagName('img');
               for(let img of images) {

@@ -156,7 +156,7 @@ export function DemandaRelatorios() {
         <Button 
           variant="ghost" 
           size="icon" 
-          onClick={() => navigate(`/demandas/${id}`)}
+          onClick={() => navigate(`/obras/${id}/demanda`)}
         >
           <ArrowLeft className="h-5 w-5" />
         </Button>

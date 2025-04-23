@@ -584,6 +584,11 @@ const ObraDetalhes = () => {
     navigate(`/obras/${id}/diario`);
   };
 
+  const handleDemandaClick = () => {
+    console.log('[DEBUG] ObraDetalhes - Navegando para demandas, ID:', id);
+    navigate(`/obras/${id}/demanda`);
+  };
+
   // Função para recarregar os dados após editar as etapas
   const handleEtapasEditadas = async () => {
     try {
@@ -765,7 +770,7 @@ const ObraDetalhes = () => {
 
               <div 
                 className="p-3 md:p-4 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors" 
-                onClick={() => navigate(`/obras/${id}/demanda`)}
+                onClick={handleDemandaClick}
               >
                 <h3 className="text-xs md:text-sm font-medium text-gray-500">Demanda</h3>
                 <div className="mt-1 flex items-center justify-between">

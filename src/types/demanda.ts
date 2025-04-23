@@ -11,7 +11,7 @@ export interface DemandaItem {
   valor?: number;
   pedido_completo?: boolean;
   observacao_entrega?: string;
-  nota_fiscal?: string;
+  nota_fiscal?: string[];
   tempo_entrega?: string; // Tempo calculado entre pedido e entrega
   created_at: string;
   updated_at: string;

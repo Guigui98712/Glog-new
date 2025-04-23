@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { DemandaItem } from '@/types/demanda';
 import { EditarPedidoDialog } from './EditarPedidoDialog';
-import { NotificationService } from '@/services/NotificationService';
+import NotificationService from '@/services/NotificationService';
 
 interface MoverParaPedidoDialogProps {
   item: DemandaItem;
@@ -34,49 +34,46 @@ export function MoverParaPedidoDialog({
     try {
       setLoading(true);
 
-      if (!valor || isNaN(Number(valor))) {
-        toast.error('Digite um valor válido');
+      if (!valor.trim()) {
+        toast.error('Digite o valor do pedido');
         return;
       }
 
       // Buscar informações da obra
       const { data: obra, error: obraError } = await supabase
         .from('obras')
-        .select('nome, responsavel_id')
+        .select('nome, responsavel')
         .eq('id', item.obra_id)
         .single();
 
       if (obraError) throw obraError;
 
-      const { error } = await supabase
+      // Atualizar item
+      const { error: updateError } = await supabase
         .from('demanda_itens')
         .update({
           status: 'pedido',
-          valor: Number(valor),
-          pedido_completo: pedidoCompleto,
-          descricao: pedidoCompleto ? item.descricao : descricao.trim(),
+          valor: parseFloat(valor),
           data_pedido: new Date().toISOString()
         })
         .eq('id', item.id);
 
-      if (error) throw error;
+      if (updateError) throw updateError;
 
       // Enviar notificação
-      if (obra.responsavel_id) {
-        const notificationService = NotificationService.getInstance();
-        await notificationService.sendNotification(
-          obra.responsavel_id,
-          'Demanda Movida para Pedido',
-          `Um item foi movido para pedido na obra ${obra.nome}: ${item.titulo}`
-        );
-      }
+      const notificationService = NotificationService.getInstance();
+      await notificationService.notificarDemandaParaPedido(
+        item.obra_id,
+        item.descricao
+      );
 
-      toast.success('Item movido para Pedido');
+      toast.success('Item movido para pedido com sucesso');
       onItemMovido();
       onOpenChange(false);
+      setValor('');
     } catch (error) {
       console.error('Erro ao mover item:', error);
-      toast.error('Erro ao mover item para Pedido');
+      toast.error('Erro ao mover item');
     } finally {
       setLoading(false);
     }
@@ -88,6 +85,9 @@ export function MoverParaPedidoDialog({
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Mover para Pedido</DialogTitle>
+            <DialogDescription>
+              Informe o valor do pedido para movê-lo para a seção de pedidos.
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
@@ -100,7 +100,7 @@ export function MoverParaPedidoDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="valor">Valor do Pedido</Label>
+              <Label htmlFor="valor">Valor do Pedido (R$)</Label>
               <Input
                 id="valor"
                 type="number"
@@ -134,7 +134,7 @@ export function MoverParaPedidoDialog({
               </Button>
               <Button
                 onClick={handleSubmit}
-                disabled={loading || !valor || (!pedidoCompleto && !descricao.trim())}
+                disabled={loading || !valor.trim()}
               >
                 {loading ? 'Movendo...' : 'Mover para Pedido'}
               </Button>

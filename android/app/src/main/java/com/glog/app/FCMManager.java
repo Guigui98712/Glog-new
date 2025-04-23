@@ -1,13 +1,19 @@
 package com.glog.app;
 
+import android.os.Build;
 import android.util.Log;
+
+import androidx.annotation.NonNull;
+
 import com.google.firebase.messaging.FirebaseMessaging;
-import io.supabase.postgrest.PostgrestClient;
 import org.json.JSONObject;
+
+import java.io.IOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 
 public class FCMManager {
     private static final String TAG = "FCMManager";
@@ -32,19 +38,14 @@ public class FCMManager {
     public static void saveTokenToSupabase(String userId, String token) {
         new Thread(() -> {
             try {
-                URL url = new URL(SUPABASE_URL + "/rest/v1/user_tokens");
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("apikey", SUPABASE_KEY);
-                conn.setRequestProperty("Authorization", "Bearer " + SUPABASE_KEY);
-                conn.setRequestProperty("Content-Type", "application/json");
-                conn.setRequestProperty("Prefer", "return=minimal");
-                conn.setDoOutput(true);
+                HttpURLConnection conn = getHttpURLConnection();
 
                 JSONObject data = new JSONObject();
                 data.put("user_id", userId);
                 data.put("fcm_token", token);
-                data.put("updated_at", java.time.Instant.now().toString());
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    data.put("updated_at", Instant.now().toString());
+                }
 
                 try (OutputStream os = conn.getOutputStream()) {
                     byte[] input = data.toString().getBytes(StandardCharsets.UTF_8);
@@ -57,6 +58,19 @@ public class FCMManager {
                 Log.e(TAG, "Error saving token to Supabase", e);
             }
         }).start();
+    }
+
+    @NonNull
+    private static HttpURLConnection getHttpURLConnection() throws IOException {
+        URL url = new URL(SUPABASE_URL + "/rest/v1/user_tokens");
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("POST");
+        conn.setRequestProperty("apikey", SUPABASE_KEY);
+        conn.setRequestProperty("Authorization", "Bearer " + SUPABASE_KEY);
+        conn.setRequestProperty("Content-Type", "application/json");
+        conn.setRequestProperty("Prefer", "return=minimal");
+        conn.setDoOutput(true);
+        return conn;
     }
 
     public interface TokenCallback {

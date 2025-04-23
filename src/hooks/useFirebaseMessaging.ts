@@ -1,23 +1,47 @@
 import { useEffect, useState } from 'react';
 import { getToken } from "firebase/messaging";
 import { messaging } from "../firebase-config";
-import { supabase } from '../services/supabase';
+import { supabase } from '../lib/supabase';
 
 export function useFirebaseMessaging() {
   const [token, setToken] = useState<string | null>(null);
   const [isEnabled, setIsEnabled] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const setupMessaging = async () => {
       try {
+        // Verificar se o dispositivo suporta notificações
+        if (!('Notification' in window)) {
+          setError('Este dispositivo não suporta notificações');
+          setIsEnabled(false);
+          return;
+        }
+
+        // Verificar se o Firebase Messaging está disponível
+        if (!messaging) {
+          setError('Firebase Messaging não está disponível');
+          setIsEnabled(false);
+          return;
+        }
+
+        // Solicitar permissão para notificações
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          setError('Permissão para notificações não foi concedida');
+          setIsEnabled(false);
+          return;
+        }
+
         const currentToken = await getToken(messaging, {
-          vapidKey: "BIG74S-HGJRrLCe1YzLpUlAH42YXtkcSUuCNz0dwO87yflGjbhVof0u3SY0n6pr2v3leb5mU6jwqqa_z106-X54"
+          vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY
         });
 
         if (currentToken) {
           console.log('Token do dispositivo:', currentToken);
           setToken(currentToken);
           setIsEnabled(true);
+          setError(null);
 
           // Obter o usuário atual
           const { data: { user } } = await supabase.auth.getUser();
@@ -32,11 +56,12 @@ export function useFirebaseMessaging() {
               });
           }
         } else {
-          console.log('Nenhum token disponível. Solicite permissão para gerar um.');
+          setError('Nenhum token disponível');
           setIsEnabled(false);
         }
       } catch (error) {
         console.error('Erro ao configurar mensagens:', error);
+        setError(error instanceof Error ? error.message : 'Erro desconhecido');
         setIsEnabled(false);
       }
     };
@@ -88,6 +113,7 @@ export function useFirebaseMessaging() {
   return {
     isEnabled,
     token,
+    error,
     sendNotification
   };
 } 

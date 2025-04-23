@@ -45,5 +45,8 @@
   "prefer_related_applications": false,
   "categories": ["productivity", "business", "utilities"],
   "lang": "pt-BR",
-  "dir": "ltr"
+  "dir": "ltr",
+  "gcm_sender_id": "19946419586",
+  "permissions": ["notifications"],
+  "gcm_user_visible_only": true
 } 

@@ -22,12 +22,133 @@ import {
   AlertDialogCancel,
   AlertDialogAction,
 } from "@/components/ui/alert-dialog";
-import { Camera } from '@capacitor/camera';
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import NotificationService from '@/services/NotificationService';
+import DemandaService from '@/services/DemandaService';
+import ImageCacheService from '@/services/ImageCacheService';
 
-export function DemandaObra() {
+interface DemandaObraProps {}
+
+interface ImageUrlsState {
+  [key: string]: string;
+}
+
+// Componente ImagemMiniatura movido para fora
+interface ImagemMiniaturaProps {
+  imagem: string;
+  index: number;
+  itemSelecionado: DemandaItem;
+  onVisualizarImagem: () => void;
+  getImageUrl: (path: string) => Promise<string>;
+}
+
+const ImagemMiniatura: React.FC<ImagemMiniaturaProps> = ({ 
+  imagem, 
+  index, 
+  itemSelecionado, 
+  onVisualizarImagem,
+  getImageUrl 
+}) => {
+  const [url, setUrl] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [retries, setRetries] = useState(0);
+  const maxRetries = 3;
+
+  useEffect(() => {
+    let isMounted = true;
+    let retryTimeout: NodeJS.Timeout;
+
+    const loadImage = async () => {
+      if (!imagem) {
+        setError(true);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError(false);
+        const imageUrl = await getImageUrl(imagem);
+        
+        if (isMounted) {
+          setUrl(imageUrl);
+          setLoading(false);
+          setRetries(0);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar miniatura:', error);
+        if (isMounted) {
+          if (retries < maxRetries) {
+            const delay = Math.min(1000 * Math.pow(2, retries), 8000);
+            retryTimeout = setTimeout(() => {
+              setRetries(prev => prev + 1);
+            }, delay);
+          } else {
+            setError(true);
+            setLoading(false);
+          }
+        }
+      }
+    };
+
+    loadImage();
+
+    return () => {
+      isMounted = false;
+      if (retryTimeout) clearTimeout(retryTimeout);
+    };
+  }, [imagem, getImageUrl, retries]);
+
+  const renderContent = () => {
+    if (loading) {
+      return (
+        <div className="flex flex-col items-center justify-center w-full h-full bg-gray-100">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-2"></div>
+          {retries > 0 && (
+            <span className="text-xs text-gray-500">
+              Tentativa {retries}/{maxRetries}
+            </span>
+          )}
+        </div>
+      );
+    }
+
+    if (error || !url) {
+      return (
+        <div className="flex flex-col items-center justify-center w-full h-full bg-gray-100 text-gray-400">
+          <ImageIcon className="h-8 w-8 mb-1" />
+          <span className="text-xs text-center">Sem imagem</span>
+        </div>
+      );
+    }
+
+    return (
+      <img
+        src={url}
+        alt={`Nota Fiscal ${index + 1}`}
+        className="w-full h-full object-contain"
+        onError={() => {
+          setError(true);
+          setUrl('');
+        }}
+      />
+    );
+  };
+
+  return (
+    <div className="w-full h-full">
+      {renderContent()}
+    </div>
+  );
+};
+
+const DemandaObra: React.FC<DemandaObraProps> = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const demandaService = DemandaService.getInstance();
+  const imageCacheService = ImageCacheService.getInstance();
+  
   const [loading, setLoading] = useState(true);
   const [obraNome, setObraNome] = useState('');
   const [itens, setItens] = useState<DemandaItem[]>([]);
@@ -45,93 +166,182 @@ export function DemandaObra() {
   const [showRelatoriosDialog, setShowRelatoriosDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showImagemDialog, setShowImagemDialog] = useState(false);
-  const [imagemUrl, setImagemUrl] = useState('');
+  const [imagemUrl, setImagemUrl] = useState<string[]>([]);
   const [itemParaEditar, setItemParaEditar] = useState<DemandaItem | null>(null);
   const notificationService = NotificationService.getInstance();
+  const [imageUrls, setImageUrls] = useState<ImageUrlsState>({});
 
   useEffect(() => {
+    console.log('[DEBUG] DemandaObra - useEffect iniciado');
+    console.log('[DEBUG] DemandaObra - ID recebido:', id);
+    
     if (!id || isNaN(Number(id))) {
+      console.log('[DEBUG] DemandaObra - ID inválido');
       toast.error('ID da obra inválido');
       navigate('/obras');
       return;
     }
+    
+    console.log('[DEBUG] DemandaObra - Iniciando carregamento de dados');
     carregarDados();
   }, [id, navigate]);
 
   const carregarDados = async () => {
+    console.log('[DEBUG] DemandaObra - carregarDados iniciado');
     try {
       setLoading(true);
-
-      // Carregar nome da obra
-      const { data: obra, error: obraError } = await supabase
-        .from('obras')
-        .select('nome')
-        .eq('id', id)
-        .single();
-
-      if (obraError) throw obraError;
-      setObraNome(obra.nome);
-
-      // Carregar itens de demanda
-      const { data: demandaItens, error: demandaError } = await supabase
-        .from('demanda_itens')
-        .select('*')
-        .eq('obra_id', id)
-        .order('created_at', { ascending: false });
-
-      if (demandaError) throw demandaError;
-      
-      // Converter nota_fiscal para array se necessário
-      const itensConvertidos = demandaItens.map(item => ({
-        ...item,
-        nota_fiscal: item.nota_fiscal 
-          ? Array.isArray(item.nota_fiscal) 
-            ? item.nota_fiscal 
-            : [item.nota_fiscal]
-          : []
-      }));
-      
-      setItens(itensConvertidos);
-
-    } catch (error) {
-      console.error('Erro ao carregar dados:', error);
-      toast.error('Erro ao carregar dados da demanda');
-    } finally {
+      console.log('[DEBUG] DemandaObra - Chamando demandaService.carregarDemandas');
+      const { items, obraNome: nome } = await demandaService.carregarDemandas(Number(id));
+      console.log('[DEBUG] DemandaObra - Dados recebidos:', { items, nome });
+      setItens(items);
+      setObraNome(nome);
       setLoading(false);
+    } catch (error) {
+      console.error('[DEBUG] DemandaObra - Erro ao carregar dados:', error);
+      if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error('Erro ao carregar dados da demanda');
+      }
+      setItens([]);
+      setLoading(false);
+    }
+  };
+
+  const handleMoverParaEntregue = async (item: DemandaItem) => {
+    try {
+      setItemSelecionado(item);
+      setShowMoverParaEntregueDialog(true);
+    } catch (error) {
+      console.error('Erro ao mover item para entregue:', error);
+      toast.error('Erro ao mover item para entregue');
+    }
+  };
+
+  const handleConfirmMoverParaEntregue = async () => {
+    if (!itemSelecionado) return;
+    
+    try {
+      await demandaService.atualizarStatus(itemSelecionado, 'entregue');
+      await carregarDados();
+      setShowMoverParaEntregueDialog(false);
+    } catch (error) {
+      console.error('Erro ao confirmar movimentação:', error);
+      toast.error('Erro ao mover item para entregue');
+    }
+  };
+
+  const handleVisualizarImagem = async (item: DemandaItem) => {
+    try {
+      console.log('Visualizando imagem do item:', item);
+      if (!item.nota_fiscal || !item.nota_fiscal.length) {
+        toast.error('Nenhuma imagem disponível');
+        return;
+      }
+
+      console.log('Notas fiscais disponíveis:', item.nota_fiscal);
+      
+      // Carrega todas as URLs das imagens
+      const urls = await Promise.all(
+        item.nota_fiscal.map(async (path) => {
+          try {
+            const url = await imageCacheService.getImageUrl(path);
+            console.log('URL obtida para', path, ':', url);
+            return url;
+          } catch (error) {
+            console.error('Erro ao obter URL para', path, ':', error);
+            throw error;
+          }
+        })
+      );
+
+      setImagemUrl(urls);
+      setShowImagemDialog(true);
+    } catch (error) {
+      console.error('Erro ao carregar imagem(ns):', error);
+      toast.error('Erro ao carregar imagem(ns) da nota fiscal');
+    }
+  };
+
+  const handleImagemUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!itemParaEditar) {
+      toast.error('Nenhum item selecionado para edição');
+      return;
+    }
+
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    try {
+      console.log('Iniciando upload de imagem...');
+      const file = files[0];
+      
+      // Validar tipo de arquivo
+      if (!file.type.startsWith('image/')) {
+        toast.error('Por favor, selecione apenas arquivos de imagem');
+        return;
+      }
+
+      // Validar tamanho (máximo 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('A imagem deve ter no máximo 5MB');
+        return;
+      }
+
+      console.log('Arquivo selecionado:', file.name);
+      
+      const result = await demandaService.uploadImagem(file, itemParaEditar);
+      console.log('Resultado do upload:', result);
+      
+      // Atualiza o estado local
+      setItemParaEditar(prev => {
+        if (!prev) return null;
+        const novasImagens = [...(prev.nota_fiscal || []), result];
+        return {
+          ...prev,
+          nota_fiscal: novasImagens
+        };
+      });
+      
+      await carregarDados();
+      toast.success('Imagem adicionada com sucesso!');
+    } catch (error) {
+      console.error('Erro ao fazer upload da imagem:', error);
+      toast.error('Erro ao fazer upload da imagem');
+    }
+  };
+
+  const handleRemoverImagem = async (item: DemandaItem, index: number) => {
+    try {
+      await demandaService.removerImagem(item, index);
+      await carregarDados();
+    } catch (error) {
+      console.error('Erro ao remover imagem:', error);
+      toast.error('Erro ao remover imagem');
     }
   };
 
   const handleMoverParaPago = async (item: DemandaItem) => {
-    setSelectedItem(item);
-    setShowMoverParaPagoDialog(true);
+    try {
+      const { error } = await supabase
+        .from('demanda_itens')
+        .update({ status: 'pago' })
+        .eq('id', item.id);
+
+      if (error) throw error;
+
+      await carregarDados();
+      toast.success('Item movido para pago com sucesso!');
+      setShowMoverParaPagoDialog(false);
+    } catch (error) {
+      console.error('Erro ao mover item para pago:', error);
+      toast.error('Erro ao mover item para pago');
+    }
   };
 
   const handleConfirmMoverParaPago = async () => {
     if (!selectedItem) return;
-    
-    try {
-      setLoading(true);
-      const updatedItem = {
-        ...selectedItem,
-        status: 'pago',
-        data_pagamento: new Date().toISOString(),
-      };
-
-      await supabase
-        .from('demanda_itens')
-        .update(updatedItem)
-        .eq('id', selectedItem.id);
-
-      setItens(itens.map(i => i.id === selectedItem.id ? updatedItem : i));
-      toast.success('Item movido para pago com sucesso');
-    } catch (error) {
-      console.error(error);
-      toast.error('Erro ao mover item para pago');
-    } finally {
-      setLoading(false);
-      setShowMoverParaPagoDialog(false);
-      setSelectedItem(null);
-    }
+    await handleMoverParaPago(selectedItem);
   };
 
   const handleVoltar = async (item: DemandaItem) => {
@@ -267,45 +477,79 @@ export function DemandaObra() {
     pago: itens.filter(item => item.status === 'pago')
   };
 
-  const getImageUrl = (imagePath: string) => {
-    return supabase.storage.from('notas-fiscais').getPublicUrl(imagePath).data.publicUrl;
-  };
-
-  const handleVisualizarNotaFiscal = async (notaFiscalPath: string) => {
+  const getImageUrl = async (path: string): Promise<string> => {
+    if (!path) {
+      console.error('Caminho da imagem não fornecido');
+      throw new Error('Caminho da imagem não fornecido');
+    }
+    
+    // Se o path for uma string que parece um array JSON, tenta fazer o parse
+    let realPath = path;
     try {
-      console.log('Caminho original da imagem:', notaFiscalPath);
-      
-      let urlFinal = notaFiscalPath;
-      
-      if (!notaFiscalPath.startsWith('http')) {
-        const { data, error } = await supabase.storage
-          .from('notas-fiscais')
-          .createSignedUrl(notaFiscalPath, 60);
+      if (typeof path === 'string' && (path.startsWith('[') || path.includes(','))) {
+        const parsed = JSON.parse(path);
+        realPath = Array.isArray(parsed) ? parsed[0] : path;
+      }
+    } catch (e) {
+      console.warn('Erro ao fazer parse do caminho da imagem:', e);
+    }
+    
+    console.log('Obtendo URL para:', realPath);
+    try {
+      const { data, error } = await supabase.storage
+        .from('notas-fiscais')
+        .getPublicUrl(realPath);
 
-        if (error) {
-          console.error('Erro ao gerar URL assinada:', error);
-          throw new Error('Erro ao gerar URL de acesso à imagem');
-        }
-
-        if (!data?.signedUrl) {
-          throw new Error('URL não encontrada');
-        }
-        
-        urlFinal = data.signedUrl;
+      if (error) {
+        console.error('Erro do Supabase:', error);
+        throw error;
       }
       
-      setNotaFiscalUrl(urlFinal);
-      setShowNotaFiscal(true);
-      
+      if (!data?.publicUrl) {
+        console.error('URL pública não encontrada para:', realPath);
+        throw new Error('URL pública não encontrada');
+      }
+
+      console.log('URL pública obtida:', data.publicUrl);
+      return data.publicUrl;
     } catch (error) {
-      console.error('Erro ao carregar imagem:', error);
-      toast.error(error instanceof Error ? error.message : 'Erro ao carregar a imagem');
+      console.error('Erro ao obter URL da imagem:', error);
+      throw error;
     }
+  };
+
+  const renderNotasFiscais = async (notas: string | string[] | null | undefined) => {
+    if (!notas) return '';
+    
+    const notasArray = Array.isArray(notas) ? notas : [notas];
+    
+    if (notasArray.length === 0) return '';
+
+    const imageElements = await Promise.all(notasArray.map(async (imagem, index) => {
+      const imageUrl = await getImageUrl(imagem);
+      return `
+        <div class="relative aspect-square rounded-lg border border-gray-200 overflow-hidden">
+          <img
+            src="${imageUrl}"
+            alt="Nota Fiscal ${index + 1}"
+            class="w-full h-full object-contain"
+            onerror="this.onerror=null; this.src='https://placehold.co/400x400?text=Imagem+não+encontrada';"
+          />
+        </div>
+      `;
+    }));
+
+    return `
+      <div class="nota-fiscal">
+        <div class="grid grid-cols-2 gap-4">
+          ${imageElements.join('')}
+        </div>
+      </div>
+    `;
   };
 
   const handleGerarRelatorio = async () => {
     try {
-      // Filtrar apenas os itens pagos
       const itensPagos = itens.filter(item => item.status === 'pago');
       
       if (itensPagos.length === 0) {
@@ -313,10 +557,9 @@ export function DemandaObra() {
         return;
       }
 
-      // Calcular valor total
       const valorTotal = itensPagos.reduce((total, item) => total + (item.valor || 0), 0);
 
-      // Gerar o HTML do relatório
+      // Gerar HTML do relatório
       const html = `
         <!DOCTYPE html>
         <html lang="pt-BR">
@@ -386,7 +629,7 @@ export function DemandaObra() {
               <div class="info-block">
                 <h3>Itens Pagos</h3>
                 <div class="items-container">
-                  ${itensPagos.map(item => `
+                  ${await Promise.all(itensPagos.map(async item => `
                     <div class="card">
                       <div class="card-title">${item.titulo}</div>
                       ${item.descricao ? `<div class="card-description">${item.descricao}</div>` : ''}
@@ -410,23 +653,9 @@ export function DemandaObra() {
                           </div>
                         ` : ''}
                       </div>
-                      ${item.nota_fiscal && item.nota_fiscal.length > 0 ? `
-                        <div class="nota-fiscal">
-                          <div class="grid grid-cols-2 gap-4">
-                            ${item.nota_fiscal.map((imagem, index) => `
-                              <div class="relative aspect-square rounded-lg border border-gray-200 overflow-hidden">
-                                <img
-                                  src="${getImageUrl(imagem)}"
-                                  alt="Nota Fiscal ${index + 1}"
-                                  class="w-full h-full object-contain"
-                                />
-                              </div>
-                            `).join('')}
-                          </div>
-                        </div>
-                      ` : ''}
+                      ${await renderNotasFiscais(item.nota_fiscal)}
                     </div>
-                  `).join('')}
+                  `)).join('')}
                 </div>
                 <div class="valor-total">
                   Valor Total: R$ ${valorTotal.toFixed(2)}
@@ -439,6 +668,18 @@ export function DemandaObra() {
               <p>${obraNome} - Todos os direitos reservados</p>
             </div>
           </div>
+          <script>
+            // Adiciona tratamento de erro para todas as imagens
+            document.addEventListener('DOMContentLoaded', function() {
+              const images = document.getElementsByTagName('img');
+              for(let img of images) {
+                img.onerror = function() {
+                  this.onerror = null;
+                  this.src = 'https://placehold.co/400x400?text=Imagem+não+encontrada';
+                }
+              }
+            });
+          </script>
         </body>
         </html>
       `;
@@ -478,13 +719,11 @@ export function DemandaObra() {
         throw new Error('Não foi possível abrir uma nova janela. Verifique se o bloqueador de pop-ups está desativado.');
       }
       
-      // Escrever o conteúdo HTML na nova janela
       printWindow.document.write(html);
       printWindow.document.close();
       
       toast.success('Relatório gerado com sucesso! Os itens foram removidos da lista.');
 
-      // Recarregar os dados para atualizar a lista
       await carregarDados();
 
     } catch (error) {
@@ -493,44 +732,13 @@ export function DemandaObra() {
     }
   };
 
-  const handleImagemUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    try {
-      const file = event.target.files?.[0];
-      if (!file) return;
-
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}.${fileExt}`;
-      const filePath = `${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('notas-fiscais')
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
-
-      if (itemParaEditar) {
-        const novasImagens = [...(itemParaEditar.nota_fiscal || []), filePath];
-        setItemParaEditar({
-          ...itemParaEditar,
-          nota_fiscal: novasImagens
-        });
-      }
-
-      return filePath;
-    } catch (error) {
-      console.error('Erro ao fazer upload:', error);
-      toast.error('Erro ao fazer upload da imagem');
-      return null;
-    }
-  };
-
   const handleTirarFoto = async () => {
     try {
       const image = await Camera.getPhoto({
         quality: 90,
         allowEditing: false,
-        resultType: 'base64',
-        source: 'CAMERA'
+        resultType: CameraResultType.Base64,
+        source: CameraSource.Camera
       });
 
       if (!image.base64String) {
@@ -565,128 +773,37 @@ export function DemandaObra() {
     }
   };
 
-  const handleRemoverImagem = async (imagemPath: string) => {
-    try {
-      if (!itemParaEditar) return;
-
-      // Remove do storage
-      const { error: deleteError } = await supabase.storage
-        .from('notas-fiscais')
-        .remove([imagemPath]);
-
-      if (deleteError) throw deleteError;
-
-      // Atualiza o estado local
-      const novasImagens = itemParaEditar.nota_fiscal?.filter(img => img !== imagemPath) || [];
-      setItemParaEditar({
-        ...itemParaEditar,
-        nota_fiscal: novasImagens
-      });
-
-      toast.success('Imagem removida com sucesso');
-    } catch (error) {
-      console.error('Erro ao remover imagem:', error);
-      toast.error('Erro ao remover imagem');
-    }
-  };
-
-  // Função para renderizar a miniatura da imagem
+  // Substituir a função renderImagemMiniatura pelo novo componente
   const renderImagemMiniatura = (imagem: string, index: number) => {
+    if (!imagem) return null;
+    
     return (
-      <div key={index} className="relative group">
-        <div className="relative w-16 h-16 rounded-lg border border-input overflow-hidden bg-gray-50">
-          <img
-            src={imagem.startsWith('http') ? imagem : getImageUrl(imagem)}
-            alt={`Nota Fiscal ${index + 1}`}
-            className="w-full h-full object-contain"
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              target.src = 'https://placehold.co/64x64?text=Erro';
-            }}
-          />
-          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 bg-white/80 hover:bg-white"
-              onClick={() => handleVisualizarNotaFiscal(imagem)}
-            >
-              <ImageIcon className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </div>
+      <ImagemMiniatura
+        key={index}
+        imagem={imagem}
+        index={index}
+        itemSelecionado={itemSelecionado!}
+        onVisualizarImagem={() => handleVisualizarImagem(itemSelecionado!)}
+        getImageUrl={getImageUrl}
+      />
     );
   };
 
-  const handleAdicionarDemanda = async (novaDemanda: DemandaItem) => {
-    try {
-      const { data, error } = await supabase
-        .from('demanda_itens')
-        .insert([novaDemanda])
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      setItens([data, ...itens]);
-      toast.success('Demanda adicionada com sucesso');
-      
-      // Enviar notificação
-      await notificationService.notificarNovaDemanda(
-        Number(id),
-        novaDemanda.descricao
-      );
-    } catch (error) {
-      console.error('Erro ao adicionar demanda:', error);
-      toast.error('Erro ao adicionar demanda');
+  const loadImageUrlsForItem = async (item: DemandaItem) => {
+    const urls: ImageUrlsState = {};
+    if (Array.isArray(item.nota_fiscal)) {
+      for (const path of item.nota_fiscal) {
+        urls[path] = await getImageUrl(path);
+      }
     }
+    setImageUrls(urls);
   };
 
-  const handleMoverParaPedido = async (item: DemandaItem) => {
-    try {
-      const { error } = await supabase
-        .from('demanda_itens')
-        .update({ status: 'pedido' })
-        .eq('id', item.id);
-
-      if (error) throw error;
-
-      await notificationService.notificarDemandaParaPedido(
-        Number(id),
-        item.descricao
-      );
-
-      toast.success('Item movido para pedido');
-      carregarDados();
-    } catch (error) {
-      console.error('Erro ao mover item:', error);
-      toast.error('Erro ao mover item');
+  useEffect(() => {
+    if (itemParaEditar) {
+      loadImageUrlsForItem(itemParaEditar);
     }
-  };
-
-  const handleMoverParaEntregue = async (item: DemandaItem) => {
-    try {
-      const { error } = await supabase
-        .from('demanda_itens')
-        .update({ status: 'entregue' })
-        .eq('id', item.id);
-
-      if (error) throw error;
-
-      await notificationService.notificarDemandaParaEntregue(
-        Number(id),
-        item.descricao
-      );
-
-      toast.success('Item movido para entregue');
-      carregarDados();
-    } catch (error) {
-      console.error('Erro ao mover item:', error);
-      toast.error('Erro ao mover item');
-    }
-  };
+  }, [itemParaEditar?.nota_fiscal]);
 
   return (
     <div className="container mx-auto py-6">
@@ -723,7 +840,7 @@ export function DemandaObra() {
           <Button 
             variant="outline" 
             size="sm" 
-            onClick={() => navigate(`/demandas/${id}/relatorios`)}
+            onClick={() => navigate(`/obras/${id}/demanda/relatorios`)}
             className="flex items-center gap-2"
           >
             <FolderOpen className="h-4 w-4" />
@@ -934,113 +1051,91 @@ export function DemandaObra() {
                   key={item.id}
                   className="bg-background p-3 rounded-md shadow-sm"
                 >
-                  {item.titulo === 'Lista de Demanda' ? (
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-medium">{item.titulo}</h3>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => {
-                              setItemParaEditar({
-                                ...item,
-                                nota_fiscal: item.nota_fiscal || []
-                              });
-                              setShowEditarDialog(true);
-                            }}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-4 w-4 p-0 hover:bg-transparent"
-                            onClick={() => handleExcluir(item)}
-                          >
-                            <Trash2 className="h-4 w-4 text-muted-foreground" />
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="text-sm text-muted-foreground mt-1">
-                        {item.descricao.split('\n').map((linha, index) => (
-                          <p key={index}>{linha.trim()}</p>
-                        ))}
-                      </div>
-                      <div className="text-sm text-muted-foreground mt-1">
-                        <p>Valor: R$ {item.valor?.toFixed(2)}</p>
-                        <p>Tempo de entrega: {item.tempo_entrega}</p>
-                        {item.observacao_entrega && (
-                          <p className="text-yellow-600">Obs: {item.observacao_entrega}</p>
-                        )}
-                        {item.nota_fiscal && item.nota_fiscal.length > 0 && (
-                          <div className="mt-2">
-                            <div className="text-sm text-muted-foreground mb-1">Notas Fiscais / Comprovantes:</div>
-                            <div className="flex flex-wrap gap-2">
-                              {Array.isArray(item.nota_fiscal) 
-                                ? item.nota_fiscal.map((imagem, index) => renderImagemMiniatura(imagem, index))
-                                : renderImagemMiniatura(item.nota_fiscal, 0)
-                              }
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-medium">{item.titulo}</h3>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => {
+                          setItemParaEditar({
+                            ...item,
+                            nota_fiscal: item.nota_fiscal || []
+                          });
+                          setShowEditarDialog(true);
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-4 w-4 p-0 hover:bg-transparent"
+                        onClick={() => handleExcluir(item)}
+                      >
+                        <Trash2 className="h-4 w-4 text-muted-foreground" />
+                      </Button>
                     </div>
-                  ) : (
-                    <>
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-medium">{item.titulo}</h3>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => {
-                              setItemParaEditar({
-                                ...item,
-                                nota_fiscal: item.nota_fiscal || []
-                              });
-                              setShowEditarDialog(true);
-                            }}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-4 w-4 p-0 hover:bg-transparent"
-                            onClick={() => handleExcluir(item)}
-                          >
-                            <Trash2 className="h-4 w-4 text-muted-foreground" />
-                          </Button>
-                        </div>
-                      </div>
-                      {item.descricao && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {item.descricao}
-                        </p>
-                      )}
-                      <div className="text-sm text-muted-foreground mt-1">
-                        <p>Valor: R$ {item.valor?.toFixed(2)}</p>
-                        <p>Tempo de entrega: {item.tempo_entrega}</p>
-                        {item.observacao_entrega && (
-                          <p className="text-yellow-600">Obs: {item.observacao_entrega}</p>
-                        )}
-                        {item.nota_fiscal && item.nota_fiscal.length > 0 && (
-                          <div className="mt-2">
-                            <div className="text-sm text-muted-foreground mb-1">Notas Fiscais / Comprovantes:</div>
-                            <div className="flex flex-wrap gap-2">
-                              {Array.isArray(item.nota_fiscal) 
-                                ? item.nota_fiscal.map((imagem, index) => renderImagemMiniatura(imagem, index))
-                                : renderImagemMiniatura(item.nota_fiscal, 0)
-                              }
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </>
+                  </div>
+                  {item.descricao && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {item.descricao}
+                    </p>
                   )}
+                  <div className="text-sm text-muted-foreground mt-1">
+                    <p>Valor: R$ {item.valor?.toFixed(2)}</p>
+                    <p>Tempo de entrega: {item.tempo_entrega}</p>
+                    {item.observacao_entrega && (
+                      <p className="text-yellow-600">Obs: {item.observacao_entrega}</p>
+                    )}
+                    <div className="mt-2">
+                      {item.nota_fiscal && Array.isArray(item.nota_fiscal) && item.nota_fiscal.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                          {item.nota_fiscal.map((imagem: string, index: number) => (
+                            <div key={index} className="relative group">
+                              <div className="relative aspect-square w-full rounded-lg border border-input overflow-hidden bg-gray-50">
+                                <ImagemMiniatura
+                                  imagem={imagem}
+                                  index={index}
+                                  itemSelecionado={item}
+                                  onVisualizarImagem={() => handleVisualizarImagem(item)}
+                                  getImageUrl={getImageUrl}
+                                />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 bg-white/80 hover:bg-white"
+                                    onClick={() => handleVisualizarImagem(item)}
+                                  >
+                                    <ImageIcon className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 bg-white/80 hover:bg-white text-destructive"
+                                    onClick={() => handleRemoverImagem(item, index)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center w-full h-16 bg-gray-100 rounded-lg">
+                          <div className="flex flex-col items-center text-gray-400">
+                            <ImageIcon className="h-6 w-6 mb-1" />
+                            <span className="text-xs">Sem imagem</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                   <div className="flex justify-between mt-2">
                     <Button
                       variant="outline"
@@ -1094,17 +1189,9 @@ export function DemandaObra() {
                     {item.tempo_entrega && (
                       <p>Tempo de entrega: {item.tempo_entrega}</p>
                     )}
-                    {item.nota_fiscal && item.nota_fiscal.length > 0 && (
-                      <div className="mt-2">
-                        <div className="text-sm text-muted-foreground mb-1">Notas Fiscais / Comprovantes:</div>
-                        <div className="flex flex-wrap gap-2">
-                          {Array.isArray(item.nota_fiscal) 
-                            ? item.nota_fiscal.map((imagem, index) => renderImagemMiniatura(imagem, index))
-                            : renderImagemMiniatura(item.nota_fiscal, 0)
-                          }
-                        </div>
-                      </div>
-                    )}
+                    {item.nota_fiscal && Array.isArray(item.nota_fiscal) && item.nota_fiscal.map((imagem, index) => (
+                      renderImagemMiniatura(imagem, index)
+                    ))}
                   </div>
                   <div className="flex justify-start mt-2">
                     <Button
@@ -1148,26 +1235,26 @@ export function DemandaObra() {
       )}
 
       {/* Modal de Visualização da Imagem */}
-      <Dialog open={showNotaFiscal} onOpenChange={setShowNotaFiscal}>
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
+      <Dialog open={showImagemDialog} onOpenChange={setShowImagemDialog}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader className="sticky top-0 bg-background z-10 pb-4 border-b">
             <DialogTitle>Visualizar Nota Fiscal</DialogTitle>
             <DialogDescription>
               Visualização em tamanho completo da nota fiscal ou comprovante
             </DialogDescription>
           </DialogHeader>
-          <div className="relative w-full h-full flex items-center justify-center p-4">
-            {notaFiscalUrl && (
-              <div className="w-full flex flex-col items-center gap-4">
-                <div className="relative w-full max-h-[70vh] overflow-hidden rounded-lg shadow-lg bg-gray-100">
+          <div className="flex flex-col items-center gap-6 py-6">
+            {imagemUrl.map((url, index) => (
+              <div key={index} className="w-full flex flex-col items-center">
+                <div className="relative w-full bg-gray-100 rounded-lg shadow-lg overflow-hidden">
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                   </div>
                   <img 
-                    src={notaFiscalUrl} 
-                    alt="Nota Fiscal" 
-                    className="w-full h-full object-contain relative z-10"
-                    style={{ maxHeight: '70vh', opacity: 0, transition: 'opacity 0.3s ease-in-out' }}
+                    src={url} 
+                    alt={`Nota Fiscal ${index + 1}`} 
+                    className="relative z-10 w-full h-auto object-contain"
+                    style={{ opacity: 0, transition: 'opacity 0.3s ease-in-out' }}
                     onLoad={(e) => {
                       const target = e.target as HTMLImageElement;
                       target.style.opacity = '1';
@@ -1177,7 +1264,6 @@ export function DemandaObra() {
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
                       target.style.display = 'none';
-                      toast.error('Erro ao exibir a imagem');
                       const errorDiv = document.createElement('div');
                       errorDiv.className = 'text-red-500 text-center p-4';
                       errorDiv.textContent = 'Não foi possível carregar a imagem';
@@ -1185,8 +1271,11 @@ export function DemandaObra() {
                     }}
                   />
                 </div>
+                <span className="text-sm text-muted-foreground mt-2">
+                  Imagem {index + 1} de {imagemUrl.length}
+                </span>
               </div>
-            )}
+            ))}
           </div>
         </DialogContent>
       </Dialog>
@@ -1290,82 +1379,45 @@ export function DemandaObra() {
                   <label className="text-sm font-medium">
                     Notas Fiscais / Comprovantes
                   </label>
-                  {itemParaEditar.nota_fiscal && itemParaEditar.nota_fiscal.length > 0 && (
-                    <div className="grid grid-cols-2 gap-2 mb-2">
-                      {Array.isArray(itemParaEditar.nota_fiscal) 
-                        ? itemParaEditar.nota_fiscal.map((imagem, index) => (
-                            <div key={index} className="relative group">
-                              <div className="relative aspect-square rounded-lg border border-input overflow-hidden bg-gray-50">
-                                <img
-                                  src={imagem.startsWith('http') ? imagem : getImageUrl(imagem)}
-                                  alt={`Nota Fiscal ${index + 1}`}
-                                  className="w-full h-full object-contain"
-                                  onError={(e) => {
-                                    const target = e.target as HTMLImageElement;
-                                    target.src = 'https://placehold.co/64x64?text=Erro';
-                                  }}
-                                />
-                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 bg-white/80 hover:bg-white"
-                                    onClick={() => handleVisualizarNotaFiscal(imagem)}
-                                  >
-                                    <ImageIcon className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 bg-white/80 hover:bg-white text-destructive"
-                                    onClick={() => handleRemoverImagem(imagem)}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </div>
+                  {itemParaEditar.nota_fiscal && itemParaEditar.nota_fiscal.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                      {itemParaEditar.nota_fiscal.map((imagem: string, index: number) => (
+                        <div key={index} className="relative group">
+                          <div className="relative aspect-square w-full rounded-lg border border-input overflow-hidden bg-gray-50">
+                            <ImagemMiniatura
+                              imagem={imagem}
+                              index={index}
+                              itemSelecionado={itemParaEditar}
+                              onVisualizarImagem={() => handleVisualizarImagem(itemParaEditar)}
+                              getImageUrl={getImageUrl}
+                            />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 bg-white/80 hover:bg-white"
+                                onClick={() => handleVisualizarImagem(itemParaEditar)}
+                              >
+                                <ImageIcon className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 bg-white/80 hover:bg-white text-destructive"
+                                onClick={() => handleRemoverImagem(itemParaEditar, index)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             </div>
-                          ))
-                        : (
-                            <div className="relative group">
-                              <div className="relative aspect-square rounded-lg border border-input overflow-hidden bg-gray-50">
-                                <img
-                                  src={itemParaEditar.nota_fiscal.startsWith('http') 
-                                    ? itemParaEditar.nota_fiscal 
-                                    : getImageUrl(itemParaEditar.nota_fiscal)}
-                                  alt="Nota Fiscal"
-                                  className="w-full h-full object-contain"
-                                  onError={(e) => {
-                                    const target = e.target as HTMLImageElement;
-                                    target.src = 'https://placehold.co/64x64?text=Erro';
-                                  }}
-                                />
-                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 bg-white/80 hover:bg-white"
-                                    onClick={() => handleVisualizarNotaFiscal(itemParaEditar.nota_fiscal)}
-                                  >
-                                    <ImageIcon className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 bg-white/80 hover:bg-white text-destructive"
-                                    onClick={() => handleRemoverImagem(itemParaEditar.nota_fiscal)}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </div>
-                            </div>
-                          )
-                      }
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground mb-2">
+                      Nenhuma imagem anexada
                     </div>
                   )}
                   <div className="flex gap-2">
@@ -1424,4 +1476,6 @@ export function DemandaObra() {
       </Dialog>
     </div>
   );
-} 
+}
+
+export default DemandaObra; 

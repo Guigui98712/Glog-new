@@ -20,7 +20,7 @@ import DefinicoesObra from "@/pages/DefinicoesObra";
 import { Toaster } from "./components/ui/toaster";
 import "./App.css";
 import { supabase } from "@/lib/supabase";
-import { DemandaObra } from './pages/DemandaObra';
+import DemandaObra from './pages/DemandaObra';
 import { DemandaRelatorios } from "./pages/DemandaRelatorios";
 
 // Componente para redirecionar com base no estado de autenticação
@@ -133,6 +133,7 @@ function App() {
             <Route path=":id/relatorios" element={<Relatorios />} />
             <Route path=":id/definicoes" element={<DefinicoesObra />} />
             <Route path=":id/demanda" element={<DemandaObra />} />
+            <Route path=":id/demanda/relatorios" element={<DemandaRelatorios />} />
           </Route>
           
           <Route 
@@ -182,9 +183,6 @@ function App() {
           >
             <Route index element={<NotFound />} />
           </Route>
-          
-          <Route path="/demandas/:id" element={<DemandaObra />} />
-          <Route path="/demandas/:id/relatorios" element={<DemandaRelatorios />} />
           
           <Route path="*" element={<Navigate to="/404" replace />} />
         </Routes>

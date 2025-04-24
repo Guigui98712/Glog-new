@@ -7,8 +7,11 @@ export default {
     "./components/**/*.{ts,tsx}",
     "./app/**/*.{ts,tsx}",
     "./src/**/*.{ts,tsx}",
+<<<<<<< HEAD
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
+=======
+>>>>>>> origin/master
   ],
   prefix: "",
   theme: {
@@ -81,6 +84,7 @@ export default {
         "accordion-up": "accordion-up 0.2s ease-out",
         slideIn: "slideIn 0.3s ease-out",
       },
+<<<<<<< HEAD
       typography: {
         DEFAULT: {
           css: {
@@ -296,4 +300,9 @@ export default {
     require("@tailwindcss/typography"),
     require("tailwindcss-animate"),
   ],
+=======
+    },
+  },
+  plugins: [require("tailwindcss-animate")],
+>>>>>>> origin/master
 } satisfies Config;

@@ -1,15 +1,16 @@
 # Dependências
-node_modules
-.pnp
+/node_modules
+/.pnp
 .pnp.js
 
 # Arquivos de build
-dist
+/build
+/dist
 dist-ssr
 *.local
 
 # Arquivos de teste
-coverage
+/coverage
 
 # Arquivos de ambiente
 .env

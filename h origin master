@@ -1,0 +1,5 @@
+[33mcommit 21887c5e6e8a051145c995e6fa8385a66d7d8455[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m)[m
+Author: Guilherme <guicarletto@gmail.com>
+Date:   Thu Apr 3 15:29:15 2025 -0300
+
+    feat: Implementa funcionalidade de adicionar e remover anexos nos cards de definições

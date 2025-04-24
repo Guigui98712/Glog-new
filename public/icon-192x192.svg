@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <!-- Hexágono externo (borda preta) -->
+  <path d="M96,12 L160,50 L160,142 L96,180 L32,142 L32,50 Z" 
+        stroke="black" 
+        stroke-width="6" 
+        fill="white"/>
+  
+  <!-- Hexágono interno (linha turquesa) -->
+  <path d="M96,24 L148,58 L148,134 L96,168 L44,134 L44,58 Z" 
+        stroke="#00B2D6" 
+        stroke-width="4" 
+        fill="none"/>
+  
+  <!-- Capacete -->
+  <g transform="translate(50, 48) scale(1.9)">
+    <!-- Capacete parte superior -->
+    <path d="M15,8 C8,8 4,12 4,18 L4,22 L26,22 L26,18 C26,12 22,8 15,8 Z" 
+          fill="black"/>
+    
+    <!-- Detalhes do capacete (ranhuras) -->
+    <path d="M10,8 L10,21 M15,8 L15,21 M20,8 L20,21" 
+          stroke="white" 
+          stroke-width="1.5"/>
+    
+    <!-- Base do capacete -->
+    <rect x="4" y="22" width="22" height="2" fill="black"/>
+    
+    <!-- Engrenagem -->
+    <path d="M15,25 C12,25 10,27 10,30 C10,33 12,35 15,35 C18,35 20,33 20,30 C20,27 18,25 15,25 Z" 
+          fill="black"/>
+    
+    <!-- Detalhes da engrenagem -->
+    <path d="M7,27 L10,30 L7,33 Z" fill="black"/>
+    <path d="M23,27 L20,30 L23,33 Z" fill="black"/>
+    <path d="M14,24 L15,27 L16,24 Z" fill="black"/>
+    <path d="M14,36 L15,33 L16,36 Z" fill="black"/>
+    
+    <!-- Detalhe central da engrenagem -->
+    <rect x="13" y="29" width="4" height="2" fill="white"/>
+  </g>
+</svg> 

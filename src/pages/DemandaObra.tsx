@@ -27,6 +27,8 @@ import NotificationService from '@/services/NotificationService';
 import DemandaService from '@/services/DemandaService';
 import ImageCacheService from '@/services/ImageCacheService';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 
 interface DemandaObraProps {}
 
@@ -170,6 +172,7 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
   const [imagemUrl, setImagemUrl] = useState<string[]>([]);
   const [itemParaEditar, setItemParaEditar] = useState<DemandaItem | null>(null);
   const [showConfirmarRelatorioDialog, setShowConfirmarRelatorioDialog] = useState(false);
+  const [incluirDatasRelatorio, setIncluirDatasRelatorio] = useState(true);
   const notificationService = NotificationService.getInstance();
   const [imageUrls, setImageUrls] = useState<ImageUrlsState>({});
 
@@ -572,33 +575,37 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
 
       const itensHtml = await Promise.all(itensPagos.map(async item => {
         const notasFiscaisHtml = await renderNotasFiscais(item.nota_fiscal);
-        const dataPedidoStr = item.data_pedido ? format(new Date(item.data_pedido), 'dd/MM/yyyy') : 'N/A';
-        const dataEntregaStr = item.data_entrega ? format(new Date(item.data_entrega), 'dd/MM/yyyy') : 'N/A';
         const valorStr = item.valor ? `R$ ${item.valor.toFixed(2)}` : 'N/A';
+        
+        // Formatação condicional das datas e tempo
+        const dataPedidoHtml = incluirDatasRelatorio && item.data_pedido ? `
+          <div class="info-item">
+            <div class="info-label">Data do Pedido</div>
+            <div class="info-value">${format(new Date(item.data_pedido), 'dd/MM/yyyy')}</div>
+          </div>` : '';
+        const dataEntregaHtml = incluirDatasRelatorio && item.data_entrega ? `
+          <div class="info-item">
+            <div class="info-label">Data de Entrega</div>
+            <div class="info-value">${format(new Date(item.data_entrega), 'dd/MM/yyyy')}</div>
+          </div>` : '';
+        const tempoEntregaHtml = incluirDatasRelatorio && item.tempo_entrega ? `
+          <div class="info-item">
+            <div class="info-label">Tempo de Entrega</div>
+            <div class="info-value">${item.tempo_entrega}</div>
+          </div>` : '';
 
         return `
           <div class="card">
             <div class="card-title">${item.titulo}</div>
             ${item.descricao ? `<div class="card-description">${item.descricao.replace(/\n/g, '<br>')}</div>` : ''} 
             <div class="info-grid">
-              <div class="info-item">
-                <div class="info-label">Data do Pedido</div>
-                <div class="info-value">${dataPedidoStr}</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">Data de Entrega</div>
-                <div class="info-value">${dataEntregaStr}</div>
-              </div>
+              ${dataPedidoHtml}
+              ${dataEntregaHtml}
               <div class="info-item">
                 <div class="info-label">Valor</div>
                 <div class="info-value">${valorStr}</div>
               </div>
-              ${item.tempo_entrega ? `
-                <div class="info-item">
-                  <div class="info-label">Tempo de Entrega</div>
-                  <div class="info-value">${item.tempo_entrega}</div>
-                </div>
-              ` : ''}
+              ${tempoEntregaHtml}
             </div>
             ${notasFiscaisHtml}
           </div>
@@ -823,34 +830,46 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
           </Button>
           <h1 className="text-2xl font-bold">Demanda: {obraNome}</h1>
         </div>
-        <div className="flex items-center gap-2 flex-wrap"> {/* Adicionado flex-wrap */} 
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => setShowAdicionarDialog(true)}
-            className="flex items-center gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            Nova Demanda
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleGerarRelatorio}
-            className="flex items-center gap-2"
-          >
-            <FileText className="h-4 w-4" />
-            Gerar Relatório
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => navigate(`/obras/${id}/demanda/relatorios`)}
-            className="flex items-center gap-2"
-          >
-            <FolderOpen className="h-4 w-4" />
-            Ver Relatórios
-          </Button>
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setShowAdicionarDialog(true)}
+              className="flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Nova Demanda
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleGerarRelatorio} 
+              className="flex items-center gap-2"
+            >
+              <FileText className="h-4 w-4" />
+              Gerar Relatório
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => navigate(`/obras/${id}/demanda/relatorios`)}
+              className="flex items-center gap-2"
+            >
+              <FolderOpen className="h-4 w-4" />
+              Ver Relatórios
+            </Button>
+          </div>
+          <div className="flex items-center space-x-2 mt-1 self-end">
+            <Checkbox 
+              id="incluir-datas" 
+              checked={incluirDatasRelatorio}
+              onCheckedChange={(checked) => setIncluirDatasRelatorio(Boolean(checked))}
+            />
+            <Label htmlFor="incluir-datas" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+              Adicionar datas
+            </Label>
+          </div>
         </div>
       </div>
 

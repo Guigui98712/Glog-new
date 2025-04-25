@@ -87,6 +87,21 @@ class NotificationService {
     }
   }
 
+  public async notificarDemandaParaPago(obraId: number, demandaDescricao: string) {
+    try {
+      const responsavelId = await this.getResponsavelObra(obraId);
+      if (responsavelId) {
+        await this.sendNotification(
+          'Demanda Paga',
+          `A demanda "${demandaDescricao}" foi marcada como paga`,
+          responsavelId
+        );
+      }
+    } catch (error) {
+      console.error('Erro ao enviar notificação de demanda paga:', error);
+    }
+  }
+
   private async sendNotification(title: string, body: string, targetUserId: string) {
     try {
       // Buscar tokens do usuário alvo

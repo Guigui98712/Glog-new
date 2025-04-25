@@ -26,10 +26,7 @@ import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import NotificationService from '@/services/NotificationService';
 import DemandaService from '@/services/DemandaService';
 import ImageCacheService from '@/services/ImageCacheService';
-<<<<<<< HEAD
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
-=======
->>>>>>> origin/master
 
 interface DemandaObraProps {}
 
@@ -172,6 +169,7 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
   const [showImagemDialog, setShowImagemDialog] = useState(false);
   const [imagemUrl, setImagemUrl] = useState<string[]>([]);
   const [itemParaEditar, setItemParaEditar] = useState<DemandaItem | null>(null);
+  const [showConfirmarRelatorioDialog, setShowConfirmarRelatorioDialog] = useState(false);
   const notificationService = NotificationService.getInstance();
   const [imageUrls, setImageUrls] = useState<ImageUrlsState>({});
 
@@ -500,13 +498,13 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
     
     console.log('Obtendo URL para:', realPath);
     try {
-      const { data, error } = await supabase.storage
+      const { data, error: fetchError } = await supabase.storage
         .from('notas-fiscais')
         .getPublicUrl(realPath);
 
-      if (error) {
-        console.error('Erro do Supabase:', error);
-        throw error;
+      if (fetchError) {
+        console.error('Erro do Supabase ao obter URL pública:', fetchError);
+        throw fetchError;
       }
       
       if (!data?.publicUrl) {
@@ -530,17 +528,26 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
     if (notasArray.length === 0) return '';
 
     const imageElements = await Promise.all(notasArray.map(async (imagem, index) => {
-      const imageUrl = await getImageUrl(imagem);
-      return `
-        <div class="relative aspect-square rounded-lg border border-gray-200 overflow-hidden">
-          <img
-            src="${imageUrl}"
-            alt="Nota Fiscal ${index + 1}"
-            class="w-full h-full object-contain"
-            onerror="this.onerror=null; this.src='https://placehold.co/400x400?text=Imagem+não+encontrada';"
-          />
-        </div>
-      `;
+      try {
+        const imageUrl = await getImageUrl(imagem);
+        return `
+          <div class="relative aspect-square rounded-lg border border-gray-200 overflow-hidden">
+            <img
+              src="${imageUrl}"
+              alt="Nota Fiscal ${index + 1}"
+              class="w-full h-full object-contain"
+              onerror="this.onerror=null; this.src='https://placehold.co/400x400?text=Erro+Imagem';"
+            />
+          </div>
+        `;
+      } catch (error) {
+        console.error(`Erro ao renderizar imagem ${index}:`, error);
+        return `
+          <div class="relative aspect-square rounded-lg border border-red-200 overflow-hidden flex items-center justify-center bg-gray-100">
+            <span class="text-xs text-red-500 text-center">Erro ao carregar imagem ${index + 1}</span>
+          </div>
+        `;
+      }
     }));
 
     return `
@@ -552,7 +559,7 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
     `;
   };
 
-  const handleGerarRelatorio = async () => {
+  const executarGeracaoRelatorio = async () => {
     try {
       const itensPagos = itens.filter(item => item.status === 'pago');
       
@@ -563,25 +570,28 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
 
       const valorTotal = itensPagos.reduce((total, item) => total + (item.valor || 0), 0);
 
-      // Gerar os elementos HTML para cada item
       const itensHtml = await Promise.all(itensPagos.map(async item => {
         const notasFiscaisHtml = await renderNotasFiscais(item.nota_fiscal);
+        const dataPedidoStr = item.data_pedido ? format(new Date(item.data_pedido), 'dd/MM/yyyy') : 'N/A';
+        const dataEntregaStr = item.data_entrega ? format(new Date(item.data_entrega), 'dd/MM/yyyy') : 'N/A';
+        const valorStr = item.valor ? `R$ ${item.valor.toFixed(2)}` : 'N/A';
+
         return `
           <div class="card">
             <div class="card-title">${item.titulo}</div>
-            ${item.descricao ? `<div class="card-description">${item.descricao}</div>` : ''}
+            ${item.descricao ? `<div class="card-description">${item.descricao.replace(/\n/g, '<br>')}</div>` : ''} 
             <div class="info-grid">
               <div class="info-item">
                 <div class="info-label">Data do Pedido</div>
-                <div class="info-value">${format(new Date(item.data_pedido!), 'dd/MM/yyyy')}</div>
+                <div class="info-value">${dataPedidoStr}</div>
               </div>
               <div class="info-item">
                 <div class="info-label">Data de Entrega</div>
-                <div class="info-value">${format(new Date(item.data_entrega!), 'dd/MM/yyyy')}</div>
+                <div class="info-value">${dataEntregaStr}</div>
               </div>
               <div class="info-item">
                 <div class="info-label">Valor</div>
-                <div class="info-value">R$ ${item.valor?.toFixed(2)}</div>
+                <div class="info-value">${valorStr}</div>
               </div>
               ${item.tempo_entrega ? `
                 <div class="info-item">
@@ -595,7 +605,6 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
         `;
       }));
 
-      // Gerar HTML do relatório
       const html = `
         <!DOCTYPE html>
         <html lang="pt-BR">
@@ -605,52 +614,24 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
           <title>Relatório de Demandas Pagas - ${obraNome}</title>
           <style>
             ${pdfStyles}
-            .valor-total {
-              font-size: 1.2em;
-              font-weight: bold;
-              color: #15803d;
-              text-align: right;
-              margin-top: 20px;
-              padding-top: 10px;
-              border-top: 2px solid #eee;
-            }
-            .nota-fiscal {
-              margin-top: 10px;
-              max-width: 100%;
-              border: 1px solid #eee;
-              border-radius: 4px;
-              padding: 10px;
-            }
-            .nota-fiscal img {
-              max-width: 100%;
-              height: auto;
-              border-radius: 4px;
-            }
-            .card-description {
-              font-weight: bold;
-              font-size: 1.1em;
-              margin: 10px 0;
-              white-space: pre-line;
-            }
-            .info-grid {
-              display: grid;
-              grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-              gap: 10px;
-              margin-top: 15px;
-            }
-            .info-item {
-              padding: 8px;
-              border: 1px solid #eee;
-              border-radius: 4px;
-            }
-            .info-label {
-              font-size: 0.8em;
-              color: #666;
-              margin-bottom: 2px;
-            }
-            .info-value {
-              font-size: 0.9em;
-            }
+            body { font-family: sans-serif; }
+            .container { padding: 20px; max-width: 800px; margin: auto; }
+            .header, .footer { text-align: center; margin-bottom: 20px; }
+            .header h1 { margin-bottom: 5px; }
+            .header p { margin: 2px 0; font-size: 0.9em; color: #555; }
+            .content { border-top: 1px solid #eee; padding-top: 20px; }
+            .info-block h3 { border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 15px; }
+            .card { border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 15px; background-color: #fff; page-break-inside: avoid; }
+            .card-title { font-size: 1.1em; font-weight: bold; margin-bottom: 10px; }
+            .card-description { font-size: 0.9em; margin-bottom: 10px; white-space: pre-wrap; word-wrap: break-word; }
+            .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 10px; font-size: 0.9em; }
+            .info-item { background-color: #f9f9f9; padding: 8px; border-radius: 4px; }
+            .info-label { font-size: 0.8em; color: #666; margin-bottom: 2px; }
+            .nota-fiscal { margin-top: 10px; border-top: 1px dashed #eee; padding-top: 10px; }
+            .nota-fiscal .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; }
+            .nota-fiscal img { max-width: 100%; height: auto; border-radius: 4px; border: 1px solid #eee; display: block; }
+            .valor-total { font-size: 1.2em; font-weight: bold; color: #15803d; text-align: right; margin-top: 20px; padding-top: 10px; border-top: 2px solid #eee; }
+            .footer p { font-size: 0.8em; color: #777; }
           </style>
         </head>
         <body>
@@ -674,26 +655,14 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
             </div>
 
             <div class="footer">
-              <p>Relatório gerado em ${format(new Date(), 'dd/MM/yyyy')}</p>
+              <p>Relatório gerado em ${format(new Date(), 'dd/MM/yyyy HH:mm')}</p>
               <p>${obraNome} - Todos os direitos reservados</p>
             </div>
           </div>
-          <script>
-            document.addEventListener('DOMContentLoaded', function() {
-              const images = document.getElementsByTagName('img');
-              for(let img of images) {
-                img.onerror = function() {
-                  this.onerror = null;
-                  this.src = 'https://placehold.co/400x400?text=Imagem+não+encontrada';
-                }
-              }
-            });
-          </script>
         </body>
         </html>
       `;
 
-      // Salvar o relatório no banco de dados
       const { error: saveError } = await supabase
         .from('relatorios')
         .insert({
@@ -706,10 +675,9 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
 
       if (saveError) {
         console.error('Erro ao salvar relatório:', saveError);
-        throw new Error('Erro ao salvar o relatório');
+        throw new Error(`Erro ao salvar o relatório: ${saveError.message}`);
       }
 
-      // Excluir os itens pagos que foram incluídos no relatório
       const idsParaExcluir = itensPagos.map(item => item.id);
       const { error: deleteError } = await supabase
         .from('demanda_itens')
@@ -718,27 +686,36 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
 
       if (deleteError) {
         console.error('Erro ao excluir itens:', deleteError);
-        throw new Error('Erro ao excluir os itens do relatório');
+        toast.error(`Relatório salvo, mas erro ao excluir itens: ${deleteError.message}`);
+      } else {
+        toast.success('Relatório gerado e itens pagos removidos com sucesso!');
       }
 
-      // Criar uma nova janela para o PDF
       const printWindow = window.open('', '_blank');
-      
       if (!printWindow) {
-        throw new Error('Não foi possível abrir uma nova janela. Verifique se o bloqueador de pop-ups está desativado.');
+        toast.warning('Não foi possível abrir a janela de visualização. Verifique o bloqueador de pop-ups.');
+      } else {
+        printWindow.document.write(html);
+        printWindow.document.close();
+        printWindow.focus();
       }
-      
-      printWindow.document.write(html);
-      printWindow.document.close();
-      
-      toast.success('Relatório gerado com sucesso! Os itens foram removidos da lista.');
 
       await carregarDados();
 
     } catch (error) {
       console.error('Erro ao gerar relatório:', error);
-      toast.error('Erro ao gerar o relatório');
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      toast.error(`Erro ao gerar o relatório: ${errorMessage}`);
     }
+  };
+
+  const handleGerarRelatorio = () => {
+    const itensPagos = itens.filter(item => item.status === 'pago');
+    if (itensPagos.length === 0) {
+      toast.error('Não há itens pagos para gerar o relatório');
+      return;
+    }
+    setShowConfirmarRelatorioDialog(true);
   };
 
   const handleTirarFoto = async () => {
@@ -757,42 +734,44 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
       const response = await fetch(`data:image/jpeg;base64,${image.base64String}`);
       const blob = await response.blob();
 
-      const fileName = `${Date.now()}.jpeg`;
-      const filePath = `${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('notas-fiscais')
-        .upload(filePath, blob);
-
-      if (uploadError) throw uploadError;
-
-      if (itemParaEditar) {
-        const novasImagens = [...(itemParaEditar.nota_fiscal || []), filePath];
-        setItemParaEditar({
-          ...itemParaEditar,
-          nota_fiscal: novasImagens
-        });
+      if (!itemParaEditar) {
+        toast.error("Erro interno: Item para editar não está definido.");
+        return null;
       }
+
+      // Usa o serviço de demanda para upload
+      const filePath = await demandaService.uploadImagem(blob as File, itemParaEditar); // Passa apenas 2 argumentos
+
+      // Atualiza o estado local imediatamente para feedback visual
+      setItemParaEditar(prev => {
+        if (!prev) return null;
+        const novasImagens = [...(prev.nota_fiscal || []), filePath];
+        return { ...prev, nota_fiscal: novasImagens };
+      });
+
+      await carregarDados(); // Recarrega para garantir consistência, se necessário
+      toast.success('Foto adicionada com sucesso!');
 
       return filePath;
     } catch (error) {
       console.error('Erro ao tirar foto:', error);
-      toast.error('Erro ao capturar imagem');
+      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+      toast.error(`Erro ao capturar e salvar imagem: ${msg}`);
       return null;
     }
   };
 
   // Substituir a função renderImagemMiniatura pelo novo componente
-  const renderImagemMiniatura = (imagem: string, index: number) => {
+  const renderImagemMiniatura = (imagem: string, index: number, item: DemandaItem) => {
     if (!imagem) return null;
     
     return (
       <ImagemMiniatura
-        key={index}
+        key={`${item.id}-${index}`}
         imagem={imagem}
         index={index}
-        itemSelecionado={itemSelecionado!}
-        onVisualizarImagem={() => handleVisualizarImagem(itemSelecionado!)}
+        itemSelecionado={item} // Passa o item correto
+        onVisualizarImagem={() => handleVisualizarImagem(item)} // Passa o item correto
         getImageUrl={getImageUrl}
       />
     );
@@ -802,94 +781,75 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
     const urls: ImageUrlsState = {};
     if (Array.isArray(item.nota_fiscal)) {
       for (const path of item.nota_fiscal) {
-        urls[path] = await getImageUrl(path);
+        if (path && !imageUrls[path]) { // Carrega apenas se não tiver URL cacheada
+          try {
+            urls[path] = await getImageUrl(path);
+          } catch (error) {
+            console.error(`Falha ao carregar URL para ${path}:`, error);
+            urls[path] = ''; // Define como vazia em caso de erro para evitar recargas
+          }
+        }
       }
     }
-    setImageUrls(urls);
+    // Atualiza o estado de forma imutável
+    setImageUrls(prevUrls => ({ ...prevUrls, ...urls }));
   };
 
+  // Otimização: Carregar URLs apenas quando o itemParaEditar muda ou quando itens são carregados
   useEffect(() => {
-    if (itemParaEditar) {
+    if (itemParaEditar && itemParaEditar.nota_fiscal) {
       loadImageUrlsForItem(itemParaEditar);
     }
-  }, [itemParaEditar?.nota_fiscal]);
+  }, [itemParaEditar]);
+
+  useEffect(() => {
+    itens.forEach(item => {
+      if(item.nota_fiscal) {
+         loadImageUrlsForItem(item);
+      }
+    });
+  }, [itens]); // Dependência nos itens carregados
 
   return (
-<<<<<<< HEAD
-    <div className="container mx-auto py-6 px-4">
-      <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between">
-=======
     <div className="container mx-auto py-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
->>>>>>> origin/master
         <div className="flex items-center gap-2">
           <Button 
             variant="ghost" 
             size="icon" 
             onClick={() => navigate(`/obras/${id}`)}
-<<<<<<< HEAD
-            className="shrink-0"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <h1 className="text-xl sm:text-2xl font-bold truncate">Demanda: {obraNome}</h1>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-=======
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <h1 className="text-2xl font-bold">Demanda: {obraNome}</h1>
         </div>
-        <div className="flex items-center gap-2">
->>>>>>> origin/master
+        <div className="flex items-center gap-2 flex-wrap"> {/* Adicionado flex-wrap */} 
           <Button 
             variant="outline" 
             size="sm" 
             onClick={() => setShowAdicionarDialog(true)}
-<<<<<<< HEAD
-            className="flex items-center gap-2 w-full sm:w-auto"
-          >
-            <Plus className="h-4 w-4 shrink-0" />
-            <span className="truncate">Nova Demanda</span>
-=======
             className="flex items-center gap-2"
           >
             <Plus className="h-4 w-4" />
             Nova Demanda
->>>>>>> origin/master
           </Button>
           <Button 
             variant="outline" 
             size="sm" 
             onClick={handleGerarRelatorio}
-<<<<<<< HEAD
-            className="flex items-center gap-2 w-full sm:w-auto"
-          >
-            <FileText className="h-4 w-4 shrink-0" />
-            <span className="truncate">Gerar Relatório</span>
-=======
             className="flex items-center gap-2"
           >
             <FileText className="h-4 w-4" />
             Gerar Relatório
->>>>>>> origin/master
           </Button>
           <Button 
             variant="outline" 
             size="sm" 
             onClick={() => navigate(`/obras/${id}/demanda/relatorios`)}
-<<<<<<< HEAD
-            className="flex items-center gap-2 w-full sm:w-auto"
-          >
-            <FolderOpen className="h-4 w-4 shrink-0" />
-            <span className="truncate">Ver Relatórios</span>
-=======
             className="flex items-center gap-2"
           >
             <FolderOpen className="h-4 w-4" />
             Ver Relatórios
->>>>>>> origin/master
           </Button>
         </div>
       </div>
@@ -900,25 +860,7 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
-          {/* Seção Demanda */}
-<<<<<<< HEAD
-          <div className="bg-card rounded-lg shadow p-4 min-h-[200px] overflow-y-auto max-h-[calc(100vh-200px)]">
-            <h2 className="text-lg font-semibold mb-4 sticky top-0 bg-card z-10 pb-2">Demanda</h2>
-            <div className="flex flex-col gap-3">
-              {itensPorStatus.demanda.map((item) => (
-                <div
-                  key={item.id}
-                  className="bg-background p-4 rounded-md shadow-sm relative"
-                >
-                  {item.titulo === 'Lista de Demanda' ? (
-                    <div>
-                      <div className="flex items-center justify-between mb-2 pr-10">
-                        <h3 className="font-medium line-clamp-2">{item.titulo}</h3>
-                      </div>
-                      <div className="text-sm text-muted-foreground mt-1 space-y-1">
-                        {item.descricao.split('\n').map((linha, index) => (
-                          <p key={index} className="break-words">{linha.trim()}</p>
-=======
+          {/* Seção Demanda */} 
           <div className="bg-card rounded-lg shadow p-4">
             <h2 className="text-lg font-semibold mb-4">Demanda</h2>
             <div className="flex flex-col gap-2">
@@ -932,150 +874,144 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
                       <div className="flex items-center justify-between mb-2">
                         <h3 className="font-medium pr-8">{item.titulo}</h3>
                         <div className="flex items-center gap-2">
+                          {/* Botão Editar para Lista */}
                           <Button
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8"
                             onClick={() => {
-                              setItemParaEditar({
-                                ...item,
-                                nota_fiscal: item.nota_fiscal || []
-                              });
+                              setItemParaEditar({ ...item, nota_fiscal: item.nota_fiscal || [] });
                               setShowEditarDialog(true);
                             }}
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
+                           {/* Botão Excluir para Lista (considerar se é necessário) */}
                           <Button
                             variant="ghost"
-                            size="sm"
-                            className="h-4 w-4 p-0 hover:bg-transparent"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:bg-destructive/10"
                             onClick={() => handleExcluir(item)}
                           >
-                            <Trash2 className="h-4 w-4 text-muted-foreground" />
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
                       </div>
-                      <div className="text-sm text-muted-foreground mt-1">
+                      <div className="text-sm text-muted-foreground mt-1 whitespace-pre-line">
                         {item.descricao.split('\n').map((linha, index) => (
-                          <p key={index} className="py-1">{linha.trim()}</p>
->>>>>>> origin/master
+                          <p key={index} className="py-1 break-words">{linha.trim()}</p>
                         ))}
+                      </div>
+                       {/* Botão Mover para Pedido para Lista */}
+                      <div className="flex justify-end mt-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setItemSelecionado(item);
+                            setShowMoverParaPedidoDialog(true);
+                          }}
+                        >
+                          <ArrowRight className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
                   ) : (
                     <>
+                      {/* Botão Excluir para Item Normal */}
                       <Button
-                        variant="destructive"
+                        variant="ghost" 
                         size="icon"
-                        onClick={() => {
-                          setSelectedItem(item);
-                          setShowDeleteDialog(true);
-                        }}
-<<<<<<< HEAD
-                        className="absolute top-2 right-2 z-10"
+                        className="absolute top-2 right-2 h-8 w-8 text-destructive hover:bg-destructive/10"
+                        onClick={() => handleExcluir(item)}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
-                      <h3 className="font-medium pr-10 line-clamp-2">{item.titulo}</h3>
+                      {/* Título para Item Normal */}
+                      <h3 className="font-medium pr-16">{item.titulo}</h3>
                       {item.descricao && (
-                        <p className="text-sm text-muted-foreground mt-1 break-words line-clamp-3">
-=======
-                        className="absolute top-2 right-2"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                      <h3 className="font-medium pr-8">{item.titulo}</h3>
-                      {item.descricao && (
-                        <p className="text-sm text-muted-foreground mt-1">
->>>>>>> origin/master
+                        <p className="text-sm text-muted-foreground mt-1 break-words">
                           {item.descricao}
                         </p>
                       )}
+                      {/* Botão Mover para Pedido para Item Normal */}
+                      <div className="flex justify-end mt-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setItemSelecionado(item);
+                            setShowMoverParaPedidoDialog(true);
+                          }}
+                        >
+                          <ArrowRight className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </>
                   )}
-<<<<<<< HEAD
-                  <div className="flex justify-end mt-3">
-=======
-                  <div className="flex justify-end mt-2">
->>>>>>> origin/master
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setItemSelecionado(item);
-                        setShowMoverParaPedidoDialog(true);
-                      }}
-<<<<<<< HEAD
-                      className="w-full sm:w-auto"
-                    >
-                      <ArrowRight className="h-4 w-4 mr-2" />
-                      <span className="hidden sm:inline">Mover para Pedido</span>
-=======
-                    >
-                      <ArrowRight className="h-4 w-4" />
->>>>>>> origin/master
-                    </Button>
-                  </div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Seção Pedido */}
-<<<<<<< HEAD
-          <div className="bg-card rounded-lg shadow p-4 min-h-[200px] overflow-y-auto max-h-[calc(100vh-200px)]">
-            <h2 className="text-lg font-semibold mb-4 sticky top-0 bg-card z-10 pb-2">Pedido</h2>
-            <div className="flex flex-col gap-3">
+          {/* Seção Pedido */} 
+          <div className="bg-card rounded-lg shadow p-4">
+            <h2 className="text-lg font-semibold mb-4">Pedido</h2>
+            <div className="flex flex-col gap-2">
               {itensPorStatus.pedido.map((item) => (
                 <div
                   key={item.id}
-                  className="bg-background p-4 rounded-md shadow-sm relative"
+                  className="bg-background p-3 rounded-md shadow-sm relative"
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-medium line-clamp-2 pr-20">{item.titulo}</h3>
-                    <div className="absolute top-2 right-2 flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => {
-                          setItemParaEditar({
-                            ...item,
-                            nota_fiscal: item.nota_fiscal || []
-                          });
-                          setShowEditarDialog(true);
-                        }}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleExcluir(item)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+                   {/* Botões de Ação (Editar/Excluir) no canto */}
+                  <div className="absolute top-2 right-2 flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => {
+                        setItemParaEditar({ ...item, nota_fiscal: item.nota_fiscal || [] });
+                        setShowEditarDialog(true);
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                      onClick={() => handleExcluir(item)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
+                  {/* Conteúdo do Item */}
+                  <h3 className="font-medium pr-16">{item.titulo}</h3>
                   {item.descricao && (
-                    <p className="text-sm text-muted-foreground mt-1 break-words line-clamp-3">
-                      {item.descricao}
-                    </p>
+                     item.titulo === 'Lista de Demanda' ? (
+                      <div className="text-sm text-muted-foreground mt-1">
+                        {item.descricao.split('\n').map((linha, index) => (
+                          <p key={index} className="py-1 break-words">{linha.trim()}</p>
+                        ))}
+                      </div>
+                     ) : (
+                       <p className="text-sm text-muted-foreground mt-1 break-words">
+                        {item.descricao}
+                       </p>
+                     )
                   )}
-                  <div className="text-sm text-muted-foreground mt-2 space-y-1">
-                    <p>Valor: R$ {item.valor?.toFixed(2)}</p>
-                    <p>Pedido em: {format(new Date(item.data_pedido!), 'dd/MM/yyyy')}</p>
+                  <div className="text-sm text-muted-foreground mt-1">
+                    <p>Valor: {item.valor ? `R$ ${item.valor.toFixed(2)}` : 'N/A'}</p>
+                    <p>Pedido em: {item.data_pedido ? format(new Date(item.data_pedido), 'dd/MM/yyyy') : 'N/A'}</p>
                   </div>
-                  <div className="flex flex-col sm:flex-row justify-between gap-2 mt-3">
+                  {/* Botões de Navegação */}
+                  <div className="flex justify-between mt-2">
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => handleVoltar(item)}
-                      className="w-full sm:w-auto"
                     >
-                      <ArrowLeftIcon className="h-4 w-4 mr-2" />
-                      <span className="hidden sm:inline">Voltar</span>
+                      <ArrowLeftIcon className="h-4 w-4" />
                     </Button>
                     <Button
                       variant="outline"
@@ -1084,230 +1020,78 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
                         setItemSelecionado(item);
                         setShowMoverParaEntregueDialog(true);
                       }}
-                      className="w-full sm:w-auto"
                     >
-                      <ArrowRight className="h-4 w-4 mr-2" />
-                      <span className="hidden sm:inline">Mover para Entregue</span>
+                      <ArrowRight className="h-4 w-4" />
                     </Button>
                   </div>
-=======
-          <div className="bg-card rounded-lg shadow p-4">
-            <h2 className="text-lg font-semibold mb-4">Pedido</h2>
-            <div className="flex flex-col gap-2">
-              {itensPorStatus.pedido.map((item) => (
-                <div
-                  key={item.id}
-                  className="bg-background p-3 rounded-md shadow-sm"
-                >
-                  {item.titulo === 'Lista de Demanda' ? (
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-medium">{item.titulo}</h3>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => {
-                              setItemParaEditar({
-                                ...item,
-                                nota_fiscal: item.nota_fiscal || []
-                              });
-                              setShowEditarDialog(true);
-                            }}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-4 w-4 p-0 hover:bg-transparent"
-                            onClick={() => handleExcluir(item)}
-                          >
-                            <Trash2 className="h-4 w-4 text-muted-foreground" />
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="text-sm text-muted-foreground mt-1">
-                        {item.descricao.split('\n').map((linha, index) => (
-                          <p key={index} className="py-1">{linha.trim()}</p>
-                        ))}
-                      </div>
-                      <div className="text-sm text-muted-foreground mt-1">
-                        <p>Valor: R$ {item.valor?.toFixed(2)}</p>
-                        <p>Pedido em: {format(new Date(item.data_pedido!), 'dd/MM/yyyy')}</p>
-                      </div>
-                      <div className="flex justify-between mt-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleVoltar(item)}
-                        >
-                          <ArrowLeftIcon className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setItemSelecionado(item);
-                            setShowMoverParaEntregueDialog(true);
-                          }}
-                        >
-                          <ArrowRight className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <h3 className="font-medium">{item.titulo}</h3>
-                      {item.descricao && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {item.descricao}
-                        </p>
-                      )}
-                      <div className="text-sm text-muted-foreground mt-1">
-                        <p>Valor: R$ {item.valor?.toFixed(2)}</p>
-                        <p>Pedido em: {format(new Date(item.data_pedido!), 'dd/MM/yyyy')}</p>
-                      </div>
-                      <div className="flex justify-between mt-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleVoltar(item)}
-                        >
-                          <ArrowLeftIcon className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setItemSelecionado(item);
-                            setShowMoverParaEntregueDialog(true);
-                          }}
-                        >
-                          <ArrowRight className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </>
-                  )}
->>>>>>> origin/master
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Seção Entregue */}
-<<<<<<< HEAD
-          <div className="bg-card rounded-lg shadow p-4 min-h-[200px] overflow-y-auto max-h-[calc(100vh-200px)]">
-            <h2 className="text-lg font-semibold mb-4 sticky top-0 bg-card z-10 pb-2">Entregue</h2>
-            <div className="flex flex-col gap-3">
-              {itensPorStatus.entregue.map((item) => (
-                <div
-                  key={item.id}
-                  className="bg-background p-4 rounded-md shadow-sm relative"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-medium line-clamp-2 pr-20">{item.titulo}</h3>
-                    <div className="absolute top-2 right-2 flex items-center gap-1">
-=======
+          {/* Seção Entregue */} 
           <div className="bg-card rounded-lg shadow p-4">
             <h2 className="text-lg font-semibold mb-4">Entregue</h2>
             <div className="flex flex-col gap-2">
               {itensPorStatus.entregue.map((item) => (
                 <div
                   key={item.id}
-                  className="bg-background p-3 rounded-md shadow-sm"
+                  className="bg-background p-3 rounded-md shadow-sm relative"
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-medium">{item.titulo}</h3>
-                    <div className="flex items-center gap-2">
->>>>>>> origin/master
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => {
-                          setItemParaEditar({
-                            ...item,
-                            nota_fiscal: item.nota_fiscal || []
-                          });
-                          setShowEditarDialog(true);
-                        }}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-<<<<<<< HEAD
-                        size="icon"
-                        onClick={() => handleExcluir(item)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-=======
-                        size="sm"
-                        className="h-4 w-4 p-0 hover:bg-transparent"
-                        onClick={() => handleExcluir(item)}
-                      >
-                        <Trash2 className="h-4 w-4 text-muted-foreground" />
->>>>>>> origin/master
-                      </Button>
-                    </div>
+                   {/* Botões de Ação (Editar/Excluir) no canto */}
+                   <div className="absolute top-2 right-2 flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => {
+                        setItemParaEditar({ ...item, nota_fiscal: item.nota_fiscal || [] });
+                        setShowEditarDialog(true);
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                      onClick={() => handleExcluir(item)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
-                  {item.descricao && (
-<<<<<<< HEAD
-                    <p className="text-sm text-muted-foreground mt-1 break-words line-clamp-3">
-                      {item.descricao}
-                    </p>
+                   {/* Conteúdo do Item */}
+                  <h3 className="font-medium pr-16">{item.titulo}</h3>
+                   {item.descricao && (
+                     item.titulo === 'Lista de Demanda' ? (
+                      <div className="text-sm text-muted-foreground mt-1">
+                        {item.descricao.split('\n').map((linha, index) => (
+                          <p key={index} className="py-1 break-words">{linha.trim()}</p>
+                        ))}
+                      </div>
+                     ) : (
+                       <p className="text-sm text-muted-foreground mt-1 break-words">
+                        {item.descricao}
+                       </p>
+                     )
                   )}
-                  <div className="text-sm text-muted-foreground mt-2 space-y-1">
-                    <p>Valor: R$ {item.valor?.toFixed(2)}</p>
-                    <p>Entregue em: {format(new Date(item.data_entrega!), 'dd/MM/yyyy')}</p>
+                  <div className="text-sm text-muted-foreground mt-1">
+                    <p>Valor: {item.valor ? `R$ ${item.valor.toFixed(2)}` : 'N/A'}</p>
+                    <p>Entregue em: {item.data_entrega ? format(new Date(item.data_entrega), 'dd/MM/yyyy') : 'N/A'}</p>
                     {item.tempo_entrega && (
                       <p>Tempo de entrega: {item.tempo_entrega}</p>
                     )}
-                    {item.nota_fiscal && Array.isArray(item.nota_fiscal) && (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
-                        {item.nota_fiscal.map((imagem, index) => (
-                          <div key={index} className="relative group">
-                            <img
-                              src={imageUrls[imagem] || ''}
-                              alt={`Nota fiscal ${index + 1}`}
-                              className="w-full h-24 object-cover rounded-md cursor-pointer"
-                              onClick={() => {
-                                setImagemUrl([imagem]);
-                                setShowImagemDialog(true);
-                              }}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col sm:flex-row justify-between gap-2 mt-3">
-=======
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {item.descricao}
-                    </p>
-                  )}
-                  <div className="text-sm text-muted-foreground mt-1">
-                    <p>Valor: R$ {item.valor?.toFixed(2)}</p>
-                    <p>Tempo de entrega: {item.tempo_entrega}</p>
                     {item.observacao_entrega && (
                       <p className="text-yellow-600">Obs: {item.observacao_entrega}</p>
                     )}
+                     {/* Notas Fiscais */}
                     <div className="mt-2">
                       {item.nota_fiscal && Array.isArray(item.nota_fiscal) && item.nota_fiscal.length > 0 ? (
-                        <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div className="grid grid-cols-2 gap-2 mb-2"> {/* Ajustado gap e mb */} 
                           {item.nota_fiscal.map((imagem: string, index: number) => (
-                            <div key={index} className="relative group">
+                             <div key={`${item.id}-img-${index}`} className="relative group">
                               <div className="relative aspect-square w-full rounded-lg border border-input overflow-hidden bg-gray-50">
-                                <ImagemMiniatura
-                                  imagem={imagem}
-                                  index={index}
-                                  itemSelecionado={item}
-                                  onVisualizarImagem={() => handleVisualizarImagem(item)}
-                                  getImageUrl={getImageUrl}
-                                />
+                                {renderImagemMiniatura(imagem, index, item)} {/* Usando a função render */} 
                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                                   <Button
                                     type="button"
@@ -1318,54 +1102,36 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
                                   >
                                     <ImageIcon className="h-4 w-4" />
                                   </Button>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 bg-white/80 hover:bg-white text-destructive"
-                                    onClick={() => handleRemoverImagem(item, index)}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
+                                  {/* Não permitir remover imagem aqui se veio da Lista */} 
+                                  {item.titulo !== 'Lista de Demanda' && (
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 bg-white/80 hover:bg-white text-destructive"
+                                      onClick={() => handleRemoverImagem(item, index)}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  )}
                                 </div>
                               </div>
                             </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-center w-full h-16 bg-gray-100 rounded-lg">
-                          <div className="flex flex-col items-center text-gray-400">
-                            <ImageIcon className="h-6 w-6 mb-1" />
-                            <span className="text-xs">Sem imagem</span>
-                          </div>
-                        </div>
-                      )}
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground mb-2">
+                        Nenhuma imagem anexada
+                      </div>
+                    )}
                     </div>
                   </div>
+                   {/* Botões de Navegação */}
                   <div className="flex justify-between mt-2">
->>>>>>> origin/master
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => handleVoltar(item)}
-<<<<<<< HEAD
-                      className="w-full sm:w-auto"
-                    >
-                      <ArrowLeftIcon className="h-4 w-4 mr-2" />
-                      <span className="hidden sm:inline">Voltar</span>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setItemSelecionado(item);
-                        setShowMoverParaPagoDialog(true);
-                      }}
-                      className="w-full sm:w-auto"
-                    >
-                      <ArrowRight className="h-4 w-4 mr-2" />
-                      <span className="hidden sm:inline">Mover para Pago</span>
-=======
                     >
                       <ArrowLeftIcon className="h-4 w-4" />
                     </Button>
@@ -1377,8 +1143,7 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
                         setShowMoverParaPagoDialog(true);
                       }}
                     >
-                      Mover para pago
->>>>>>> origin/master
+                      Mover para Pago
                     </Button>
                   </div>
                 </div>
@@ -1386,100 +1151,73 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
             </div>
           </div>
 
-          {/* Seção Pago */}
-<<<<<<< HEAD
-          <div className="bg-card rounded-lg shadow p-4 min-h-[200px] overflow-y-auto max-h-[calc(100vh-200px)]">
-            <h2 className="text-lg font-semibold mb-4 sticky top-0 bg-card z-10 pb-2">Pago</h2>
-            <div className="flex flex-col gap-3">
-              {itensPorStatus.pago.map((item) => (
-                <div
-                  key={item.id}
-                  className="bg-background p-4 rounded-md shadow-sm relative"
-                >
-                  <h3 className="font-medium line-clamp-2">{item.titulo}</h3>
-                  {item.descricao && (
-                    item.titulo === 'Lista de Demanda' ? (
-                      <div className="text-sm text-muted-foreground mt-1 space-y-1">
-                        {item.descricao.split('\n').map((linha, index) => (
-                          <p key={index} className="break-words">{linha.trim()}</p>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground mt-1 break-words line-clamp-3">
-=======
+          {/* Seção Pago */} 
           <div className="bg-card rounded-lg shadow p-4">
             <h2 className="text-lg font-semibold mb-4">Pago</h2>
             <div className="flex flex-col gap-2">
               {itensPorStatus.pago.map((item) => (
                 <div
                   key={item.id}
-                  className="bg-background p-3 rounded-md shadow-sm"
+                  className="bg-background p-3 rounded-md shadow-sm relative"
                 >
-                  <h3 className="font-medium">{item.titulo}</h3>
-                  {item.descricao && (
-                    item.titulo === 'Lista de Demanda' ? (
+                  {/* Não há botões de editar/excluir aqui geralmente */} 
+                   {/* Conteúdo do Item */}
+                  <h3 className="font-medium pr-16">{item.titulo}</h3>
+                   {item.descricao && (
+                     item.titulo === 'Lista de Demanda' ? (
                       <div className="text-sm text-muted-foreground mt-1">
                         {item.descricao.split('\n').map((linha, index) => (
-                          <p key={index}>{linha.trim()}</p>
+                          <p key={index} className="py-1 break-words">{linha.trim()}</p>
                         ))}
                       </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground mt-1">
->>>>>>> origin/master
+                     ) : (
+                       <p className="text-sm text-muted-foreground mt-1 break-words">
                         {item.descricao}
-                      </p>
-                    )
+                       </p>
+                     )
                   )}
-<<<<<<< HEAD
-                  <div className="text-sm text-muted-foreground mt-2 space-y-1">
-=======
                   <div className="text-sm text-muted-foreground mt-1">
->>>>>>> origin/master
-                    <p>Valor: R$ {item.valor?.toFixed(2)}</p>
-                    <p>Pago em: {format(new Date(item.data_pagamento!), 'dd/MM/yyyy')}</p>
-                    {item.tempo_entrega && (
-                      <p>Tempo de entrega: {item.tempo_entrega}</p>
-                    )}
-<<<<<<< HEAD
-                    {item.nota_fiscal && Array.isArray(item.nota_fiscal) && (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
-                        {item.nota_fiscal.map((imagem, index) => (
-                          <div key={index} className="relative group">
-                            <img
-                              src={imageUrls[imagem] || ''}
-                              alt={`Nota fiscal ${index + 1}`}
-                              className="w-full h-24 object-cover rounded-md cursor-pointer"
-                              onClick={() => {
-                                setImagemUrl([imagem]);
-                                setShowImagemDialog(true);
-                              }}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    <p>Valor: {item.valor ? `R$ ${item.valor.toFixed(2)}` : 'N/A'}</p>
+                    <p>Pago em: {item.data_pagamento ? format(new Date(item.data_pagamento), 'dd/MM/yyyy') : 'N/A'}</p>
+                     {/* Notas Fiscais */} 
+                    <div className="mt-2">
+                      {item.nota_fiscal && Array.isArray(item.nota_fiscal) && item.nota_fiscal.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-2 mb-2">
+                          {item.nota_fiscal.map((imagem: string, index: number) => (
+                            <div key={`${item.id}-paid-img-${index}`} className="relative group">
+                               <div className="relative aspect-square w-full rounded-lg border border-input overflow-hidden bg-gray-50">
+                                {renderImagemMiniatura(imagem, index, item)} 
+                                 {/* Overlay apenas para visualizar */} 
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 bg-white/80 hover:bg-white"
+                                    onClick={() => handleVisualizarImagem(item)}
+                                  >
+                                    <ImageIcon className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                         <div className="flex items-center justify-center w-full h-16 bg-gray-100 rounded-lg text-xs text-gray-400">
+                           Sem imagem
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex justify-start mt-3">
-=======
-                    {item.nota_fiscal && Array.isArray(item.nota_fiscal) && item.nota_fiscal.map((imagem, index) => (
-                      renderImagemMiniatura(imagem, index)
-                    ))}
-                  </div>
+                   {/* Botão de Voltar */} 
                   <div className="flex justify-start mt-2">
->>>>>>> origin/master
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => handleVoltar(item)}
-<<<<<<< HEAD
-                      className="w-full sm:w-auto"
-                    >
-                      <ArrowLeftIcon className="h-4 w-4 mr-2" />
-                      <span className="hidden sm:inline">Voltar</span>
-=======
                     >
                       <ArrowLeftIcon className="h-4 w-4" />
->>>>>>> origin/master
                     </Button>
                   </div>
                 </div>
@@ -1514,27 +1252,8 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
         </>
       )}
 
-      {/* Modal de Visualização da Imagem */}
+      {/* Modal de Visualização da Imagem */} 
       <Dialog open={showImagemDialog} onOpenChange={setShowImagemDialog}>
-<<<<<<< HEAD
-        <DialogContent className="sm:max-w-[90vw] h-[90vh] p-0">
-          <div className="relative h-full w-full flex items-center justify-center bg-black/50">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setShowImagemDialog(false)}
-              className="absolute top-2 right-2 bg-white/10 hover:bg-white/20 text-white"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-            {imagemUrl.length > 0 && (
-              <img
-                src={imageUrls[imagemUrl[0]] || ''}
-                alt="Visualização da imagem"
-                className="max-h-full max-w-full object-contain"
-              />
-            )}
-=======
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader className="sticky top-0 bg-background z-10 pb-4 border-b">
             <DialogTitle>Visualizar Nota Fiscal</DialogTitle>
@@ -1575,7 +1294,6 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
                 </span>
               </div>
             ))}
->>>>>>> origin/master
           </div>
         </DialogContent>
       </Dialog>
@@ -1626,7 +1344,7 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={() => {
               if (selectedItem) {
-                handleExcluir(selectedItem);
+                handleExcluir(selectedItem); // Reutiliza a função handleExcluir
               }
               setShowDeleteDialog(false);
             }}>
@@ -1636,211 +1354,119 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog open={showEditarDialog} onOpenChange={setShowEditarDialog}>
-<<<<<<< HEAD
-        <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
-=======
+      <Dialog open={showEditarDialog} onOpenChange={(open) => { if (!open) setItemParaEditar(null); setShowEditarDialog(open); }}>
         <DialogContent className="sm:max-w-[425px]">
->>>>>>> origin/master
           <DialogHeader>
-            <DialogTitle>Editar Lista de Demanda</DialogTitle>
+            <DialogTitle>Editar Item</DialogTitle>
             <DialogDescription>
-              Faça as alterações necessárias nos itens da lista.
+              {itemParaEditar?.titulo === 'Lista de Demanda' 
+                ? 'Faça as alterações necessárias nos itens da lista.' 
+                : 'Edite os detalhes do item.'}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="flex flex-col gap-2">
-              <label htmlFor="itens" className="text-sm font-medium">
-                Itens da lista (um por linha):
-              </label>
-<<<<<<< HEAD
-              <RichTextEditor
-                value={itemParaEditar?.descricao || ''}
-                onChange={(value) => {
-                  if (itemParaEditar) {
-                    setItemParaEditar({
-                      ...itemParaEditar,
-                      descricao: value.replace(/<[^>]*>/g, '').trim()
-                    });
-                  }
-                }}
-                placeholder="Digite os itens da lista..."
-                minHeight="120px"
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">
-                Notas Fiscais:
-              </label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {itemParaEditar?.nota_fiscal?.map((imagem, index) => (
-                  <div key={index} className="relative group aspect-square">
-                    <img
-                      src={imageUrls[imagem] || ''}
-                      alt={`Nota fiscal ${index + 1}`}
-                      className="w-full h-full object-cover rounded-md"
-                    />
-                    <Button
-                      variant="destructive"
-                      size="icon"
-                      className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={() => handleRemoverImagem(itemParaEditar!, imagem)}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ))}
-                <Button
-                  variant="outline"
-                  className="aspect-square flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-foreground"
-                  onClick={() => handleImagemUpload}
-                >
-                  <Plus className="h-4 w-4" />
-                  <span className="text-xs">Adicionar</span>
-                </Button>
-              </div>
-            </div>
-          </div>
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setShowEditarDialog(false)}
-              className="w-full sm:w-auto"
-            >
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleSalvarEdicao}
-              className="w-full sm:w-auto"
-            >
-              Salvar Alterações
-=======
-              <textarea
-                id="itens"
-                className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                placeholder="Digite os itens da lista..."
-                defaultValue={itemParaEditar?.descricao || ''}
-                rows={5}
-              />
-            </div>
-            {(itemParaEditar?.status === 'pedido' || itemParaEditar?.status === 'entregue') && (
+          {/* Renderiza o formulário apenas se itemParaEditar estiver definido */} 
+          {itemParaEditar && (
+            <div className="grid gap-4 py-4">
+              {/* Campo Título (se não for Lista) */} 
+              {itemParaEditar.titulo !== 'Lista de Demanda' && (
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="edit-titulo" className="text-sm font-medium">
+                    Título:
+                  </label>
+                  <input
+                    id="edit-titulo"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    defaultValue={itemParaEditar.titulo}
+                  />
+                </div>
+              )}
+              {/* Campo Descrição (ou Itens da Lista) */} 
               <div className="flex flex-col gap-2">
-                <label htmlFor="valor" className="text-sm font-medium">
-                  Valor (R$):
+                <label htmlFor="edit-descricao" className="text-sm font-medium">
+                  {itemParaEditar.titulo === 'Lista de Demanda' ? 'Itens da lista (um por linha):' : 'Descrição:'}
                 </label>
-                <input
-                  id="valor"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  placeholder="0,00"
-                  defaultValue={itemParaEditar?.valor || ''}
+                <textarea
+                  id="edit-descricao"
+                  className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  placeholder={itemParaEditar.titulo === 'Lista de Demanda' ? 'Digite os itens...' : 'Digite a descrição...'}
+                  defaultValue={itemParaEditar.descricao || ''}
+                  rows={itemParaEditar.titulo === 'Lista de Demanda' ? 5 : 3} 
                 />
               </div>
-            )}
-            {itemParaEditar?.status === 'entregue' && (
-              <div className="flex flex-col gap-4">
+               {/* Campo Valor (se status for pedido ou entregue) */} 
+              {(itemParaEditar.status === 'pedido' || itemParaEditar.status === 'entregue') && (
                 <div className="flex flex-col gap-2">
-                  <label className="text-sm font-medium">
-                    Notas Fiscais / Comprovantes
+                  <label htmlFor="edit-valor" className="text-sm font-medium">
+                    Valor (R$):
                   </label>
-                  {itemParaEditar.nota_fiscal && itemParaEditar.nota_fiscal.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                      {itemParaEditar.nota_fiscal.map((imagem: string, index: number) => (
-                        <div key={index} className="relative group">
-                          <div className="relative aspect-square w-full rounded-lg border border-input overflow-hidden bg-gray-50">
-                            <ImagemMiniatura
-                              imagem={imagem}
-                              index={index}
-                              itemSelecionado={itemParaEditar}
-                              onVisualizarImagem={() => handleVisualizarImagem(itemParaEditar)}
-                              getImageUrl={getImageUrl}
-                            />
-                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 bg-white/80 hover:bg-white"
-                                onClick={() => handleVisualizarImagem(itemParaEditar)}
-                              >
-                                <ImageIcon className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 bg-white/80 hover:bg-white text-destructive"
-                                onClick={() => handleRemoverImagem(itemParaEditar, index)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-muted-foreground mb-2">
-                      Nenhuma imagem anexada
-                    </div>
-                  )}
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleTirarFoto}
-                    >
-                      <CameraIcon className="h-4 w-4 mr-2" />
-                      Tirar Foto
-                    </Button>
-                    <div className="relative">
-                      <input
-                        type="file"
-                        id="upload"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleImagemUpload}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => document.getElementById('upload')?.click()}
-                      >
-                        <ImageIcon className="h-4 w-4 mr-2" />
-                        Upload
-                      </Button>
-                    </div>
-                  </div>
+                  <input
+                    id="edit-valor"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    placeholder="0,00"
+                    defaultValue={itemParaEditar.valor || ''}
+                  />
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowEditarDialog(false)}>
+            <Button variant="outline" onClick={() => { setShowEditarDialog(false); setItemParaEditar(null); }}>
               Cancelar
             </Button>
             <Button onClick={() => {
               if (itemParaEditar) {
-                const textarea = document.getElementById('itens') as HTMLTextAreaElement;
-                const valorInput = document.getElementById('valor') as HTMLInputElement;
+                const tituloInput = document.getElementById('edit-titulo') as HTMLInputElement;
+                const descricaoTextarea = document.getElementById('edit-descricao') as HTMLTextAreaElement;
+                const valorInput = document.getElementById('edit-valor') as HTMLInputElement;
                 
                 const itemAtualizado = {
                   ...itemParaEditar,
-                  descricao: textarea.value,
-                  valor: valorInput && valorInput.value ? parseFloat(valorInput.value) : itemParaEditar.valor
+                  // Atualiza o título apenas se o campo existir (não para 'Lista de Demanda')
+                  titulo: tituloInput ? tituloInput.value : itemParaEditar.titulo, 
+                  descricao: descricaoTextarea.value,
+                  // Atualiza o valor apenas se o campo existir
+                  valor: valorInput ? parseFloat(valorInput.value) : itemParaEditar.valor 
+                  // nota_fiscal é atualizado diretamente no state via handleImagemUpload/handleRemoverImagem
                 };
                 
                 handleEditarItemLista(itemAtualizado);
+                // Limpa itemParaEditar após salvar
+                setItemParaEditar(null); 
               }
             }}>
               Salvar alterações
->>>>>>> origin/master
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={showConfirmarRelatorioDialog} onOpenChange={setShowConfirmarRelatorioDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Geração de Relatório</AlertDialogTitle>
+            <AlertDialogDescription>
+              Ao gerar o relatório, todos os itens atualmente na coluna "Pago" serão incluídos e 
+              <strong className="text-destructive">removidos permanentemente</strong> desta lista. 
+              Deseja continuar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowConfirmarRelatorioDialog(false)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={async () => {
+                setShowConfirmarRelatorioDialog(false); // Fecha o diálogo imediatamente
+                await executarGeracaoRelatorio(); // Chama a lógica de geração
+              }}
+            >
+              Confirmar e Gerar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </div>
   );
 }

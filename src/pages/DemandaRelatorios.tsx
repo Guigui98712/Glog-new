@@ -91,20 +91,44 @@ export function DemandaRelatorios() {
       tempDiv.innerHTML = relatorio.conteudo;
       document.body.appendChild(tempDiv);
 
-      // Configurar o canvas
+      // Configurar o PDF
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      // Configurações do html2canvas
       const canvas = await html2canvas(tempDiv, {
         scale: 2,
         useCORS: true,
-        logging: false
+        logging: false,
+        backgroundColor: '#ffffff',
+        windowWidth: tempDiv.scrollWidth,
+        windowHeight: tempDiv.scrollHeight
       });
 
-      // Criar o PDF
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const imgData = canvas.toDataURL('image/png');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      // Converter canvas para imagem
+      const imgData = canvas.toDataURL('image/jpeg', 1.0);
 
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      // Calcular dimensões mantendo proporção
+      const imgWidth = pageWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      // Adicionar páginas conforme necessário
+      let heightLeft = imgHeight;
+      let position = 0;
+      let page = 1;
+
+      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+
+      while (heightLeft >= pageHeight) {
+        position = -pageHeight * page;
+        pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+        page++;
+      }
+
+      // Salvar o PDF
       pdf.save(`relatorio_demanda_${format(parseISO(relatorio.data_inicio), 'dd-MM-yyyy')}.pdf`);
 
       // Remover o elemento temporário

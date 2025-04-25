@@ -61,8 +61,8 @@ class DemandaService {
 
       console.log('[DEBUG] DemandaService - Itens de demanda encontrados:', demandaItens?.length || 0);
 
-      // Converter nota_fiscal para array
-      const itensConvertidos = demandaItens.map(item => {
+      // Converter nota_fiscal para array e validar URLs
+      const itensConvertidos = await Promise.all(demandaItens.map(async item => {
         let notasFiscais: string[] = [];
         
         if (item.nota_fiscal) {
@@ -77,8 +77,42 @@ class DemandaService {
             } else if (Array.isArray(item.nota_fiscal)) {
               notasFiscais = item.nota_fiscal;
             }
+
+            // Validar cada imagem no storage
+            notasFiscais = await Promise.all(
+              notasFiscais.map(async (path) => {
+                try {
+                  const { data, error } = await supabase.storage
+                    .from('notas-fiscais')
+                    .download(path);
+
+                  if (error) {
+                    console.error('[DEBUG] DemandaService - Imagem não encontrada:', path, error);
+                    return null;
+                  }
+
+                  return path;
+                } catch (e) {
+                  console.error('[DEBUG] DemandaService - Erro ao validar imagem:', path, e);
+                  return null;
+                }
+              })
+            );
+
+            // Filtrar imagens inválidas
+            notasFiscais = notasFiscais.filter(path => path !== null) as string[];
+            
+            // Se houver diferença entre as imagens originais e válidas, atualizar no banco
+            if (notasFiscais.length !== item.nota_fiscal.length) {
+              console.log('[DEBUG] DemandaService - Atualizando lista de imagens válidas no banco');
+              await supabase
+                .from('demanda_itens')
+                .update({ nota_fiscal: notasFiscais })
+                .eq('id', item.id);
+            }
+
           } catch (e) {
-            console.error('Erro ao converter nota_fiscal:', e);
+            console.error('[DEBUG] DemandaService - Erro ao processar nota_fiscal:', e);
             notasFiscais = [];
           }
         }
@@ -87,7 +121,7 @@ class DemandaService {
           ...item,
           nota_fiscal: notasFiscais
         };
-      });
+      }));
 
       console.log('[DEBUG] DemandaService - Itens convertidos:', itensConvertidos.length);
       this.currentItems.set(obraId, itensConvertidos);
@@ -112,50 +146,67 @@ class DemandaService {
     novoStatus: 'demanda' | 'pedido' | 'entregue' | 'pago'
   ): Promise<void> {
     try {
-      console.log('[DEBUG] DemandaService - Atualizando status:', { item, novoStatus });
+      console.log('[DEBUG] DemandaService - Iniciando atualização de status:', { 
+        itemId: item?.id,
+        statusAtual: item?.status,
+        novoStatus,
+        obra_id: item?.obra_id 
+      });
       
-      // Se estiver voltando para pedido, primeiro apaga todas as imagens
-      if (novoStatus === 'pedido' && Array.isArray(item.nota_fiscal) && item.nota_fiscal.length > 0) {
-        console.log('[DEBUG] DemandaService - Removendo imagens ao voltar para pedido:', item.nota_fiscal);
-        
-        try {
-          // Remove as imagens do storage
-          const { error: storageError } = await supabase.storage
-            .from('notas-fiscais')
-            .remove(item.nota_fiscal);
-
-          if (storageError) {
-            console.error('[DEBUG] DemandaService - Erro ao remover imagens do storage:', storageError);
-          }
-
-          // Limpa o cache de imagens mesmo se houver erro no storage
-          item.nota_fiscal.forEach(path => {
-            this.imageCacheService.removeFromCache(path);
-          });
-        } catch (error) {
-          console.error('[DEBUG] DemandaService - Erro ao remover imagens:', error);
-        }
+      // Validações iniciais
+      if (!item || !item.id) {
+        console.error('[DEBUG] DemandaService - Item inválido:', item);
+        throw new Error('Item inválido');
       }
 
-      // Atualiza o status e limpa as imagens
-      const updateData = { 
-        status: novoStatus,
-        nota_fiscal: novoStatus === 'pedido' ? [] : item.nota_fiscal,
-        data_entrega: novoStatus === 'pedido' ? null : item.data_entrega,
-        tempo_entrega: novoStatus === 'pedido' ? null : item.tempo_entrega,
-        observacao_entrega: novoStatus === 'pedido' ? null : item.observacao_entrega
+      // Validar transição de status
+      const statusValidos = {
+        demanda: ['pedido'],
+        pedido: ['demanda', 'entregue'],
+        entregue: ['pedido', 'pago'],
+        pago: ['entregue']
       };
+
+      if (!statusValidos[item.status]?.includes(novoStatus)) {
+        console.error('[DEBUG] DemandaService - Transição inválida:', {
+          de: item.status,
+          para: novoStatus,
+          transicoesPermitidas: statusValidos[item.status]
+        });
+        throw new Error(`Transição de status inválida: ${item.status} -> ${novoStatus}`);
+      }
+
+      // Prepara os dados para atualização
+      const updateData: any = { 
+        status: novoStatus,
+        updated_at: new Date().toISOString()
+      };
+
+      // Adiciona campos específicos baseado no novo status
+      if (novoStatus === 'pago') {
+        updateData.data_pagamento = new Date().toISOString();
+        console.log('[DEBUG] DemandaService - Adicionando data de pagamento:', updateData.data_pagamento);
+      } else if (novoStatus === 'pedido') {
+        updateData.nota_fiscal = [];
+        updateData.data_entrega = null;
+        updateData.tempo_entrega = null;
+        updateData.observacao_entrega = null;
+      }
 
       console.log('[DEBUG] DemandaService - Dados para atualização:', updateData);
 
-      const { error } = await supabase
+      // Atualiza o item no banco de dados
+      const { data, error: updateError } = await supabase
         .from('demanda_itens')
         .update(updateData)
-        .eq('id', item.id);
+        .eq('id', item.id)
+        .select();
 
-      if (error) {
-        console.error('[DEBUG] DemandaService - Erro ao atualizar item:', error);
-        throw error;
+      console.log('[DEBUG] DemandaService - Resposta do Supabase:', { data, error: updateError });
+
+      if (updateError) {
+        console.error('[DEBUG] DemandaService - Erro ao atualizar status:', updateError);
+        throw new Error('Erro ao atualizar status do item: ' + updateError.message);
       }
 
       // Atualiza o cache local
@@ -164,18 +215,23 @@ class DemandaService {
       const index = items.findIndex(i => i.id === item.id);
       
       if (index !== -1) {
-        items[index] = { 
-          ...items[index], 
-          ...updateData
-        };
+        items[index] = { ...items[index], ...updateData };
         this.currentItems.set(obraId, [...items]);
+        console.log('[DEBUG] DemandaService - Cache local atualizado:', {
+          itemAtualizado: items[index],
+          totalItens: items.length
+        });
+      } else {
+        console.warn('[DEBUG] DemandaService - Item não encontrado no cache local:', {
+          itemId: item.id,
+          obraId,
+          totalItensCache: items.length
+        });
       }
 
       console.log('[DEBUG] DemandaService - Status atualizado com sucesso');
-      toast.success('Status atualizado com sucesso!');
     } catch (error) {
       console.error('[DEBUG] DemandaService - Erro ao atualizar status:', error);
-      toast.error('Erro ao atualizar status do item');
       throw error;
     }
   }
@@ -204,7 +260,7 @@ class DemandaService {
       const timestamp = Date.now();
       const randomString = Math.random().toString(36).substring(2, 8);
       const fileExtension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-      const fileName = `${item.obra_id}/${item.id}/${timestamp}-${randomString}.${fileExtension}`;
+      const fileName = `${item.id}_${timestamp}_${randomString}.${fileExtension}`;
 
       console.log('[DEBUG] Nome do arquivo gerado:', fileName);
 
@@ -224,7 +280,8 @@ class DemandaService {
         .from('notas-fiscais')
         .upload(fileName, fileToUpload, {
           cacheControl: '3600',
-          upsert: false
+          upsert: true,
+          contentType: file.type
         });
 
       if (uploadError) {
@@ -272,6 +329,9 @@ class DemandaService {
         };
         this.currentItems.set(obraId, [...items]);
       }
+
+      // Pré-carrega a URL no cache de imagens
+      await this.imageCacheService.getImageUrl(fileName);
 
       console.log('[DEBUG] Upload concluído com sucesso');
       return fileName;
@@ -335,46 +395,37 @@ class DemandaService {
     try {
       console.log('[DEBUG] DemandaService - Iniciando remoção de imagem:', { item, index });
       
-      const notas = Array.isArray(item.nota_fiscal) ? [...item.nota_fiscal] : [];
+      // Validações iniciais
+      if (!item || !item.id) {
+        throw new Error('Item inválido');
+      }
+
+      if (!Array.isArray(item.nota_fiscal)) {
+        throw new Error('Lista de notas fiscais inválida');
+      }
+
+      const notas = [...item.nota_fiscal];
       const removedPath = notas[index];
       
       if (!removedPath) {
-        console.error('[DEBUG] DemandaService - Imagem não encontrada no índice:', index);
         throw new Error('Imagem não encontrada');
       }
 
-      console.log('[DEBUG] DemandaService - Removendo arquivo:', removedPath);
-      
-      // Remove do storage
-      const { error: storageError } = await supabase.storage
-        .from('notas-fiscais')
-        .remove([removedPath]);
-
-      if (storageError) {
-        console.error('[DEBUG] DemandaService - Erro ao remover do storage:', storageError);
-        throw storageError;
-      }
-
-      // Remove do array
+      // Remove do array primeiro
       notas.splice(index, 1);
 
-      console.log('[DEBUG] DemandaService - Atualizando registro com novas notas:', notas);
-      
-      // Atualiza o banco
+      // Atualiza o banco antes de tentar remover do storage
       const { error: updateError } = await supabase
         .from('demanda_itens')
         .update({ nota_fiscal: notas })
         .eq('id', item.id);
 
       if (updateError) {
-        console.error('[DEBUG] DemandaService - Erro ao atualizar registro:', updateError);
-        throw updateError;
+        console.error('[DEBUG] DemandaService - Erro ao atualizar banco de dados:', updateError);
+        throw new Error('Erro ao atualizar lista de imagens no banco de dados');
       }
 
-      // Remove do cache de imagens
-      this.imageCacheService.removeFromCache(removedPath);
-
-      // Atualiza o cache local
+      // Atualiza o cache local imediatamente após o sucesso do banco
       const obraId = item.obra_id;
       const items = this.currentItems.get(obraId) || [];
       const itemIndex = items.findIndex(i => i.id === item.id);
@@ -384,11 +435,27 @@ class DemandaService {
         this.currentItems.set(obraId, [...items]);
       }
 
+      // Remove do storage em segundo plano
+      try {
+        const { error: storageError } = await supabase.storage
+          .from('notas-fiscais')
+          .remove([removedPath]);
+
+        if (storageError) {
+          console.error('[DEBUG] DemandaService - Erro ao remover do storage:', storageError);
+          // Não lança erro aqui pois o banco já foi atualizado
+        }
+      } catch (storageError) {
+        console.error('[DEBUG] DemandaService - Erro ao remover do storage:', storageError);
+        // Não lança erro aqui pois o banco já foi atualizado
+      }
+
+      // Remove do cache de imagens
+      this.imageCacheService.removeFromCache(removedPath);
+
       console.log('[DEBUG] DemandaService - Imagem removida com sucesso');
-      toast.success('Imagem removida com sucesso!');
     } catch (error) {
       console.error('[DEBUG] DemandaService - Erro ao remover imagem:', error);
-      toast.error('Erro ao remover imagem');
       throw error;
     }
   }

@@ -5,13 +5,9 @@ const config: CapacitorConfig = {
   appName: 'GLog',
   webDir: 'dist',
   server: {
-<<<<<<< HEAD
-    androidScheme: 'https'
-=======
     androidScheme: 'https',
     cleartext: true,
     allowNavigation: ['*']
->>>>>>> origin/master
   },
   plugins: {
     Filesystem: {
@@ -39,13 +35,9 @@ const config: CapacitorConfig = {
     }
   },
   android: {
-<<<<<<< HEAD
-    allowMixedContent: true
-=======
     allowMixedContent: true,
     captureInput: true,
     webContentsDebuggingEnabled: true
->>>>>>> origin/master
   }
 };
 

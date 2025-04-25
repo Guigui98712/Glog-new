@@ -1,31 +1,26 @@
 import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-<<<<<<< HEAD
-=======
-import { Textarea } from '@/components/ui/textarea';
->>>>>>> origin/master
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import NotificationService from '@/services/NotificationService';
-<<<<<<< HEAD
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
-=======
->>>>>>> origin/master
 
 interface AdicionarDemandaDialogProps {
   obraId: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onDemandaAdicionada: () => void;
+  itemParaEditar?: DemandaItem;
 }
 
 export function AdicionarDemandaDialog({
   obraId,
   open,
   onOpenChange,
-  onDemandaAdicionada
+  onDemandaAdicionada,
+  itemParaEditar
 }: AdicionarDemandaDialogProps) {
   const [itens, setItens] = useState('');
   const [loading, setLoading] = useState(false);
@@ -34,12 +29,17 @@ export function AdicionarDemandaDialog({
     try {
       setLoading(true);
 
-<<<<<<< HEAD
-      const textoLimpo = itens.replace(/<[^>]*>/g, '').trim();
-      if (!textoLimpo) {
-=======
-      if (!itens.trim()) {
->>>>>>> origin/master
+      // 1. Substitui fechamento de parágrafo por nova linha
+      // 2. Remove outras tags HTML
+      // 3. Remove múltiplos \n seguidos por apenas um
+      // 4. Remove espaços/newlines do início/fim
+      const textoComQuebras = itens
+        .replace(/<\/p>/g, '\n')         
+        .replace(/<[^>]*>/g, '')       
+        .replace(/\n+/g, '\n')         
+        .trim();                      
+
+      if (!textoComQuebras) { // Verifica se o resultado não está vazio
         toast.error('Digite pelo menos um item para a lista');
         return;
       }
@@ -59,11 +59,7 @@ export function AdicionarDemandaDialog({
         .insert({
           obra_id: obraId,
           titulo: 'Lista de Demanda',
-<<<<<<< HEAD
-          descricao: textoLimpo,
-=======
-          descricao: itens.trim(),
->>>>>>> origin/master
+          descricao: textoComQuebras,
           status: 'demanda'
         })
         .select()
@@ -75,11 +71,7 @@ export function AdicionarDemandaDialog({
       const notificationService = NotificationService.getInstance();
       await notificationService.notificarNovaDemanda(
         obraId,
-<<<<<<< HEAD
-        textoLimpo
-=======
-        itens.trim()
->>>>>>> origin/master
+        textoComQuebras
       );
 
       toast.success('Lista de demanda adicionada com sucesso');
@@ -106,20 +98,11 @@ export function AdicionarDemandaDialog({
         <div className="grid gap-4 py-4">
           <div className="space-y-2">
             <Label htmlFor="itens">Itens da lista (um por linha)</Label>
-<<<<<<< HEAD
             <RichTextEditor
               value={itens}
               onChange={setItens}
               placeholder="Digite os itens da lista, um em cada linha"
               minHeight="200px"
-=======
-            <Textarea
-              id="itens"
-              value={itens}
-              onChange={(e) => setItens(e.target.value)}
-              placeholder="Digite os itens da lista, um em cada linha"
-              className="min-h-[200px]"
->>>>>>> origin/master
             />
           </div>
         </div>

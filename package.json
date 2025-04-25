@@ -65,7 +65,6 @@
     "@reactflow/minimap": "^11.7.14",
     "@reactflow/node-resizer": "^2.2.14",
     "@supabase/supabase-js": "^2.49.1",
-<<<<<<< HEAD
     "@tanstack/react-query": "^5.66.9",
     "@tanstack/react-query-devtools": "^5.74.6",
     "@tiptap/extension-placeholder": "^2.11.7",
@@ -75,10 +74,6 @@
     "@tiptap/react": "^2.11.7",
     "@tiptap/starter-kit": "^2.11.7",
     "@tiptap/suggestion": "^2.11.7",
-=======
-    "@tanstack/react-query": "^5.74.4",
-    "@tanstack/react-query-devtools": "^5.74.6",
->>>>>>> origin/master
     "@types/react-beautiful-dnd": "^13.1.8",
     "@types/react-router-dom": "^5.3.3",
     "class-variance-authority": "^0.7.1",
@@ -124,21 +119,12 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",
-<<<<<<< HEAD
     "@tailwindcss/typography": "^0.5.16",
     "@types/node": "^22.5.5",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.4.1",
     "@vitejs/plugin-react-swc": "^3.9.0",
-=======
-    "@tailwindcss/typography": "^0.5.15",
-    "@types/node": "^22.5.5",
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.4",
-    "@vitejs/plugin-react-swc": "^3.5.0",
->>>>>>> origin/master
     "autoprefixer": "^10.4.20",
     "eslint": "^9.9.0",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
@@ -150,10 +136,6 @@
     "terser": "^5.39.0",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.0.1",
-<<<<<<< HEAD
     "vite": "^5.4.18"
-=======
-    "vite": "^5.4.14"
->>>>>>> origin/master
   }
 }

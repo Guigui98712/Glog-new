@@ -23,7 +23,7 @@ create table demanda_itens (
   valor decimal(10,2),
   pedido_completo boolean,
   observacao_entrega text,
-  nota_fiscal text,
+  nota_fiscal text[],
   tempo_entrega text,
   created_at timestamp with time zone not null default now(),
   updated_at timestamp with time zone not null default now()
@@ -37,4 +37,27 @@ create index demanda_itens_status_idx on demanda_itens(status);
 create trigger set_updated_at
   before update on demanda_itens
   for each row
-  execute function update_updated_at_column(); 
+  execute function update_updated_at_column();
+
+-- Alterar o tipo da coluna nota_fiscal para text[]
+do $$
+begin
+  -- Verifica se a coluna existe e seu tipo atual
+  if exists (
+    select 1 
+    from information_schema.columns 
+    where table_name = 'demanda_itens' 
+    and column_name = 'nota_fiscal'
+    and data_type = 'text'
+  ) then
+    -- Primeiro, converte os dados existentes
+    update demanda_itens 
+    set nota_fiscal = array[nota_fiscal]::text[] 
+    where nota_fiscal is not null 
+    and nota_fiscal != '';
+
+    -- Altera o tipo da coluna
+    alter table demanda_itens 
+    alter column nota_fiscal type text[] using nota_fiscal::text[];
+  end if;
+end $$; 

@@ -618,7 +618,7 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
         <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Relatório de Demandas Pagas - ${obraNome}</title>
+          <title>Relatório de Demandas</title>
           <style>
             ${pdfStyles}
             body { font-family: sans-serif; }
@@ -644,14 +644,13 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
         <body>
           <div class="container">
             <div class="header">
-              <h1>Relatório de Demandas Pagas</h1>
+              <h1>Relatório de Demandas</h1>
               <p class="obra-info">Obra: ${obraNome}</p>
               <p class="data">Data: ${format(new Date(), 'dd/MM/yyyy')}</p>
             </div>
 
             <div class="content">
               <div class="info-block">
-                <h3>Itens Pagos</h3>
                 <div class="items-container">
                   ${itensHtml.join('')}
                 </div>
@@ -662,7 +661,7 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
             </div>
 
             <div class="footer">
-              <p>Relatório gerado em ${format(new Date(), 'dd/MM/yyyy HH:mm')}</p>
+              <p>Relatório gerado em ${format(new Date(), 'dd/MM/yyyy')}</p>
               <p>${obraNome} - Todos os direitos reservados</p>
             </div>
           </div>
@@ -818,9 +817,9 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
   }, [itens]); // Dependência nos itens carregados
 
   return (
-    <div className="container mx-auto py-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
+    <div className="container mx-auto py-6 px-2 sm:px-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-2 flex-shrink-0 mr-4">
           <Button 
             variant="ghost" 
             size="icon" 
@@ -828,39 +827,39 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1 className="text-2xl font-bold">Demanda: {obraNome}</h1>
+          <h1 className="text-xl sm:text-2xl font-bold truncate">Demanda: {obraNome}</h1>
         </div>
-        <div className="flex flex-col items-end gap-2">
-          <div className="flex items-center gap-2 flex-wrap justify-end">
+        <div className="flex flex-col items-stretch sm:items-end gap-2 w-full sm:w-auto">
+          <div className="flex items-center gap-2 flex-wrap justify-start sm:justify-end">
             <Button 
               variant="outline" 
               size="sm" 
               onClick={() => setShowAdicionarDialog(true)}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 grow sm:grow-0"
             >
               <Plus className="h-4 w-4" />
-              Nova Demanda
+              <span className="xs:inline">Nova Demanda</span>
             </Button>
             <Button 
               variant="outline" 
               size="sm" 
               onClick={handleGerarRelatorio} 
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 grow sm:grow-0"
             >
               <FileText className="h-4 w-4" />
-              Gerar Relatório
+              <span className="xs:inline">Gerar Relatório</span>
             </Button>
             <Button 
               variant="outline" 
               size="sm" 
               onClick={() => navigate(`/obras/${id}/demanda/relatorios`)}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 grow sm:grow-0"
             >
               <FolderOpen className="h-4 w-4" />
-              Ver Relatórios
+              <span className="xs:inline">Ver Relatórios</span>
             </Button>
           </div>
-          <div className="flex items-center space-x-2 mt-1 self-end">
+          <div className="flex items-center space-x-2 self-start sm:self-end">
             <Checkbox 
               id="incluir-datas" 
               checked={incluirDatasRelatorio}
@@ -878,26 +877,23 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
-          {/* Seção Demanda */} 
-          <div className="bg-card rounded-lg shadow p-4">
-            <h2 className="text-lg font-semibold mb-4">Demanda</h2>
-            <div className="flex flex-col gap-2">
-              {itensPorStatus.demanda.map((item) => (
-                <div
-                  key={item.id}
-                  className="bg-background p-3 rounded-md shadow-sm relative"
-                >
-                  {item.titulo === 'Lista de Demanda' ? (
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-medium pr-8">{item.titulo}</h3>
-                        <div className="flex items-center gap-2">
-                          {/* Botão Editar para Lista */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {Object.entries(itensPorStatus).map(([status, items]) => (
+            <div key={status} className="bg-card rounded-lg shadow p-4 min-h-[200px] flex flex-col">
+              <h2 className="text-lg font-semibold mb-4 capitalize flex-shrink-0">{status}</h2>
+              <div className="flex flex-col gap-3 overflow-y-auto flex-grow">
+                {items.map((item) => (
+                  <div
+                    key={item.id}
+                    className="bg-background p-3 rounded-md shadow-sm relative flex flex-col flex-shrink-0"
+                  >
+                    {status !== 'pago' && (
+                      <div className="absolute top-1 right-1 flex items-center gap-1 z-10">
+                        {status !== 'demanda' || item.titulo === 'Lista de Demanda' ? (
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8"
+                            className="h-7 w-7"
                             onClick={() => {
                               setItemParaEditar({ ...item, nota_fiscal: item.nota_fiscal || [] });
                               setShowEditarDialog(true);
@@ -905,344 +901,146 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
-                           {/* Botão Excluir para Lista (considerar se é necessário) */}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-destructive hover:bg-destructive/10"
-                            onClick={() => handleExcluir(item)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="text-sm text-muted-foreground mt-1 whitespace-pre-line">
-                        {item.descricao.split('\n').map((linha, index) => (
-                          <p key={index} className="py-1 break-words">{linha.trim()}</p>
-                        ))}
-                      </div>
-                       {/* Botão Mover para Pedido para Lista */}
-                      <div className="flex justify-end mt-2">
+                        ) : null}
                         <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setItemSelecionado(item);
-                            setShowMoverParaPedidoDialog(true);
-                          }}
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                          onClick={() => handleExcluir(item)}
                         >
-                          <ArrowRight className="h-4 w-4" />
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
-                    </div>
-                  ) : (
-                    <>
-                      {/* Botão Excluir para Item Normal */}
-                      <Button
-                        variant="ghost" 
-                        size="icon"
-                        className="absolute top-2 right-2 h-8 w-8 text-destructive hover:bg-destructive/10"
-                        onClick={() => handleExcluir(item)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                      {/* Título para Item Normal */}
-                      <h3 className="font-medium pr-16">{item.titulo}</h3>
+                    )}
+                    <div className="flex-grow pr-12">
+                      <h3 className="font-medium break-words">{item.titulo}</h3>
                       {item.descricao && (
-                        <p className="text-sm text-muted-foreground mt-1 break-words">
-                          {item.descricao}
-                        </p>
+                        item.titulo === 'Lista de Demanda' ? (
+                          <div className="text-sm text-muted-foreground mt-1 whitespace-pre-line">
+                            {item.descricao.split('\n').map((linha, index) => (
+                              <p key={index} className="py-1 break-words">{linha.trim()}</p>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground mt-1 break-words">
+                            {item.descricao}
+                          </p>
+                        )
                       )}
-                      {/* Botão Mover para Pedido para Item Normal */}
-                      <div className="flex justify-end mt-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setItemSelecionado(item);
-                            setShowMoverParaPedidoDialog(true);
-                          }}
-                        >
-                          <ArrowRight className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Seção Pedido */} 
-          <div className="bg-card rounded-lg shadow p-4">
-            <h2 className="text-lg font-semibold mb-4">Pedido</h2>
-            <div className="flex flex-col gap-2">
-              {itensPorStatus.pedido.map((item) => (
-                <div
-                  key={item.id}
-                  className="bg-background p-3 rounded-md shadow-sm relative"
-                >
-                   {/* Botões de Ação (Editar/Excluir) no canto */}
-                  <div className="absolute top-2 right-2 flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => {
-                        setItemParaEditar({ ...item, nota_fiscal: item.nota_fiscal || [] });
-                        setShowEditarDialog(true);
-                      }}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive hover:bg-destructive/10"
-                      onClick={() => handleExcluir(item)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  {/* Conteúdo do Item */}
-                  <h3 className="font-medium pr-16">{item.titulo}</h3>
-                  {item.descricao && (
-                     item.titulo === 'Lista de Demanda' ? (
                       <div className="text-sm text-muted-foreground mt-1">
-                        {item.descricao.split('\n').map((linha, index) => (
-                          <p key={index} className="py-1 break-words">{linha.trim()}</p>
-                        ))}
+                        { (status === 'pedido' || status === 'entregue' || status === 'pago') && item.valor && <p>Valor: R$ {item.valor.toFixed(2)}</p> }
+                        { status === 'pedido' && item.data_pedido && <p>Pedido em: {format(new Date(item.data_pedido), 'dd/MM/yyyy')}</p> }
+                        { status === 'entregue' && item.data_entrega && <p>Entregue em: {format(new Date(item.data_entrega), 'dd/MM/yyyy')}</p> }
+                        { status === 'entregue' && item.tempo_entrega && <p>Tempo: {item.tempo_entrega}</p> }
+                        { status === 'entregue' && item.observacao_entrega && <p className="text-yellow-600">Obs: {item.observacao_entrega}</p> }
+                        { status === 'pago' && item.data_pagamento && <p>Pago em: {format(new Date(item.data_pagamento), 'dd/MM/yyyy')}</p> }
                       </div>
-                     ) : (
-                       <p className="text-sm text-muted-foreground mt-1 break-words">
-                        {item.descricao}
-                       </p>
-                     )
-                  )}
-                  <div className="text-sm text-muted-foreground mt-1">
-                    <p>Valor: {item.valor ? `R$ ${item.valor.toFixed(2)}` : 'N/A'}</p>
-                    <p>Pedido em: {item.data_pedido ? format(new Date(item.data_pedido), 'dd/MM/yyyy') : 'N/A'}</p>
-                  </div>
-                  {/* Botões de Navegação */}
-                  <div className="flex justify-between mt-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleVoltar(item)}
-                    >
-                      <ArrowLeftIcon className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setItemSelecionado(item);
-                        setShowMoverParaEntregueDialog(true);
-                      }}
-                    >
-                      <ArrowRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Seção Entregue */} 
-          <div className="bg-card rounded-lg shadow p-4">
-            <h2 className="text-lg font-semibold mb-4">Entregue</h2>
-            <div className="flex flex-col gap-2">
-              {itensPorStatus.entregue.map((item) => (
-                <div
-                  key={item.id}
-                  className="bg-background p-3 rounded-md shadow-sm relative"
-                >
-                   {/* Botões de Ação (Editar/Excluir) no canto */}
-                   <div className="absolute top-2 right-2 flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => {
-                        setItemParaEditar({ ...item, nota_fiscal: item.nota_fiscal || [] });
-                        setShowEditarDialog(true);
-                      }}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive hover:bg-destructive/10"
-                      onClick={() => handleExcluir(item)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                   {/* Conteúdo do Item */}
-                  <h3 className="font-medium pr-16">{item.titulo}</h3>
-                   {item.descricao && (
-                     item.titulo === 'Lista de Demanda' ? (
-                      <div className="text-sm text-muted-foreground mt-1">
-                        {item.descricao.split('\n').map((linha, index) => (
-                          <p key={index} className="py-1 break-words">{linha.trim()}</p>
-                        ))}
-                      </div>
-                     ) : (
-                       <p className="text-sm text-muted-foreground mt-1 break-words">
-                        {item.descricao}
-                       </p>
-                     )
-                  )}
-                  <div className="text-sm text-muted-foreground mt-1">
-                    <p>Valor: {item.valor ? `R$ ${item.valor.toFixed(2)}` : 'N/A'}</p>
-                    <p>Entregue em: {item.data_entrega ? format(new Date(item.data_entrega), 'dd/MM/yyyy') : 'N/A'}</p>
-                    {item.tempo_entrega && (
-                      <p>Tempo de entrega: {item.tempo_entrega}</p>
-                    )}
-                    {item.observacao_entrega && (
-                      <p className="text-yellow-600">Obs: {item.observacao_entrega}</p>
-                    )}
-                     {/* Notas Fiscais */}
-                    <div className="mt-2">
-                      {item.nota_fiscal && Array.isArray(item.nota_fiscal) && item.nota_fiscal.length > 0 ? (
-                        <div className="grid grid-cols-2 gap-2 mb-2"> {/* Ajustado gap e mb */} 
-                          {item.nota_fiscal.map((imagem: string, index: number) => (
-                             <div key={`${item.id}-img-${index}`} className="relative group">
-                              <div className="relative aspect-square w-full rounded-lg border border-input overflow-hidden bg-gray-50">
-                                {renderImagemMiniatura(imagem, index, item)} {/* Usando a função render */} 
-                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 bg-white/80 hover:bg-white"
-                                    onClick={() => handleVisualizarImagem(item)}
-                                  >
-                                    <ImageIcon className="h-4 w-4" />
-                                  </Button>
-                                  {/* Não permitir remover imagem aqui se veio da Lista */} 
-                                  {item.titulo !== 'Lista de Demanda' && (
+                      {(status === 'entregue' || status === 'pago') && item.nota_fiscal && item.nota_fiscal.length > 0 && (
+                        <div className="mt-2">
+                          <div className="grid grid-cols-3 gap-2">
+                            {item.nota_fiscal.map((imagem: string, index: number) => (
+                              <div key={`${item.id}-${status}-img-${index}`} className="relative group aspect-square">
+                                <div className="relative w-full h-full rounded-lg border border-input overflow-hidden bg-gray-50">
+                                  {renderImagemMiniatura(imagem, index, item)}
+                                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 p-1">
                                     <Button
                                       type="button"
                                       variant="ghost"
                                       size="icon"
-                                      className="h-8 w-8 bg-white/80 hover:bg-white text-destructive"
-                                      onClick={() => handleRemoverImagem(item, index)}
+                                      className="h-7 w-7 bg-white/80 hover:bg-white text-primary rounded-full"
+                                      onClick={() => handleVisualizarImagem(item)}
+                                      title="Visualizar"
                                     >
-                                      <Trash2 className="h-4 w-4" />
+                                      <ImageIcon className="h-4 w-4" />
                                     </Button>
-                                  )}
+                                    {status === 'entregue' && item.titulo !== 'Lista de Demanda' && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 bg-white/80 hover:bg-white text-destructive rounded-full"
+                                        onClick={() => handleRemoverImagem(item, index)}
+                                        title="Remover Imagem"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-sm text-muted-foreground mb-2">
-                        Nenhuma imagem anexada
-                      </div>
-                    )}
-                    </div>
-                  </div>
-                   {/* Botões de Navegação */}
-                  <div className="flex justify-between mt-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleVoltar(item)}
-                    >
-                      <ArrowLeftIcon className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedItem(item);
-                        setShowMoverParaPagoDialog(true);
-                      }}
-                    >
-                      Mover para Pago
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Seção Pago */} 
-          <div className="bg-card rounded-lg shadow p-4">
-            <h2 className="text-lg font-semibold mb-4">Pago</h2>
-            <div className="flex flex-col gap-2">
-              {itensPorStatus.pago.map((item) => (
-                <div
-                  key={item.id}
-                  className="bg-background p-3 rounded-md shadow-sm relative"
-                >
-                  {/* Não há botões de editar/excluir aqui geralmente */} 
-                   {/* Conteúdo do Item */}
-                  <h3 className="font-medium pr-16">{item.titulo}</h3>
-                   {item.descricao && (
-                     item.titulo === 'Lista de Demanda' ? (
-                      <div className="text-sm text-muted-foreground mt-1">
-                        {item.descricao.split('\n').map((linha, index) => (
-                          <p key={index} className="py-1 break-words">{linha.trim()}</p>
-                        ))}
-                      </div>
-                     ) : (
-                       <p className="text-sm text-muted-foreground mt-1 break-words">
-                        {item.descricao}
-                       </p>
-                     )
-                  )}
-                  <div className="text-sm text-muted-foreground mt-1">
-                    <p>Valor: {item.valor ? `R$ ${item.valor.toFixed(2)}` : 'N/A'}</p>
-                    <p>Pago em: {item.data_pagamento ? format(new Date(item.data_pagamento), 'dd/MM/yyyy') : 'N/A'}</p>
-                     {/* Notas Fiscais */} 
-                    <div className="mt-2">
-                      {item.nota_fiscal && Array.isArray(item.nota_fiscal) && item.nota_fiscal.length > 0 ? (
-                        <div className="grid grid-cols-2 gap-2 mb-2">
-                          {item.nota_fiscal.map((imagem: string, index: number) => (
-                            <div key={`${item.id}-paid-img-${index}`} className="relative group">
-                               <div className="relative aspect-square w-full rounded-lg border border-input overflow-hidden bg-gray-50">
-                                {renderImagemMiniatura(imagem, index, item)} 
-                                 {/* Overlay apenas para visualizar */} 
-                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 bg-white/80 hover:bg-white"
-                                    onClick={() => handleVisualizarImagem(item)}
-                                  >
-                                    <ImageIcon className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
                         </div>
-                      ) : (
-                         <div className="flex items-center justify-center w-full h-16 bg-gray-100 rounded-lg text-xs text-gray-400">
+                      )}
+                      {(status === 'entregue' || status === 'pago') && (!item.nota_fiscal || item.nota_fiscal.length === 0) && (
+                         <div className="flex items-center justify-center w-full h-16 bg-gray-100 rounded-lg text-xs text-gray-400 mt-2">
                            Sem imagem
                         </div>
                       )}
                     </div>
+                    {/* Botões de Navegação (Inferior) - Reestruturados */}
+                    <div className="flex justify-between items-center mt-3 pt-3 border-t border-border flex-shrink-0">
+                      {/* Botão Voltar (Esquerda) */}
+                      <div>
+                        {status !== 'demanda' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleVoltar(item)}
+                            className="px-2"
+                            title="Voltar"
+                          >
+                            <ArrowLeftIcon className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+
+                      {/* Botão Avançar (Direita) */}
+                      <div>
+                        {status === 'demanda' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => { setItemSelecionado(item); setShowMoverParaPedidoDialog(true); }}
+                            className="px-2" 
+                            title="Mover para Pedido"
+                          >
+                            <ArrowRight className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {status === 'pedido' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => { setItemSelecionado(item); setShowMoverParaEntregueDialog(true); }}
+                            className="px-2"
+                            title="Mover para Entregue"
+                          >
+                            <ArrowRight className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {status === 'entregue' && (
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => { setSelectedItem(item); setShowMoverParaPagoDialog(true); }}
+                            className="px-3 flex items-center gap-1" 
+                            title="Mover para Pago"
+                          >
+                            <span className="hidden xs:inline">Pago</span>
+                            <ArrowRight className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                   {/* Botão de Voltar */} 
-                  <div className="flex justify-start mt-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleVoltar(item)}
-                    >
-                      <ArrowLeftIcon className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                ))}
+                {items.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4">Nenhum item</p>
+                )}
+              </div>
             </div>
-          </div>
+          ))}
         </div>
       )}
 
@@ -1271,7 +1069,6 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
         </>
       )}
 
-      {/* Modal de Visualização da Imagem */} 
       <Dialog open={showImagemDialog} onOpenChange={setShowImagemDialog}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader className="sticky top-0 bg-background z-10 pb-4 border-b">
@@ -1363,7 +1160,7 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={() => {
               if (selectedItem) {
-                handleExcluir(selectedItem); // Reutiliza a função handleExcluir
+                handleExcluir(selectedItem);
               }
               setShowDeleteDialog(false);
             }}>
@@ -1383,10 +1180,8 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
                 : 'Edite os detalhes do item.'}
             </DialogDescription>
           </DialogHeader>
-          {/* Renderiza o formulário apenas se itemParaEditar estiver definido */} 
           {itemParaEditar && (
             <div className="grid gap-4 py-4">
-              {/* Campo Título (se não for Lista) */} 
               {itemParaEditar.titulo !== 'Lista de Demanda' && (
                 <div className="flex flex-col gap-2">
                   <label htmlFor="edit-titulo" className="text-sm font-medium">
@@ -1399,7 +1194,6 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
                   />
                 </div>
               )}
-              {/* Campo Descrição (ou Itens da Lista) */} 
               <div className="flex flex-col gap-2">
                 <label htmlFor="edit-descricao" className="text-sm font-medium">
                   {itemParaEditar.titulo === 'Lista de Demanda' ? 'Itens da lista (um por linha):' : 'Descrição:'}
@@ -1412,7 +1206,6 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
                   rows={itemParaEditar.titulo === 'Lista de Demanda' ? 5 : 3} 
                 />
               </div>
-               {/* Campo Valor (se status for pedido ou entregue) */} 
               {(itemParaEditar.status === 'pedido' || itemParaEditar.status === 'entregue') && (
                 <div className="flex flex-col gap-2">
                   <label htmlFor="edit-valor" className="text-sm font-medium">
@@ -1429,6 +1222,82 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
                   />
                 </div>
               )}
+              {/* Reinserir seção de Notas Fiscais para status 'entregue' */}
+              {itemParaEditar.status === 'entregue' && (
+                <div className="flex flex-col gap-4 pt-4 border-t border-border">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium">
+                      Notas Fiscais / Comprovantes
+                    </label>
+                    {itemParaEditar.nota_fiscal && itemParaEditar.nota_fiscal.length > 0 ? (
+                      <div className="grid grid-cols-3 gap-2 mb-2">
+                        {itemParaEditar.nota_fiscal.map((imagem: string, index: number) => (
+                          <div key={`${itemParaEditar.id}-edit-img-${index}`} className="relative group aspect-square">
+                            <div className="relative w-full h-full rounded-lg border border-input overflow-hidden bg-gray-50">
+                              {renderImagemMiniatura(imagem, index, itemParaEditar)}
+                              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 p-1">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 bg-white/80 hover:bg-white text-primary rounded-full"
+                                  onClick={() => handleVisualizarImagem(itemParaEditar)}
+                                  title="Visualizar"
+                                >
+                                  <ImageIcon className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 bg-white/80 hover:bg-white text-destructive rounded-full"
+                                  onClick={() => handleRemoverImagem(itemParaEditar, index)}
+                                  title="Remover Imagem"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground mb-2">
+                        Nenhuma imagem anexada
+                      </div>
+                    )}
+                    <div className="flex gap-2 flex-wrap"> {/* Adicionado flex-wrap */}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm" /* Tamanho consistente */
+                        onClick={handleTirarFoto}
+                      >
+                        <CameraIcon className="h-4 w-4 mr-2" />
+                        Tirar Foto
+                      </Button>
+                      <div className="relative">
+                        <input
+                          type="file"
+                          id="upload-edit"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleImagemUpload}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm" /* Tamanho consistente */
+                          onClick={() => document.getElementById('upload-edit')?.click()}
+                        >
+                          <ImageIcon className="h-4 w-4 mr-2" />
+                          Upload
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>
@@ -1443,16 +1312,12 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
                 
                 const itemAtualizado = {
                   ...itemParaEditar,
-                  // Atualiza o título apenas se o campo existir (não para 'Lista de Demanda')
                   titulo: tituloInput ? tituloInput.value : itemParaEditar.titulo, 
                   descricao: descricaoTextarea.value,
-                  // Atualiza o valor apenas se o campo existir
                   valor: valorInput ? parseFloat(valorInput.value) : itemParaEditar.valor 
-                  // nota_fiscal é atualizado diretamente no state via handleImagemUpload/handleRemoverImagem
                 };
                 
                 handleEditarItemLista(itemAtualizado);
-                // Limpa itemParaEditar após salvar
                 setItemParaEditar(null); 
               }
             }}>
@@ -1476,8 +1341,8 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
             <AlertDialogCancel onClick={() => setShowConfirmarRelatorioDialog(false)}>Cancelar</AlertDialogCancel>
             <AlertDialogAction 
               onClick={async () => {
-                setShowConfirmarRelatorioDialog(false); // Fecha o diálogo imediatamente
-                await executarGeracaoRelatorio(); // Chama a lógica de geração
+                setShowConfirmarRelatorioDialog(false);
+                await executarGeracaoRelatorio();
               }}
             >
               Confirmar e Gerar

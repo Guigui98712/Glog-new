@@ -29,6 +29,11 @@ import ImageCacheService from '@/services/ImageCacheService';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
+import { Device } from '@capacitor/device';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 interface DemandaObraProps {}
 
@@ -501,18 +506,13 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
     
     console.log('Obtendo URL para:', realPath);
     try {
-      const { data, error: fetchError } = await supabase.storage
+      const { data } = await supabase.storage
         .from('notas-fiscais')
         .getPublicUrl(realPath);
 
-      if (fetchError) {
-        console.error('Erro do Supabase ao obter URL pública:', fetchError);
-        throw fetchError;
-      }
-      
       if (!data?.publicUrl) {
-        console.error('URL pública não encontrada para:', realPath);
-        throw new Error('URL pública não encontrada');
+        console.error('URL pública não encontrada ou inválida para:', realPath);
+        throw new Error('URL pública não encontrada ou inválida');
       }
 
       console.log('URL pública obtida:', data.publicUrl);
@@ -612,13 +612,13 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
         `;
       }));
 
-      const html = `
+      const htmlCompleto = `
         <!DOCTYPE html>
         <html lang="pt-BR">
         <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Relatório de Demandas</title>
+          <title>Relatório de Demandas - ${obraNome}</title>
           <style>
             ${pdfStyles}
             body { font-family: sans-serif; }
@@ -642,7 +642,7 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
           </style>
         </head>
         <body>
-          <div class="container">
+          <div class="container" id="pdf-content">
             <div class="header">
               <h1>Relatório de Demandas</h1>
               <p class="obra-info">Obra: ${obraNome}</p>
@@ -669,19 +669,106 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
         </html>
       `;
 
+      const deviceInfo = await Device.getInfo();
+      const isMobile = deviceInfo.platform !== 'web';
+
+      if (isMobile) {
+        console.log('Gerando PDF para plataforma móvel...');
+
+        const container = document.createElement('div');
+        container.style.position = 'absolute';
+        container.style.left = '-9999px';
+        container.style.width = '800px';
+        container.innerHTML = htmlCompleto;
+        document.body.appendChild(container);
+
+        const contentToCapture = container.querySelector('#pdf-content') as HTMLElement;
+        if (!contentToCapture) {
+          throw new Error('Elemento #pdf-content não encontrado para captura.');
+        }
+
+        try {
+          const canvas = await html2canvas(contentToCapture, {
+             scale: 2,
+             useCORS: true,
+             logging: true
+          });
+
+          const pdf = new jsPDF('p', 'mm', 'a4');
+          const imgData = canvas.toDataURL('image/png');
+          const pdfWidth = pdf.internal.pageSize.getWidth();
+          const pdfHeight = pdf.internal.pageSize.getHeight();
+          const canvasWidth = canvas.width;
+          const canvasHeight = canvas.height;
+          const ratio = canvasHeight / canvasWidth;
+          const imgHeight = pdfWidth * ratio;
+          let heightLeft = imgHeight;
+          let position = 0;
+
+          pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+          heightLeft -= pdfHeight;
+
+          while (heightLeft >= 0) {
+            position = heightLeft - imgHeight;
+            pdf.addPage();
+            pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+            heightLeft -= pdfHeight;
+          }
+
+          const pdfBase64 = pdf.output('datauristring').split(',')[1];
+
+          const fileName = `relatorio_${obraNome.replace(/\s+/g, '_')}_${Date.now()}.pdf`;
+          console.log('Salvando arquivo:', fileName);
+
+          const result = await Filesystem.writeFile({
+            path: fileName,
+            data: pdfBase64,
+            directory: Directory.Cache,
+          });
+          console.log('Arquivo salvo em:', result.uri);
+
+          await Share.share({
+            title: `Relatório de Demandas - ${obraNome}`,
+            text: `Segue o relatório de demandas da obra ${obraNome}.`,
+            url: result.uri,
+            dialogTitle: 'Compartilhar Relatório',
+          });
+
+          console.log('Compartilhamento iniciado.');
+
+        } catch (shareError) {
+           console.error('Erro ao gerar ou compartilhar PDF no mobile:', shareError);
+           toast.error('Erro ao compartilhar o relatório PDF.');
+        } finally {
+           if (document.body.contains(container)) {
+              document.body.removeChild(container);
+           }
+        }
+
+      } else {
+        console.log('Gerando PDF para plataforma web...');
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+          toast.warning('Não foi possível abrir a janela de visualização. Verifique o bloqueador de pop-ups.');
+        } else {
+          printWindow.document.write(htmlCompleto);
+          printWindow.document.close();
+          printWindow.focus();
+        }
+      }
+
       const { error: saveError } = await supabase
         .from('relatorios')
         .insert({
-          obra_id: Number(id),
-          data_inicio: format(new Date(), 'yyyy-MM-dd'),
-          data_fim: format(new Date(), 'yyyy-MM-dd'),
-          tipo: 'demanda',
-          conteudo: html
-        });
-
+           obra_id: Number(id),
+           data_inicio: format(new Date(), 'yyyy-MM-dd'),
+           data_fim: format(new Date(), 'yyyy-MM-dd'),
+           tipo: 'demanda',
+           conteudo: htmlCompleto
+         });
       if (saveError) {
-        console.error('Erro ao salvar relatório:', saveError);
-        throw new Error(`Erro ao salvar o relatório: ${saveError.message}`);
+         console.error('Erro ao salvar relatório:', saveError);
+         throw new Error(`Erro ao salvar o relatório: ${saveError.message}`);
       }
 
       const idsParaExcluir = itensPagos.map(item => item.id);
@@ -689,27 +776,17 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
         .from('demanda_itens')
         .delete()
         .in('id', idsParaExcluir);
-
       if (deleteError) {
-        console.error('Erro ao excluir itens:', deleteError);
-        toast.error(`Relatório salvo, mas erro ao excluir itens: ${deleteError.message}`);
+         console.error('Erro ao excluir itens:', deleteError);
+         toast.error(`Relatório salvo/compartilhado, mas erro ao excluir itens: ${deleteError.message}`);
       } else {
-        toast.success('Relatório gerado e itens pagos removidos com sucesso!');
-      }
-
-      const printWindow = window.open('', '_blank');
-      if (!printWindow) {
-        toast.warning('Não foi possível abrir a janela de visualização. Verifique o bloqueador de pop-ups.');
-      } else {
-        printWindow.document.write(html);
-        printWindow.document.close();
-        printWindow.focus();
+         toast.success('Relatório gerado/compartilhado e itens pagos removidos com sucesso!');
       }
 
       await carregarDados();
 
     } catch (error) {
-      console.error('Erro ao gerar relatório:', error);
+      console.error('Erro geral ao gerar relatório:', error);
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
       toast.error(`Erro ao gerar o relatório: ${errorMessage}`);
     }

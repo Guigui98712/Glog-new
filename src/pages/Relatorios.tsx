@@ -359,6 +359,7 @@ const Relatorios = () => {
         .from('relatorios')
         .select('*')
         .eq('obra_id', id)
+        .eq('tipo', 'semanal')
         .order('data_inicio', { ascending: false });
 
       if (error) throw error;

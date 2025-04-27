@@ -17,7 +17,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, MoreVertical, Pencil, Trash2, Upload, Image } from "lucide-react";
+import { Plus, MoreVertical, Pencil, Trash2, Upload, Image, Bell } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { 
   listarObras, 
@@ -30,6 +30,7 @@ import {
   type ObraParaEnvio
 } from "@/lib/api";
 import { RegistroDiario } from "@/types/obra";
+import NotificationService from '@/services/NotificationService';
 
 // Interface estendida para incluir o progresso calculado
 interface ObraComProgresso extends Obra {
@@ -333,6 +334,36 @@ const Obras = () => {
     }
   };
 
+  // Função para testar notificações
+  const handleTestarNotificacao = async () => {
+    try {
+      const resultado = await NotificationService.simulateNotification(
+        "Teste de Notificação", 
+        "Esta é uma notificação de teste do sistema GLog. Se você está vendo isso, a funcionalidade está funcionando corretamente!"
+      );
+      
+      if (resultado) {
+        toast({
+          title: "Notificação enviada",
+          description: "A notificação de teste foi enviada com sucesso!",
+        });
+      } else {
+        toast({
+          title: "Erro na notificação",
+          description: "Você precisa permitir notificações para receber alertas.",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('[DEBUG] Erro ao enviar notificação de teste:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível enviar a notificação de teste.",
+        variant: "destructive"
+      });
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
@@ -343,97 +374,18 @@ const Obras = () => {
   }
 
   return (
-    <div className="container mx-auto py-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Minhas Obras</h1>
-        <Dialog open={showDialog} onOpenChange={setShowDialog}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              Nova Obra
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Nova Obra</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium">Nome da Obra</label>
-                <Input
-                  value={novaObra.nome}
-                  onChange={(e) => setNovaObra({ ...novaObra, nome: e.target.value })}
-                  onBlur={(e) => setNovaObra({ ...novaObra, nome: capitalizarPrimeiraLetra(e.target.value) })}
-                  placeholder="Digite o nome da obra"
-                  spellCheck="true"
-                  autoCorrect="on"
-                  autoCapitalize="sentences"
-                  lang="pt-BR"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Endereço</label>
-                <Input
-                  value={novaObra.endereco}
-                  onChange={(e) => setNovaObra({ ...novaObra, endereco: e.target.value })}
-                  onBlur={(e) => setNovaObra({ ...novaObra, endereco: capitalizarPrimeiraLetra(e.target.value) })}
-                  placeholder="Digite o endereço da obra"
-                  spellCheck="true"
-                  autoCorrect="on"
-                  autoCapitalize="sentences"
-                  lang="pt-BR"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Cliente</label>
-                <Input
-                  value={novaObra.cliente}
-                  onChange={(e) => setNovaObra({ ...novaObra, cliente: e.target.value })}
-                  onBlur={(e) => setNovaObra({ ...novaObra, cliente: capitalizarPrimeiraLetra(e.target.value) })}
-                  placeholder="Digite o nome do cliente"
-                  spellCheck="true"
-                  autoCorrect="on"
-                  autoCapitalize="sentences"
-                  lang="pt-BR"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Responsável</label>
-                <Input
-                  value={novaObra.responsavel}
-                  onChange={(e) => setNovaObra({ ...novaObra, responsavel: e.target.value })}
-                  onBlur={(e) => setNovaObra({ ...novaObra, responsavel: capitalizarPrimeiraLetra(e.target.value) })}
-                  placeholder="Digite o nome do responsável"
-                  spellCheck="true"
-                  autoCorrect="on"
-                  autoCapitalize="sentences"
-                  lang="pt-BR"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Custo Previsto</label>
-                <Input
-                  type="number"
-                  value={novaObra.custo_previsto}
-                  onChange={(e) => setNovaObra({ ...novaObra, custo_previsto: parseFloat(e.target.value) || 0 })}
-                  placeholder="Digite o custo previsto"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Data Prevista de Conclusão</label>
-                <Input
-                  type="date"
-                  value={novaObra.data_previsao_fim}
-                  onChange={(e) => setNovaObra({ ...novaObra, data_previsao_fim: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 mt-4">
-              <Button variant="outline" onClick={() => setShowDialog(false)}>Cancelar</Button>
-              <Button onClick={handleNovaObra}>Criar Obra</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+    <div className="container mx-auto p-6 space-y-6">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+        <h1 className="text-3xl font-bold">Minhas Obras</h1>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setShowDialog(true)}>
+            <Plus className="h-4 w-4 mr-2" /> Nova Obra
+          </Button>
+          <Button onClick={handleTestarNotificacao} variant="outline" className="flex items-center gap-2">
+            <Bell className="h-4 w-4" />
+            <span>Testar Notificação</span>
+          </Button>
+        </div>
       </div>
 
       {obras.length === 0 ? (

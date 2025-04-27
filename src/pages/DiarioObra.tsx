@@ -31,11 +31,12 @@ import { supabase } from '@/lib/supabase';
 import { useParams, useNavigate } from 'react-router-dom';
 import { buscarObra, salvarRegistroDiario, listarRegistrosDiario, excluirRegistroDiario, atualizarRegistroDiario, uploadFoto } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
-import { ArrowLeft, MoreVertical, Pencil, Trash2, FileText, ChevronDown } from 'lucide-react';
+import { ArrowLeft, MoreVertical, Pencil, Trash2, FileText, ChevronDown, Camera } from 'lucide-react';
 import { FaCamera } from 'react-icons/fa';
 import { differenceInDays } from 'date-fns';
 import { ETAPAS_FLUXOGRAMA } from "../constants/etapas";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Camera as CapacitorCamera, CameraResultType, CameraSource } from '@capacitor/camera';
 
 interface Etapa {
   id: number;
@@ -482,6 +483,45 @@ const DiarioObra = () => {
     }
   };
 
+  const handleTirarFoto = async () => {
+    try {
+      const image = await CapacitorCamera.getPhoto({
+        quality: 90,
+        allowEditing: false,
+        resultType: CameraResultType.Base64,
+        source: CameraSource.Camera
+      });
+
+      if (!image.base64String) {
+        throw new Error('Imagem não capturada');
+      }
+
+      // Converter Base64 para Blob
+      const response = await fetch(`data:image/jpeg;base64,${image.base64String}`);
+      const blob = await response.blob();
+
+      // Criar um arquivo File a partir do blob
+      const timestamp = new Date().getTime();
+      const fileName = `foto_${timestamp}.jpg`;
+      const file = new File([blob], fileName, { type: 'image/jpeg' });
+
+      // Adicionar à lista de fotos
+      setFotos([...fotos, file]);
+      toast({
+        title: "Foto capturada",
+        description: "A foto foi adicionada à galeria com sucesso!"
+      });
+    } catch (error) {
+      console.error('Erro ao tirar foto:', error);
+      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+      toast({
+        title: "Erro ao capturar imagem",
+        description: msg,
+        variant: "destructive"
+      });
+    }
+  };
+
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
@@ -732,6 +772,15 @@ const DiarioObra = () => {
                   }}
                   className="flex-1"
                 />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleTirarFoto}
+                  title="Tirar foto com a câmera"
+                  className="bg-primary text-white hover:bg-primary/90"
+                >
+                  <FaCamera className="h-4 w-4" />
+                </Button>
                 {fotos.length > 0 && (
                   <Button
                     variant="outline"

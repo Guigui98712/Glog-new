@@ -499,8 +499,24 @@ export const uploadFoto = async (file: File): Promise<string> => {
           tamanhoConvertido: fileToUpload.size
         });
       } catch (error) {
-        console.error('[DEBUG] Erro na conversão HEIC:', error);
-        throw new Error('Não foi possível converter a imagem HEIC. Por favor, tente converter para JPEG antes de enviar.');
+        // Verificar se o erro é o específico da heic2any para arquivos já legíveis
+        if (typeof error === 'object' && error !== null && 'code' in error && error.code === 1) {
+          console.warn('[DEBUG] Conversão HEIC pulada: heic2any detectou arquivo já legível (provavelmente JPEG).');
+          // O navegador provavelmente já converteu para JPEG, mas vamos garantir que o nome e o tipo estejam corretos para o upload.
+          const fileName = file.name.replace(/\.(heic|heif)$/i, '.jpeg'); // Renomear para .jpeg
+          fileToUpload = new File([file], fileName, { type: 'image/jpeg' }); // Criar novo File com tipo JPEG
+          console.log('[DEBUG] Arquivo ajustado para upload como JPEG:', {
+            nome: fileToUpload.name,
+            tipo: fileToUpload.type,
+            tamanho: fileToUpload.size
+          });
+        } else {
+          // Se for qualquer outro erro, logar e lançar a exceção
+          console.error('[DEBUG] Erro na conversão HEIC - Mensagem:', error instanceof Error ? error.message : error);
+          console.error('[DEBUG] Erro na conversão HEIC - Stack:', error instanceof Error ? error.stack : 'N/A');
+          console.error('[DEBUG] Erro na conversão HEIC - Objeto Completo:', error);
+          throw new Error('Não foi possível converter a imagem HEIC. Por favor, tente converter para JPEG antes de enviar.');
+        }
       }
     }
 

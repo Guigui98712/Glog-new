@@ -72,44 +72,18 @@ class DemandaService {
               if (item.nota_fiscal.startsWith('[')) {
                 notasFiscais = JSON.parse(item.nota_fiscal);
               } else {
-                notasFiscais = [item.nota_fiscal];
+                // Se for uma string única (URL), coloca em um array
+                notasFiscais = [item.nota_fiscal]; 
               }
             } else if (Array.isArray(item.nota_fiscal)) {
               notasFiscais = item.nota_fiscal;
             }
 
-            // Validar cada imagem no storage
-            notasFiscais = await Promise.all(
-              notasFiscais.map(async (path) => {
-                try {
-                  const { data, error } = await supabase.storage
-                    .from('notas-fiscais')
-                    .download(path);
+            // Remover a validação desnecessária por download
+            // As URLs já são públicas e prontas para uso
 
-                  if (error) {
-                    console.error('[DEBUG] DemandaService - Imagem não encontrada:', path, error);
-                    return null;
-                  }
-
-                  return path;
-                } catch (e) {
-                  console.error('[DEBUG] DemandaService - Erro ao validar imagem:', path, e);
-                  return null;
-                }
-              })
-            );
-
-            // Filtrar imagens inválidas
-            notasFiscais = notasFiscais.filter(path => path !== null) as string[];
-            
-            // Se houver diferença entre as imagens originais e válidas, atualizar no banco
-            if (notasFiscais.length !== item.nota_fiscal.length) {
-              console.log('[DEBUG] DemandaService - Atualizando lista de imagens válidas no banco');
-              await supabase
-                .from('demanda_itens')
-                .update({ nota_fiscal: notasFiscais })
-                .eq('id', item.id);
-            }
+            // Garantir que apenas URLs válidas (strings não vazias) permaneçam
+            notasFiscais = notasFiscais.filter(url => typeof url === 'string' && url.length > 0);
 
           } catch (e) {
             console.error('[DEBUG] DemandaService - Erro ao processar nota_fiscal:', e);
@@ -260,9 +234,10 @@ class DemandaService {
       const timestamp = Date.now();
       const randomString = Math.random().toString(36).substring(2, 8);
       const fileExtension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-      const fileName = `${item.id}_${timestamp}_${randomString}.${fileExtension}`;
+      // Usar um path mais estruturado, e.g., obraId/itemId/
+      const filePath = `demandas/${item.obra_id}/${item.id}/${timestamp}_${randomString}.${fileExtension}`;
 
-      console.log('[DEBUG] Nome do arquivo gerado:', fileName);
+      console.log('[DEBUG] Path do arquivo gerado:', filePath);
 
       // Comprimir imagem se necessário
       let fileToUpload = file;
@@ -276,11 +251,11 @@ class DemandaService {
       }
 
       // Upload para o storage
-      const { error: uploadError } = await supabase.storage
-        .from('notas-fiscais')
-        .upload(fileName, fileToUpload, {
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('notas-fiscais') // Considerar usar um bucket diferente ou padronizar
+        .upload(filePath, fileToUpload, {
           cacheControl: '3600',
-          upsert: true,
+          upsert: false, // Usar false para evitar sobrescrever acidentalmente
           contentType: file.type
         });
 
@@ -288,23 +263,33 @@ class DemandaService {
         console.error('[ERROR] Erro no upload:', uploadError);
         throw uploadError;
       }
-
-      // Verificar se o arquivo foi realmente enviado
-      const { data: checkData, error: checkError } = await supabase.storage
-        .from('notas-fiscais')
-        .download(fileName);
-
-      if (checkError || !checkData) {
-        console.error('[ERROR] Erro na verificação do upload:', checkError);
-        throw new Error('Erro na verificação do upload');
+      
+      if (!uploadData || !uploadData.path) {
+         console.error('[ERROR] Upload concluído, mas sem path retornado.');
+         throw new Error('Falha ao obter o caminho do arquivo após upload.');
       }
 
-      // Atualiza o item com o novo arquivo
+      // Obter a URL pública
+      const { data: publicUrlData } = supabase.storage
+        .from('notas-fiscais')
+        .getPublicUrl(uploadData.path); // Usar o path retornado pelo upload
+
+      if (!publicUrlData || !publicUrlData.publicUrl) {
+        console.error('[ERROR] Erro ao obter URL pública');
+        // Considerar remover o arquivo se não conseguir a URL?
+        throw new Error('Erro ao obter URL pública do arquivo');
+      }
+
+      const publicUrl = publicUrlData.publicUrl;
+      console.log('[DEBUG] URL pública obtida:', publicUrl);
+
+      // Atualiza o item com a URL pública completa
       const notas = Array.isArray(item.nota_fiscal) ? item.nota_fiscal : [];
       const { error: updateError } = await supabase
         .from('demanda_itens')
         .update({ 
-          nota_fiscal: [...notas, fileName] 
+          nota_fiscal: [...notas, publicUrl], // Salvar a URL pública
+          updated_at: new Date().toISOString()
         })
         .eq('id', item.id);
 
@@ -313,7 +298,7 @@ class DemandaService {
         // Remove o arquivo se falhar ao atualizar o item
         await supabase.storage
           .from('notas-fiscais')
-          .remove([fileName]);
+          .remove([uploadData.path]);
         throw updateError;
       }
 
@@ -325,16 +310,14 @@ class DemandaService {
       if (index !== -1) {
         items[index] = { 
           ...items[index], 
-          nota_fiscal: [...notas, fileName] 
+          nota_fiscal: [...notas, publicUrl], // Atualizar cache com URL pública
+          updated_at: new Date().toISOString()
         };
         this.currentItems.set(obraId, [...items]);
       }
 
-      // Pré-carrega a URL no cache de imagens
-      await this.imageCacheService.getImageUrl(fileName);
-
-      console.log('[DEBUG] Upload concluído com sucesso');
-      return fileName;
+      console.log('[DEBUG] Upload e atualização concluídos com sucesso');
+      return publicUrl; // Retornar a URL pública
     } catch (error) {
       console.error('[ERROR] Erro ao fazer upload da imagem:', error);
       toast.error(error instanceof Error ? error.message : 'Erro ao fazer upload da imagem');
@@ -364,7 +347,12 @@ class DemandaService {
           canvas.height = height;
           
           const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0, width, height);
+          if (!ctx) {
+            reject(new Error('Não foi possível criar contexto do canvas'));
+            return;
+          }
+          
+          ctx.drawImage(img, 0, 0, width, height);
           
           canvas.toBlob(
             (blob) => {

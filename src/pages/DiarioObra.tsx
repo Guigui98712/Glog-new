@@ -31,12 +31,13 @@ import { supabase } from '@/lib/supabase';
 import { useParams, useNavigate } from 'react-router-dom';
 import { buscarObra, salvarRegistroDiario, listarRegistrosDiario, excluirRegistroDiario, atualizarRegistroDiario, uploadFoto } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
-import { ArrowLeft, MoreVertical, Pencil, Trash2, FileText, ChevronDown, Camera } from 'lucide-react';
+import { ArrowLeft, MoreVertical, Pencil, Trash2, FileText, ChevronDown, Camera, Image as ImageIcon } from 'lucide-react';
 import { FaCamera } from 'react-icons/fa';
 import { differenceInDays } from 'date-fns';
 import { ETAPAS_FLUXOGRAMA } from "../constants/etapas";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Camera as CapacitorCamera, CameraResultType, CameraSource } from '@capacitor/camera';
+import { Capacitor } from '@capacitor/core';
 
 interface Etapa {
   id: number;
@@ -105,8 +106,16 @@ const DiarioObra = () => {
   const [etapasDisponiveis, setEtapasDisponiveis] = useState<string[]>([]);
   const [etapasEmAndamento, setEtapasEmAndamento] = useState<string[]>([]);
   const [etapasFluxograma, setEtapasFluxograma] = useState<{ id: string; nome: string }[]>([]);
+  const [platform, setPlatform] = useState<string>('web');
 
   useEffect(() => {
+    const checkPlatform = async () => {
+      const currentPlatform = Capacitor.getPlatform();
+      setPlatform(currentPlatform);
+      console.log('[DEBUG] Plataforma detectada:', currentPlatform);
+    };
+    checkPlatform();
+
     const init = async () => {
       try {
         if (!obraId) {
@@ -502,14 +511,14 @@ const DiarioObra = () => {
 
       // Criar um arquivo File a partir do blob
       const timestamp = new Date().getTime();
-      const fileName = `foto_${timestamp}.jpg`;
+      const fileName = `foto_camera_${timestamp}.jpg`;
       const file = new File([blob], fileName, { type: 'image/jpeg' });
 
       // Adicionar à lista de fotos
-      setFotos([...fotos, file]);
+      setFotos(prevFotos => [...prevFotos, file]);
       toast({
         title: "Foto capturada",
-        description: "A foto foi adicionada à galeria com sucesso!"
+        description: "A foto foi adicionada com sucesso!"
       });
     } catch (error) {
       console.error('Erro ao tirar foto:', error);
@@ -519,6 +528,71 @@ const DiarioObra = () => {
         description: msg,
         variant: "destructive"
       });
+    }
+  };
+
+  // Nova função para selecionar fotos da galeria
+  const handleSelecionarFotoGaleria = async () => {
+    try {
+      // No Android, getPhotos não está implementado, então usamos getPhoto
+      const image = await CapacitorCamera.getPhoto({
+        quality: 90,
+        allowEditing: false,
+        resultType: CameraResultType.Base64,
+        source: CameraSource.Photos // Usar Photos para abrir a galeria em vez da câmera
+      });
+
+      if (!image.base64String) {
+        throw new Error('Imagem não capturada');
+      }
+
+      // Determinar o tipo MIME a partir do formato (ou default para jpeg)
+      const mimeType = image.format === 'png' ? 'image/png' : 'image/jpeg';
+      const fileExtension = image.format === 'png' ? 'png' : 'jpg';
+
+      // Converter Base64 para Blob
+      const response = await fetch(`data:${mimeType};base64,${image.base64String}`);
+      const blob = await response.blob();
+
+      // Criar um arquivo File a partir do blob
+      const timestamp = new Date().getTime();
+      const fileName = `foto_galeria_${timestamp}_${Math.random().toString(36).substring(2, 8)}.${fileExtension}`;
+      const file = new File([blob], fileName, { type: mimeType });
+
+      // Adicionar à lista de fotos
+      setFotos(prevFotos => [...prevFotos, file]);
+      toast({
+        title: "Foto selecionada",
+        description: "A foto foi adicionada com sucesso!"
+      });
+    } catch (error) {
+      console.error('[DEBUG] Erro ao selecionar foto da galeria:', error);
+      // Verificar se é erro de permissão cancelada pelo usuário (comum no iOS)
+      if (error instanceof Error && (error.message.includes('cancelled') || error.message.includes('cancelado'))) {
+         // Não mostrar toast de erro se o usuário cancelou
+         return;
+      }
+      const msg = error instanceof Error ? error.message : 'Erro desconhecido ao selecionar foto';
+      toast({
+        title: "Erro ao selecionar foto",
+        description: msg,
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Nova função para lidar com o input de arquivo na web
+  const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files) {
+      const arquivosSelecionados = Array.from(event.target.files);
+      // A função uploadFoto já tenta converter HEIC se necessário
+      setFotos(prevFotos => [...prevFotos, ...arquivosSelecionados]);
+      toast({
+        title: "Arquivos Selecionados",
+        description: `${arquivosSelecionados.length} arquivo(s) adicionado(s) para upload.`
+      });
+      // Limpar o valor do input para permitir selecionar o mesmo arquivo novamente
+      event.target.value = '';
     }
   };
 
@@ -739,50 +813,62 @@ const DiarioObra = () => {
               </div>
             )}
 
-            <div className="flex flex-col space-y-2">
-              <Label>Fotos</Label>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {fotos.map((foto, index) => (
-                  <div key={index} className="relative aspect-square">
-                    <img
-                      src={URL.createObjectURL(foto)}
-                      alt={`Foto ${index + 1}`}
-                      className="w-full h-full object-cover rounded-lg"
+            {/* Seção de Fotos (Condicional por Plataforma) */}
+            <div className="space-y-2">
+              <Label htmlFor="fotos">Fotos ({fotos.length})</Label>
+              <div className="flex items-center space-x-4">
+                {/* ---- Lógica Condicional ---- */}
+                {platform === 'web' ? (
+                  // Opção para Web: Input de Arquivo
+                  <div className="relative">
+                    <Input
+                      id="file-upload-input" // ID para o label (opcional)
+                      type="file"
+                      multiple
+                      accept="image/*,.heic,.heif" // Tenta aceitar HEIC
+                      onChange={handleFileInputChange}
+                      className="hidden" // Esconde o input padrão
                     />
                     <Button
-                      variant="destructive"
-                      size="icon"
-                      className="absolute top-2 right-2"
-                      onClick={() => setFotos(fotos.filter((_, i) => i !== index))}
+                      type="button"
+                      variant="outline"
+                      onClick={() => document.getElementById('file-upload-input')?.click()} // Aciona o input escondido
+                      title="Selecionar arquivos do computador"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <ImageIcon className="mr-2 h-4 w-4" />
+                      Selecionar Arquivos
                     </Button>
                   </div>
-                ))}
-              </div>
-              <div className="flex items-center space-x-4">
-                <Input
-                  type="file"
-                  multiple
-                  accept="image/*,.heic,.heif"
-                  onChange={(e) => {
-                    if (e.target.files) {
-                      setFotos([...fotos, ...Array.from(e.target.files)]);
-                    }
-                  }}
-                  className="flex-1"
-                />
+                ) : (
+                  // Opção para Nativo: Botão Capacitor Camera
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleSelecionarFotoGaleria}
+                    title="Selecionar fotos da galeria"
+                  >
+                    <ImageIcon className="mr-2 h-4 w-4" />
+                    Selecionar da Galeria
+                  </Button>
+                )}
+                {/* ---- Fim da Lógica Condicional ---- */}
+
+                {/* Botão Tirar Foto (Comum a todas as plataformas) */}
                 <Button
+                  type="button"
                   variant="outline"
                   size="icon"
-                  onClick={handleTirarFoto}
+                  onClick={handleTirarFoto} // handleTirarFoto usa CameraSource.Camera, que funciona em tudo
                   title="Tirar foto com a câmera"
                   className="bg-primary text-white hover:bg-primary/90"
                 >
                   <FaCamera className="h-4 w-4" />
                 </Button>
+
+                {/* Botão Limpar Fotos (Comum) */}
                 {fotos.length > 0 && (
                   <Button
+                    type="button"
                     variant="outline"
                     onClick={() => setFotos([])}
                   >
@@ -790,6 +876,34 @@ const DiarioObra = () => {
                   </Button>
                 )}
               </div>
+              {/* Preview das fotos (Comum) */}
+              {fotos.length > 0 && (
+                <div className="mt-4 grid grid-cols-3 gap-4">
+                  {fotos.map((foto, index) => (
+                    <div key={index} className="relative group">
+                      <img
+                        src={URL.createObjectURL(foto)}
+                        alt={`Preview ${index + 1}`}
+                        className="w-full h-24 object-cover rounded-lg"
+                        onLoad={(e) => URL.revokeObjectURL((e.target as HTMLImageElement).src)} // Boa prática
+                        onError={(e) => { // Fallback se a preview falhar (ex: HEIC no browser)
+                          console.warn("Erro ao carregar preview da imagem:", foto.name);
+                          (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150?text=Preview+Indisponível';
+                          (e.target as HTMLImageElement).alt = 'Preview indisponível';
+                        }}
+                      />
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        className="absolute top-1 right-1 h-6 w-6 opacity-75 group-hover:opacity-100"
+                        onClick={() => setFotos(fotos.filter((_, i) => i !== index))}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

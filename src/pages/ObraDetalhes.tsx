@@ -796,7 +796,7 @@ const ObraDetalhes = () => {
               >
                 <h3 className="text-xs md:text-sm font-medium text-gray-500">Projetos</h3>
                 <div className="mt-1 flex items-center justify-between">
-                  <p className="text-base md:text-lg font-semibold">Gerenciar</p>
+                  <p className="text-base md:text-lg font-semibold">Arquivos</p>
                   <FolderKanban className="w-4 h-4 md:w-5 md:h-5 text-blue-500" />
                 </div>
                 <p className="text-xs md:text-sm text-gray-500 mt-1">

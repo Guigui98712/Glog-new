@@ -108,22 +108,20 @@ const Login = () => {
         if (error) {
           console.error('[LOGIN] Signup error:', error);
           
-          if (error.message?.includes('User already registered')) {
-            console.warn('[LOGIN] Signup Error Detected: User already registered. Displaying specific toast.');
+          // Mensagens de erro personalizadas
+          if (error.message?.includes('email already')) {
             toast({
               title: "Email já cadastrado",
               description: "Este email já está sendo usado por outra conta. Tente fazer login ou use outro email.",
               variant: "destructive"
             });
           } else if (error.message?.includes('password')) {
-            console.warn('[LOGIN] Signup Error Detected: Invalid password format. Displaying specific toast.');
             toast({
               title: "Senha inválida",
-              description: "A senha deve ter pelo menos 6 caracteres.",
+              description: "A senha deve ter pelo menos 6 caracteres e incluir letras e números.",
               variant: "destructive"
             });
           } else {
-            console.warn('[LOGIN] Signup Error Detected: Unknown error. Displaying generic toast.', error.message);
             toast({
               title: "Erro no cadastro",
               description: error.message || "Não foi possível criar sua conta. Verifique suas informações e tente novamente.",
@@ -166,29 +164,26 @@ const Login = () => {
         if (error) {
           console.error('[LOGIN] Login error:', error);
           
-          if (error.message?.includes('Invalid login credentials')) {
-            console.warn('[LOGIN] Login Error Detected: Invalid login credentials. Displaying specific toast.');
+          // Mensagens de erro personalizadas
+          if (error.message?.includes('Invalid login')) {
             toast({
               title: "Credenciais inválidas",
               description: "Email ou senha incorretos. Verifique suas informações e tente novamente.",
               variant: "destructive"
             });
           } else if (error.message?.includes('Email not confirmed')) {
-            console.warn('[LOGIN] Login Error Detected: Email not confirmed. Displaying specific toast.');
             toast({
               title: "Email não confirmado",
               description: "Por favor, verifique sua caixa de entrada e confirme seu email antes de fazer login.",
               variant: "destructive"
             });
           } else if (error.message?.includes('too many requests')) {
-            console.warn('[LOGIN] Login Error Detected: Too many requests. Displaying specific toast.');
             toast({
               title: "Muitas tentativas",
               description: "Você fez muitas tentativas de login. Por favor, aguarde alguns minutos antes de tentar novamente.",
               variant: "destructive"
             });
           } else {
-            console.warn('[LOGIN] Login Error Detected: Unknown error. Displaying generic toast.', error.message);
             toast({
               title: "Erro no login",
               description: error.message || "Não foi possível fazer login. Verifique sua conexão e tente novamente.",
@@ -360,6 +355,18 @@ const Login = () => {
                 >
                   Manter conectado
                 </label>
+              </div>
+            )}
+            {!isRegister && (
+              <div className="text-center">
+                <button
+                  type="button"
+                  className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                  onClick={() => setIsResetDialogOpen(true)}
+                  disabled={isLoading}
+                >
+                  Esqueci minha senha
+                </button>
               </div>
             )}
             <Button

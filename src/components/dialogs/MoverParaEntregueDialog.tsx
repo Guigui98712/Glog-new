@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -10,9 +10,10 @@ import { DemandaItem } from '@/types/demanda';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Input } from '@/components/ui/input';
-import { Loader2, Camera, X } from 'lucide-react';
-import { Camera as CapacitorCamera, CameraResultType, CameraSource } from '@capacitor/camera';
+import { Loader2, Camera as CameraIcon, X, Image as ImageIcon } from 'lucide-react';
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import NotificationService from '@/services/NotificationService';
+import { Device } from '@capacitor/device';
 
 interface MoverParaEntregueDialogProps {
   item: DemandaItem;
@@ -38,18 +39,27 @@ export function MoverParaEntregueDialog({
   const [loading, setLoading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [previewImagemAtual, setPreviewImagemAtual] = useState<string | null>(null);
+  const [platform, setPlatform] = useState<string>('web');
+
+  useEffect(() => {
+    const detectPlatform = async () => {
+      const info = await Device.getInfo();
+      setPlatform(info.platform || 'web');
+    };
+    detectPlatform();
+  }, []);
 
   const validarImagem = (file: File) => {
-    const tiposPermitidos = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
-    const tamanhoMaximo = 5 * 1024 * 1024;
+    const tiposPermitidos = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp', 'image/heic', 'image/heif'];
+    const tamanhoMaximo = 10 * 1024 * 1024; // 10MB
     
-    if (!tiposPermitidos.includes(file.type)) {
-      toast.error('Tipo de arquivo não permitido. Use apenas imagens (JPG, PNG ou WEBP)');
+    if (!tiposPermitidos.includes(file.type.toLowerCase())) {
+      toast.error('Tipo de arquivo não permitido. Use apenas imagens (JPG, PNG, WEBP, HEIC)');
       return false;
     }
     
     if (file.size > tamanhoMaximo) {
-      toast.error('Imagem muito grande. Máximo 5MB');
+      toast.error('Imagem muito grande. Máximo 10MB');
       return false;
     }
     
@@ -66,7 +76,6 @@ export function MoverParaEntregueDialog({
         }
       });
     }
-    // Limpa o input para permitir selecionar o mesmo arquivo novamente
     e.target.value = '';
   };
 
@@ -91,6 +100,7 @@ export function MoverParaEntregueDialog({
           let width = img.width;
           let height = img.height;
           
+          // Redimensionar se muito grande
           if (width > 1920) {
             height = Math.round((height * 1920) / width);
             width = 1920;
@@ -100,7 +110,12 @@ export function MoverParaEntregueDialog({
           canvas.height = height;
           
           const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0, width, height);
+          if (!ctx) {
+            reject(new Error('Não foi possível criar contexto do canvas'));
+            return;
+          }
+          
+          ctx.drawImage(img, 0, 0, width, height);
           
           canvas.toBlob(
             (blob) => {
@@ -118,9 +133,79 @@ export function MoverParaEntregueDialog({
             0.8
           );
         };
+        img.onerror = () => reject(new Error('Erro ao carregar imagem para compressão'));
       };
-      reader.onerror = (error) => reject(error);
+      reader.onerror = () => reject(new Error('Erro ao ler arquivo para compressão'));
     });
+  };
+
+  const handleTirarFoto = async () => {
+    try {
+      const image = await Camera.getPhoto({
+        quality: 90,
+        allowEditing: false,
+        resultType: CameraResultType.Base64,
+        source: CameraSource.Camera,
+        saveToGallery: true
+      });
+
+      if (!image.base64String) {
+        throw new Error('Falha ao capturar imagem');
+      }
+
+      // Converter Base64 para File
+      const response = await fetch(`data:image/jpeg;base64,${image.base64String}`);
+      const blob = await response.blob();
+      const file = new File([blob], `foto_${Date.now()}.jpg`, { type: 'image/jpeg' });
+      
+      const previewUrl = URL.createObjectURL(file);
+      setImagens(prev => [...prev, { file, previewUrl }]);
+      
+      toast.success('Foto capturada com sucesso!');
+    } catch (error) {
+      console.error('Erro ao tirar foto:', error);
+      if (error instanceof Error && error.message.toLowerCase().includes('cancelled')) {
+        toast.info('Captura de foto cancelada.');
+      } else {
+        toast.error('Não foi possível acessar a câmera.');
+      }
+    }
+  };
+
+  const handleSelecionarFotoGaleria = async () => {
+    try {
+      const image = await Camera.getPhoto({
+        quality: 90,
+        allowEditing: false,
+        resultType: CameraResultType.Base64,
+        source: CameraSource.Photos
+      });
+
+      if (!image.base64String) {
+        throw new Error('Falha ao selecionar imagem');
+      }
+
+      // Determinar o tipo MIME
+      const mimeType = image.format === 'png' ? 'image/png' : 'image/jpeg';
+      const fileExtension = image.format === 'png' ? 'png' : 'jpg';
+
+      // Converter Base64 para File
+      const response = await fetch(`data:${mimeType};base64,${image.base64String}`);
+      const blob = await response.blob();
+      const file = new File([blob], `foto_galeria_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExtension}`, { type: mimeType });
+      
+      const previewUrl = URL.createObjectURL(file);
+      setImagens(prev => [...prev, { file, previewUrl }]);
+      
+      toast.success('Foto selecionada com sucesso!');
+    } catch (error) {
+      console.error('Erro ao selecionar foto:', error);
+      if (error instanceof Error && error.message.toLowerCase().includes('cancelled')) {
+        toast.info('Seleção de foto cancelada.');
+      } else {
+        toast.error('Não foi possível acessar a galeria.');
+      }
+    }
   };
 
   const handleSubmit = async () => {
@@ -167,7 +252,6 @@ export function MoverParaEntregueDialog({
 
           if (uploadError) throw uploadError;
 
-          // Adiciona apenas o nome do arquivo ao array
           notasFiscais.push(fileName);
         } catch (uploadError) {
           console.error('Erro no upload:', uploadError);
@@ -179,7 +263,6 @@ export function MoverParaEntregueDialog({
         ? formatDistanceToNow(new Date(item.data_pedido), { locale: ptBR })
         : '';
 
-      // Garante que notasFiscais seja sempre um array
       const { error: updateError } = await supabase
         .from('demanda_itens')
         .update({
@@ -208,38 +291,6 @@ export function MoverParaEntregueDialog({
       toast.error('Erro ao mover item para entregue');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const tirarFoto = async () => {
-    try {
-      await CapacitorCamera.requestPermissions();
-
-      const image = await CapacitorCamera.getPhoto({
-        quality: 90,
-        allowEditing: false,
-        resultType: CameraResultType.Base64,
-        source: CameraSource.Camera
-      });
-
-      if (!image.base64String) {
-        throw new Error('Falha ao capturar imagem');
-      }
-
-      const byteCharacters = atob(image.base64String);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: 'image/jpeg' });
-      const file = new File([blob], `foto_${Date.now()}.jpg`, { type: 'image/jpeg' });
-      
-      const previewUrl = URL.createObjectURL(file);
-      setImagens(prev => [...prev, { file, previewUrl }]);
-    } catch (error) {
-      console.error('Erro ao tirar foto:', error);
-      toast.error('Erro ao tirar foto');
     }
   };
 
@@ -282,27 +333,66 @@ export function MoverParaEntregueDialog({
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="nota-fiscal">Imagens do Item (opcional)</Label>
-              <div className="flex gap-2">
-                <input
-                  type="file"
-                  id="nota-fiscal"
-                  accept="image/*"
-                  onChange={handleFileChange}
-                  className="w-full"
-                  multiple
-                />
+              <Label>Imagens do Item (opcional)</Label>
+              <div className="flex items-center space-x-4">
+                {platform === 'web' ? (
+                  // Opção para Web: Input de Arquivo
+                  <div className="relative">
+                    <Input
+                      id="file-upload-input"
+                      type="file"
+                      multiple
+                      accept="image/*,.heic,.heif"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => document.getElementById('file-upload-input')?.click()}
+                      title="Selecionar arquivos do computador"
+                    >
+                      <ImageIcon className="mr-2 h-4 w-4" />
+                      Selecionar Arquivos
+                    </Button>
+                  </div>
+                ) : (
+                  // Opção para Nativo: Botão Capacitor Camera
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleSelecionarFotoGaleria}
+                    title="Selecionar fotos da galeria"
+                  >
+                    <ImageIcon className="mr-2 h-4 w-4" />
+                    Selecionar da Galeria
+                  </Button>
+                )}
+
+                {/* Botão Tirar Foto (Comum a todas as plataformas) */}
                 <Button
                   type="button"
                   variant="outline"
-                  size="icon"
-                  onClick={tirarFoto}
+                  onClick={handleTirarFoto}
                   title="Tirar foto"
+                  className="bg-primary text-white hover:bg-primary/90"
                 >
-                  <Camera className="h-4 w-4" />
+                  <CameraIcon className="h-4 w-4" />
                 </Button>
+
+                {/* Botão Limpar Fotos (se houver fotos) */}
+                {imagens.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setImagens([])}
+                  >
+                    Limpar Fotos
+                  </Button>
+                )}
               </div>
               
+              {/* Preview das imagens */}
               {imagens.length > 0 && (
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   {imagens.map((imagem, index) => (

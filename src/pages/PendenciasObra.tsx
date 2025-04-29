@@ -71,6 +71,8 @@ import { pdfStyles } from '../styles/pdf-styles';
 import NotificationService from '@/services/NotificationService';
 // Importar React Query
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Device } from '@capacitor/device';
+import { LocalNotifications } from '@capacitor/local-notifications'; // Importar LocalNotifications
 
 const PendenciasObra = () => {
   const { id } = useParams();
@@ -313,45 +315,70 @@ const PendenciasObra = () => {
     }
   });
 
+  // Função auxiliar para enviar notificação local
+  const enviarNotificacaoLocalConcluida = async (tituloPendencia: string) => {
+    try {
+      let permStatus = await LocalNotifications.checkPermissions();
+      if (permStatus.display !== 'granted') {
+        permStatus = await LocalNotifications.requestPermissions();
+      }
+
+      if (permStatus.display === 'granted') {
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              title: "Pendência Concluída",
+              body: `A pendência "${tituloPendencia}" foi marcada como concluída.`,
+              id: Math.floor(Math.random() * 10000) + 1,
+              schedule: { at: new Date(Date.now() + 500) },
+              smallIcon: 'ic_notification',
+              channelId: 'default',
+            }
+          ]
+        });
+      } else {
+        console.warn('Permissão de notificação local negada.');
+      }
+    } catch (error) {
+      console.error('Erro ao enviar notificação local:', error);
+    }
+  };
+
   // Mutação para mover card
   const moverCardMutation = useMutation({
     mutationFn: async ({ cardId, novaListaId }: { cardId: number, novaListaId: number }) => {
       return await moverCard(cardId, novaListaId);
     },
     onSuccess: async (_, variables) => {
-      // Atualizações otimistas: podemos usar o queryClient.setQueryData para atualizar o estado sem recarregar
       queryClient.invalidateQueries({ queryKey: ['board', id] });
       
       // Notificar sobre conclusão se o card foi movido para lista "Concluído"
       if (board) {
         const listaDestino = board.lists.find(l => l.id === variables.novaListaId);
-        if (listaDestino?.title?.toLowerCase() === 'concluído') {
+        // Verificação mais robusta do título da lista
+        if (listaDestino?.title?.trim().toLowerCase() === 'concluído' || 
+            listaDestino?.title?.trim().toLowerCase() === 'concluido') { 
           const card = board.lists
             .flatMap(lista => lista.cards)
             .find(c => c.id === variables.cardId);
             
           if (card) {
+            // Enviar notificação PUSH (já existente)
             await notificationService.notificarPendenciaConcluida(
               Number(id),
               card.title
             );
+            // Enviar notificação LOCAL
+            await enviarNotificacaoLocalConcluida(card.title);
           }
         }
       }
       
-      toast({
-        title: "Sucesso",
-        description: "Card movido com sucesso!",
-      });
+      toast.success("Card movido com sucesso!");
     },
     onError: (error) => {
       console.error('Erro ao mover card:', error);
-      toast({
-        title: "Erro",
-        description: "Erro ao mover card",
-        variant: "destructive"
-      });
-      // Recarregar dados em caso de erro
+      toast.error("Erro ao mover card");
       queryClient.invalidateQueries({ queryKey: ['board', id] });
     }
   });
@@ -805,8 +832,9 @@ const PendenciasObra = () => {
   const handleToggleLabelInView = async (label: string) => {
     if (!cardAtual) return;
     
+    let notificacaoEnviada = false; // Flag para evitar notificação dupla
+
     try {
-      // Buscar etiquetas atuais do card
       const etiquetasAtuais = await buscarEtiquetas();
       const etiquetaObj = etiquetasAtuais.find(e => e.title === label);
       const etiquetaFazendo = etiquetasAtuais.find(e => e.title.toLowerCase() === 'fazendo');
@@ -816,29 +844,35 @@ const PendenciasObra = () => {
         return;
       }
       
-      // Verificar se o card já tem a etiqueta
       const cardLabels = Array.isArray(cardAtual.labels) ? cardAtual.labels : [];
       const hasLabel = cardLabels.some(l => 
         (typeof l === 'string' ? l === label : l.title === label)
       );
       
-      // Se estamos adicionando a etiqueta "Concluído" e o card tem a etiqueta "Fazendo"
       if (!hasLabel && 
           label.toLowerCase() === 'concluído' && 
           etiquetaFazendo && 
-          cardLabels.some(l => (typeof l === 'string' ? l === 'Fazendo' : l.title === 'Fazendo'))) {
-        // Primeiro remover a etiqueta "Fazendo"
+          cardLabels.some(l => (typeof l === 'string' ? l.toLowerCase() === 'fazendo' : l.title.toLowerCase() === 'fazendo'))) {
         await removerEtiqueta(cardAtual.id, etiquetaFazendo.id);
       }
       
-      // Atualizar etiquetas no banco de dados
       if (hasLabel) {
         await removerEtiqueta(cardAtual.id, etiquetaObj.id);
       } else {
         await adicionarEtiqueta(cardAtual.id, etiquetaObj.id);
+        // Verificar se a etiqueta adicionada foi "Concluído"
+        if (label.toLowerCase() === 'concluído') {
+           // Enviar notificação PUSH (já existente)
+           await notificationService.notificarPendenciaConcluida(
+            Number(id),
+            cardAtual.title
+          );
+          // Enviar notificação LOCAL
+          await enviarNotificacaoLocalConcluida(cardAtual.title);
+          notificacaoEnviada = true;
+        }
       }
       
-      // Recarregar o quadro para atualizar os dados
       await refetchBoard();
       
       // Atualizar o estado local do card atual
@@ -854,24 +888,17 @@ const PendenciasObra = () => {
             attachments: (cardAtualizado as any).attachments || [],
             labels: cardAtualizado.labels || []
           });
-          setNovoCard({
-            ...novoCard,
+          setNovoCard(prev => ({ // Usar prevState para segurança
+            ...prev,
             labels: cardAtualizado.labels.map(l => l.title)
-          });
+          }));
         }
       }
       
-      toast({
-        title: "Sucesso",
-        description: hasLabel ? "Etiqueta removida com sucesso!" : "Etiqueta adicionada com sucesso!",
-      });
+      toast.success(hasLabel ? "Etiqueta removida com sucesso!" : "Etiqueta adicionada com sucesso!");
     } catch (error) {
       console.error('Erro ao atualizar etiquetas:', error);
-      toast({
-        title: "Erro",
-        description: error instanceof Error ? error.message : "Não foi possível atualizar as etiquetas.",
-        variant: "destructive"
-      });
+      toast.error("Não foi possível atualizar as etiquetas.");
     }
   };
 
@@ -996,6 +1023,48 @@ const PendenciasObra = () => {
             <meta charset="UTF-8">
             <style>
               ${pdfStyles}
+              
+              /* Estilos adicionais para melhorar a estrutura do relatório */
+              .card {
+                margin-bottom: 20px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                page-break-inside: avoid;
+                break-inside: avoid;
+              }
+              
+              .section {
+                margin-bottom: 30px;
+                border-radius: 8px;
+                page-break-inside: avoid;
+                break-inside: avoid;
+              }
+              
+              .section-title {
+                background-color: #f1f5f9;
+                padding: 10px 15px;
+                border-radius: 4px;
+                margin-bottom: 15px;
+              }
+              
+              p {
+                orphans: 4;
+                widows: 4;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+                hyphens: manual;
+              }
+              
+              .labels-container {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 3px;
+                margin: 8px 0;
+              }
+              
+              .label {
+                padding: 3px 6px;
+                font-size: 10px;
+              }
             </style>
           </head>
           <body>
@@ -1008,7 +1077,7 @@ const PendenciasObra = () => {
             ${board.lists.map(list => `
               <div class="section">
                 <h2 class="section-title">${list.title}</h2>
-                ${list.cards.map(card => `
+                ${list.cards.length > 0 ? list.cards.map(card => `
                   <div class="card">
                     <h3 class="card-title">${card.title}</h3>
                     
@@ -1018,9 +1087,26 @@ const PendenciasObra = () => {
                     
                     ${card.labels?.length ? `
                       <div class="labels-container">
-                        ${card.labels.map(label => `
-                          <span class="label label-${label.color || 'default'}">${label.title}</span>
-                        `).join('')}
+                        ${card.labels.map(label => {
+                          // Mapear cores diretamente com base no nome da cor ou título da etiqueta
+                          let bgColor = '#6b7280'; // cor padrão (cinza)
+                          let textColor = '#ffffff';
+                          
+                          // Identificar a cor com base nas propriedades da etiqueta
+                          if (label.color === 'green' || (typeof label.title === 'string' && label.title.toLowerCase().includes('concluído'))) {
+                            bgColor = '#10b981'; // verde
+                          } else if (label.color === 'yellow' || (typeof label.title === 'string' && label.title.toLowerCase().includes('fazendo'))) {
+                            bgColor = '#f59e0b'; // amarelo
+                          } else if (label.color === 'red' || (typeof label.title === 'string' && label.title.toLowerCase().includes('urgente'))) {
+                            bgColor = '#ef4444'; // vermelho
+                          } else if (label.color === 'blue' || (typeof label.title === 'string' && label.title.toLowerCase().includes('pendente'))) {
+                            bgColor = '#3b82f6'; // azul
+                          } else if (label.color === 'purple') {
+                            bgColor = '#8b5cf6'; // roxo
+                          }
+                          
+                          return `<span class="label" style="background-color: ${bgColor}; color: ${textColor};">${label.title}</span>`;
+                        }).join('')}
                       </div>
                     ` : ''}
                     
@@ -1041,31 +1127,48 @@ const PendenciasObra = () => {
                       </p>
                     ` : ''}
                   </div>
-                `).join('')}
+                `).join('') : '<p style="color: #666; font-style: italic;">Nenhum card nesta lista.</p>'}
               </div>
             `).join('')}
           </body>
         </html>
       `;
 
-      // Criar elemento temporário para renderizar o HTML
+      // Criar elemento temporário para renderizar o HTML - mantendo-o visível temporariamente para debug
       const tempDiv = document.createElement('div');
+      tempDiv.style.width = '800px'; // Largura fixa
+      tempDiv.style.margin = '0 auto';
+      tempDiv.style.position = 'fixed';
+      tempDiv.style.zIndex = '-1000'; // Atrás de todo conteúdo
+      tempDiv.style.left = '0';
+      tempDiv.style.top = '0';
+      tempDiv.style.background = '#ffffff';
+      tempDiv.style.padding = '20px';
       tempDiv.innerHTML = content;
       document.body.appendChild(tempDiv);
 
       try {
+        // Dar um pequeno atraso para garantir que tudo seja renderizado corretamente
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
         // Configurar opções do html2canvas
         const options = {
           scale: 2,
           useCORS: true,
-          logging: false,
+          logging: true, // Ativar logs para debug
           backgroundColor: '#ffffff',
-          width: tempDiv.scrollWidth,
-          height: tempDiv.scrollHeight
+          allowTaint: true,
+          foreignObjectRendering: false, // Definir como false para maior compatibilidade
         };
 
         // Gerar imagem do conteúdo
+        console.log('Iniciando captura com html2canvas...');
         const canvas = await html2canvas(tempDiv, options);
+        console.log('Captura concluída!');
+        
+        if (canvas.width === 0 || canvas.height === 0) {
+          throw new Error('Canvas gerado tem dimensões zero');
+        }
         
         // Criar PDF
         const pdf = new jsPDF({
@@ -1080,9 +1183,12 @@ const PendenciasObra = () => {
         pdf.setFontSize(12);
 
         // Adicionar a imagem ao PDF
-        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+        const imgData = canvas.toDataURL('image/jpeg', 1.0);
         const imgWidth = 210; // A4 width in mm
         const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        
+        console.log('Dimensões canvas:', canvas.width, 'x', canvas.height);
+        console.log('Dimensões de imagem no PDF:', imgWidth, 'x', imgHeight, 'mm');
         
         let heightLeft = imgHeight;
         let position = 0;
@@ -1105,7 +1211,7 @@ const PendenciasObra = () => {
         toast.success('PDF gerado com sucesso!');
       } catch (error) {
         console.error('Erro ao gerar PDF:', error);
-        toast.error('Erro ao gerar o PDF');
+        toast.error('Erro ao gerar o PDF: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
       } finally {
         // Limpar elemento temporário
         document.body.removeChild(tempDiv);
@@ -1117,9 +1223,15 @@ const PendenciasObra = () => {
   };
 
   // Função para lidar com o clique no botão de gerar PDF
-  const handleGerarPDF = async () => {
-    console.log('[DEBUG] Botão Gerar PDF clicado');
-    await gerarPDF();
+  const handleGerarOuCompartilharPDF = async () => {
+    const deviceInfo = await Device.getInfo();
+    if (deviceInfo.platform !== 'web') {
+      console.log('[DEBUG] Plataforma mobile detectada, chamando compartilharPDF');
+      await compartilharPDF();
+    } else {
+      console.log('[DEBUG] Plataforma web detectada, chamando gerarPDF');
+      await gerarPDF();
+    }
   };
 
   // Função para compartilhar PDF
@@ -1146,8 +1258,24 @@ const PendenciasObra = () => {
                 
                 /* Estilos adicionais específicos para o PDF */
                 .card {
-                  margin-bottom: 15px;
+                  margin-bottom: 20px;
                   page-break-inside: avoid;
+                  break-inside: avoid;
+                  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                }
+                
+                .section {
+                  margin-bottom: 30px;
+                  border-radius: 8px;
+                  page-break-inside: avoid;
+                  break-inside: avoid;
+                }
+                
+                .section-title {
+                  background-color: #f1f5f9;
+                  padding: 10px 15px;
+                  border-radius: 4px;
+                  margin-bottom: 15px;
                 }
                 
                 .checklist-item {
@@ -1155,16 +1283,32 @@ const PendenciasObra = () => {
                   display: flex;
                   align-items: center;
                   gap: 8px;
+                  word-wrap: break-word;
+                  overflow-wrap: break-word;
+                  hyphens: manual;
                 }
                 
                 .labels-container {
+                  display: flex;
+                  flex-wrap: wrap;
+                  gap: 3px;
                   margin: 8px 0;
                 }
                 
                 .label {
                   display: inline-block;
-                  margin-right: 8px;
+                  margin-right: 4px;
                   margin-bottom: 4px;
+                  padding: 3px 6px;
+                  font-size: 10px;
+                }
+                
+                p {
+                  orphans: 4;
+                  widows: 4;
+                  word-wrap: break-word;
+                  overflow-wrap: break-word;
+                  hyphens: manual;
                 }
               </style>
             </head>
@@ -1178,7 +1322,7 @@ const PendenciasObra = () => {
               ${board.lists.map(list => `
                 <div class="section">
                   <h2 class="section-title">${list.title}</h2>
-                  ${list.cards.map(card => `
+                  ${list.cards.length > 0 ? list.cards.map(card => `
                     <div class="card">
                       <h3 class="card-title">${card.title}</h3>
                       
@@ -1188,9 +1332,26 @@ const PendenciasObra = () => {
                       
                       ${card.labels?.length ? `
                         <div class="labels-container">
-                          ${card.labels.map(label => `
-                            <span class="label label-${label.color || 'default'}">${label.title}</span>
-                          `).join('')}
+                          ${card.labels.map(label => {
+                            // Mapear cores diretamente com base no nome da cor ou título da etiqueta
+                            let bgColor = '#6b7280'; // cor padrão (cinza)
+                            let textColor = '#ffffff';
+                            
+                            // Identificar a cor com base nas propriedades da etiqueta
+                            if (label.color === 'green' || (typeof label.title === 'string' && label.title.toLowerCase().includes('concluído'))) {
+                              bgColor = '#10b981'; // verde
+                            } else if (label.color === 'yellow' || (typeof label.title === 'string' && label.title.toLowerCase().includes('fazendo'))) {
+                              bgColor = '#f59e0b'; // amarelo
+                            } else if (label.color === 'red' || (typeof label.title === 'string' && label.title.toLowerCase().includes('urgente'))) {
+                              bgColor = '#ef4444'; // vermelho
+                            } else if (label.color === 'blue' || (typeof label.title === 'string' && label.title.toLowerCase().includes('pendente'))) {
+                              bgColor = '#3b82f6'; // azul
+                            } else if (label.color === 'purple') {
+                              bgColor = '#8b5cf6'; // roxo
+                            }
+                            
+                            return `<span class="label" style="background-color: ${bgColor}; color: ${textColor};">${label.title}</span>`;
+                          }).join('')}
                         </div>
                       ` : ''}
                       
@@ -1211,7 +1372,7 @@ const PendenciasObra = () => {
                         </p>
                       ` : ''}
                     </div>
-                  `).join('')}
+                  `).join('') : '<p style="color: #666; font-style: italic;">Nenhum card nesta lista.</p>'}
                 </div>
               `).join('')}
             </body>
@@ -1220,11 +1381,39 @@ const PendenciasObra = () => {
 
         // Criar elemento temporário para renderizar o HTML
         const tempDiv = document.createElement('div');
+        tempDiv.style.width = '800px'; // Largura fixa
+        tempDiv.style.margin = '0 auto';
+        tempDiv.style.position = 'fixed';
+        tempDiv.style.zIndex = '-1000'; // Atrás de todo conteúdo
+        tempDiv.style.left = '0';
+        tempDiv.style.top = '0';
+        tempDiv.style.background = '#ffffff';
+        tempDiv.style.padding = '20px';
         tempDiv.innerHTML = content;
         document.body.appendChild(tempDiv);
 
         // Gerar PDF usando jsPDF e html2canvas
         try {
+          // Dar um pequeno atraso para garantir que tudo seja renderizado corretamente
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          console.log('[DEBUG] Capturando elemento para PDF...');
+          const canvas = await html2canvas(tempDiv, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: '#ffffff',
+            allowTaint: true,
+            foreignObjectRendering: false,
+            logging: true
+          });
+          
+          console.log('[DEBUG] Dimensões do canvas:', canvas.width, 'x', canvas.height);
+          
+          if (canvas.width === 0 || canvas.height === 0) {
+            throw new Error('Canvas gerado tem dimensões zero');
+          }
+          
+          const imgData = canvas.toDataURL('image/jpeg', 1.0);
           const pdf = new jsPDF({
             orientation: 'portrait',
             unit: 'mm',
@@ -1232,90 +1421,63 @@ const PendenciasObra = () => {
             compress: true
           });
 
-          // Configurar fonte e tamanho
           pdf.setFont('helvetica');
           pdf.setFontSize(12);
 
-          // Adicionar cabeçalho
-          pdf.setFontSize(16);
-          pdf.text(`Relatório de Pendências - ${obra?.nome}`, 20, 20);
-          pdf.setFontSize(12);
-          pdf.text(`Data: ${format(new Date(), 'dd/MM/yyyy')}`, 20, 30);
-
-          // Capturar o conteúdo do HTML gerado
-          const canvas = await html2canvas(tempDiv, {
-            scale: 2,
-            useCORS: true,
-            logging: false,
-            backgroundColor: '#ffffff'
-          });
-
-          const imgData = canvas.toDataURL('image/jpeg', 0.95);
-          const pdfWidth = pdf.internal.pageSize.getWidth();
+          // --- Lógica de Paginação (igual à gerarPDF) ---
+          const pdfWidth = 210;
           const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-          const pageHeight = pdf.internal.pageSize.getHeight();
-
-          let position = 40; // Começar após o cabeçalho
-
-          // Adicionar o conteúdo em múltiplas páginas se necessário
-          while (position < pdfHeight) {
-            pdf.addImage(imgData, 'JPEG', 0, -position + 40, pdfWidth, pdfHeight);
-            position += pageHeight - 40;
-            if (position < pdfHeight) {
-              pdf.addPage();
-            }
+          let heightLeft = pdfHeight;
+          let position = 0;
+          pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, pdfHeight);
+          heightLeft -= 297;
+          while (heightLeft >= 0) {
+            position = heightLeft - pdfHeight;
+            pdf.addPage();
+            pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, pdfHeight);
+            heightLeft -= 297;
           }
+          // --- Fim Lógica de Paginação ---
 
-          // Restaurar configuração original
-          boardRef.current.style.backgroundColor = originalBgColor;
+          // Obter PDF como Base64
+          const pdfBase64 = pdf.output('datauristring').split(',')[1];
 
-          // Converter para blob e compartilhar
-          const blob = pdf.output('blob');
-          const base64Data = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-            reader.readAsDataURL(blob);
-          });
-
+          // Salvar o PDF no sistema de arquivos temporário
           const fileName = `pendencias_${obra?.nome?.replace(/\s+/g, '_')}_${format(new Date(), 'dd-MM-yyyy')}.pdf`;
-
-          // Salvar o arquivo no sistema de arquivos do dispositivo
-          const filePath = await Filesystem.writeFile({
+          const result = await Filesystem.writeFile({
             path: fileName,
-            data: base64Data,
+            data: pdfBase64,
             directory: Directory.Cache,
-            recursive: true
           });
 
-          // Compartilhar o arquivo
+          // Compartilhar o arquivo salvo usando a URI
           await Share.share({
-            title: `Pendências - ${obra?.nome}`,
-            text: `Relatório de pendências da obra ${obra?.nome}`,
-            url: filePath.uri,
+            title: `Relatório de Pendências - ${obra?.nome}`,
+            text: `Segue o relatório de pendências da obra ${obra?.nome}.`,
+            url: result.uri, // Usar a URI do arquivo salvo
             dialogTitle: 'Compartilhar PDF'
           });
 
-          // Limpar o arquivo temporário
-          await Filesystem.deleteFile({
-            path: fileName,
-            directory: Directory.Cache
-          });
+          toast({ title: 'Sucesso', description: 'Compartilhamento iniciado.' });
 
-          toast({
-            title: 'Sucesso',
-            description: 'Relatório compartilhado com sucesso!'
-          });
         } catch (pdfError) {
           console.error('Erro ao gerar PDF para compartilhamento:', pdfError);
           toast({
             title: 'Erro',
-            description: 'Não foi possível gerar o PDF para compartilhamento.',
+            description: 'Não foi possível gerar o PDF para compartilhamento: ' + 
+              (pdfError instanceof Error ? pdfError.message : 'Erro desconhecido'),
             variant: 'destructive'
           });
+        } finally {
+          // Limpar elemento temporário
+          document.body.removeChild(tempDiv);
         }
       } else {
-        // Em ambiente web, usar a mesma impressão
-        gerarPDF();
+        // Fallback para web (poderia chamar gerarPDF ou mostrar mensagem)
+        toast({
+          title: 'Info',
+          description: 'Compartilhamento de PDF direto não suportado na web. Use a opção "Gerar PDF".'
+        });
       }
     } catch (error) {
       console.error('Erro ao compartilhar PDF:', error);
@@ -1394,7 +1556,7 @@ const PendenciasObra = () => {
           <Button 
             variant="outline" 
             size="sm" 
-            onClick={gerarPDF}
+            onClick={handleGerarOuCompartilharPDF}
             className="flex items-center gap-2"
           >
             <FileText className="h-4 w-4" />

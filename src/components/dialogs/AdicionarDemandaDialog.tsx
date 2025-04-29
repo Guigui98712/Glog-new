@@ -6,6 +6,15 @@ import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import NotificationService from '@/services/NotificationService';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
+import { LocalNotifications } from '@capacitor/local-notifications';
+
+interface DemandaItem {
+  id: number;
+  obra_id: number;
+  titulo: string;
+  descricao?: string;
+  status: 'demanda' | 'pedido' | 'entregue' | 'pago';
+}
 
 interface AdicionarDemandaDialogProps {
   obraId: number;
@@ -25,26 +34,49 @@ export function AdicionarDemandaDialog({
   const [itens, setItens] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const enviarNotificacaoLocalNovaDemanda = async (titulo: string) => {
+    try {
+      let permStatus = await LocalNotifications.checkPermissions();
+      if (permStatus.display !== 'granted') {
+        permStatus = await LocalNotifications.requestPermissions();
+      }
+
+      if (permStatus.display === 'granted') {
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              title: "Nova Demanda Adicionada",
+              body: `Uma nova lista de demanda foi adicionada: ${titulo.substring(0, 50)}...`,
+              id: Math.floor(Math.random() * 10000) + 1,
+              schedule: { at: new Date(Date.now() + 500) },
+              smallIcon: 'ic_notification',
+              channelId: 'default',
+            }
+          ]
+        });
+      } else {
+        console.warn('Permissão de notificação local negada.');
+      }
+    } catch (error) {
+      console.error('Erro ao enviar notificação local de nova demanda:', error);
+    }
+  };
+
   const handleSubmit = async () => {
     try {
       setLoading(true);
 
-      // 1. Substitui fechamento de parágrafo por nova linha
-      // 2. Remove outras tags HTML
-      // 3. Remove múltiplos \n seguidos por apenas um
-      // 4. Remove espaços/newlines do início/fim
       const textoComQuebras = itens
         .replace(/<\/p>/g, '\n')         
         .replace(/<[^>]*>/g, '')       
         .replace(/\n+/g, '\n')         
         .trim();                      
 
-      if (!textoComQuebras) { // Verifica se o resultado não está vazio
+      if (!textoComQuebras) {
         toast.error('Digite pelo menos um item para a lista');
         return;
       }
 
-      // Buscar informações da obra
       const { data: obra, error: obraError } = await supabase
         .from('obras')
         .select('nome, responsavel')
@@ -53,7 +85,6 @@ export function AdicionarDemandaDialog({
 
       if (obraError) throw obraError;
 
-      // Inserir nova demanda
       const { data: novaDemanda, error: insertError } = await supabase
         .from('demanda_itens')
         .insert({
@@ -67,12 +98,13 @@ export function AdicionarDemandaDialog({
 
       if (insertError) throw insertError;
 
-      // Enviar notificação
       const notificationService = NotificationService.getInstance();
       await notificationService.notificarNovaDemanda(
         obraId,
         textoComQuebras
       );
+
+      await enviarNotificacaoLocalNovaDemanda(textoComQuebras);
 
       toast.success('Lista de demanda adicionada com sucesso');
       onDemandaAdicionada();

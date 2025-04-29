@@ -111,6 +111,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isMounted = true;
     setLoading(true); // Garantir que o loading comece como true
     
+    console.log('[AUTH Debug] Persistent Login:', persistentLogin);
+    console.log('[AUTH Debug] Stored Session:', localStorage.getItem(SESSION_STORAGE_KEY));
+    console.log('[AUTH Debug] Session Storage:', sessionStorage.getItem(SESSION_STORAGE_KEY));
+    
     // Verificar se é uma tentativa de recuperação antes de carregar a sessão
     const isRecovery = isPasswordRecoveryAttempt();
     
@@ -130,6 +134,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         // Verificar validade no Supabase em segundo plano
         supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+          console.log('[AUTH Debug] Current Supabase Session:', !!currentSession);
+          
           if (!currentSession && isMounted) {
             console.log('[AUTH Init] Sessão do armazenamento expirada, limpando.');
             setSession(null);
@@ -213,7 +219,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
       });
       
-      console.log('[AUTH] Login result:', { data, error });
+      console.log('[AUTH] Login result:', { 
+        data: {
+          session: !!data.session,
+          user: data.user ? { id: data.user.id, email: data.user.email } : null
+        }, 
+        error 
+      });
       
       if (error) {
         return { error, success: false };
@@ -221,6 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       // Salvar a sessão no armazenamento após login bem-sucedido
       if (data.session) {
+        console.log('[AUTH] Salvando sessão com persistência:', persistentLogin);
         saveSessionToStorage(data.session);
       }
       

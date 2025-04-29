@@ -24,6 +24,8 @@ import { supabase } from "@/lib/supabase";
 import DemandaObra from './pages/DemandaObra';
 import { DemandaRelatorios } from "./pages/DemandaRelatorios";
 import Projetos from "./pages/Projetos";
+import { App as CapacitorApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 
 // Componente para redirecionar com base no estado de autenticação
 const RedirectBasedOnAuth = () => {
@@ -94,10 +96,47 @@ const NavigationManager = () => {
       }
     };
 
-    // Adiciona o listener para o evento popstate (botão de voltar)
+    // Adiciona o listener para o evento popstate (botão de voltar) para Web
     window.addEventListener('popstate', handlePopState);
 
-    // Remove o listener quando o componente for desmontado
+    // Adiciona o listener do botão voltar para Android nativo
+    if (Capacitor.isNativePlatform()) {
+      const backButtonListener = CapacitorApp.addListener('backButton', ({ canGoBack }) => {
+        console.log("[DEBUG] Botão voltar pressionado no Android", { canGoBack });
+        
+        // Obtém o histórico atualizado
+        const currentHistory = JSON.parse(localStorage.getItem('navigationHistory') || '[]');
+        
+        // Se houver mais de uma entrada no histórico, podemos voltar
+        if (currentHistory.length > 1) {
+          // Remove a entrada atual
+          currentHistory.pop();
+          
+          // Obtém a última entrada do histórico
+          const previousPath = currentHistory[currentHistory.length - 1];
+          
+          // Atualiza o histórico no localStorage
+          localStorage.setItem('navigationHistory', JSON.stringify(currentHistory));
+          
+          // Navega para a rota anterior
+          navigate(previousPath);
+        } else if (location.pathname === '/obras') {
+          // Perguntar se o usuário deseja sair (não fechamos o app diretamente)
+          if (window.confirm('Deseja sair do aplicativo?')) {
+            // Redirecionar para o login em vez de fechar o app
+            navigate('/login');
+          }
+        }
+      });
+      
+      // Limpeza do listener ao desmontar
+      return () => {
+        window.removeEventListener('popstate', handlePopState);
+        backButtonListener.remove();
+      };
+    }
+
+    // Limpeza do listener ao desmontar (apenas para web)
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };

@@ -1,5 +1,5 @@
-importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
 
 firebase.initializeApp({
   apiKey: "AIzaSyBtWY3vKr-6APG5aIiHs1CH2sOcx958Zv4",
@@ -14,27 +14,17 @@ const messaging = firebase.messaging();
 
 // Lidar com mensagens em segundo plano
 messaging.onBackgroundMessage((payload) => {
-  console.log('Recebida mensagem em background:', payload);
+  console.log('[firebase-messaging-sw.js] Recebida mensagem em background:', payload);
 
   // Customizar a notificação
-  const notificationTitle = payload.notification?.title || 'Nova Notificação';
+  const notificationTitle = payload.notification.title;
   const notificationOptions = {
-    body: payload.notification?.body || 'Você tem uma nova notificação',
-    icon: '/construction-logo.svg',
-    badge: '/favicon.svg',
+    body: payload.notification.body,
+    icon: '/logo.png',
+    badge: '/badge.png',
     vibrate: [200, 100, 200],
-    tag: 'notification-' + Date.now(),
-    data: payload.data || {},
-    actions: [
-      {
-        action: 'open',
-        title: 'Abrir'
-      },
-      {
-        action: 'close',
-        title: 'Fechar'
-      }
-    ]
+    tag: 'glog-notification',
+    data: payload.data
   };
 
   // Tocar um som quando a notificação chegar
@@ -47,25 +37,31 @@ messaging.onBackgroundMessage((payload) => {
 
 // Lidar com cliques na notificação
 self.addEventListener('notificationclick', (event) => {
+  console.log('[firebase-messaging-sw.js] Clique na notificação', event);
+  
   event.notification.close();
-
-  if (event.action === 'open') {
-    // Abrir a aplicação quando clicar na notificação
-    const urlToOpen = new URL('/', self.location.origin).href;
-
-    event.waitUntil(
-      clients.matchAll({ type: 'window' }).then(windowClients => {
-        // Verificar se já há uma janela aberta e focá-la
-        for (let client of windowClients) {
-          if (client.url === urlToOpen && 'focus' in client) {
-            return client.focus();
-          }
-        }
-        // Se não houver janela aberta, abrir uma nova
-        if (clients.openWindow) {
-          return clients.openWindow(urlToOpen);
-        }
-      })
-    );
-  }
+  
+  // Navegar para uma URL específica ao clicar na notificação
+  const urlToOpen = new URL('/obras', self.location.origin).href;
+  
+  const promiseChain = clients.matchAll({
+    type: 'window',
+    includeUncontrolled: true
+  })
+  .then((windowClients) => {
+    // Verificar se já existe uma janela aberta e focar nela
+    for (let i = 0; i < windowClients.length; i++) {
+      const client = windowClients[i];
+      if (client.url === urlToOpen && 'focus' in client) {
+        return client.focus();
+      }
+    }
+    
+    // Se não houver janela aberta, abrir uma nova
+    if (clients.openWindow) {
+      return clients.openWindow(urlToOpen);
+    }
+  });
+  
+  event.waitUntil(promiseChain);
 }); 

@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter
 } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -17,7 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, MoreVertical, Pencil, Trash2, Upload, Image, Bell } from "lucide-react";
+import { Plus, MoreVertical, Pencil, Trash2, Upload, Image, Search, Building, AlertTriangle } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { 
   listarObras, 
@@ -30,7 +31,7 @@ import {
   type ObraParaEnvio
 } from "@/lib/api";
 import { RegistroDiario } from "@/types/obra";
-import NotificationService from '@/services/NotificationService';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
 // Interface estendida para incluir o progresso calculado
 interface ObraComProgresso extends Obra {
@@ -334,36 +335,6 @@ const Obras = () => {
     }
   };
 
-  // Função para testar notificações
-  const handleTestarNotificacao = async () => {
-    try {
-      const resultado = await NotificationService.simulateNotification(
-        "Teste de Notificação", 
-        "Esta é uma notificação de teste do sistema GLog. Se você está vendo isso, a funcionalidade está funcionando corretamente!"
-      );
-      
-      if (resultado) {
-        toast({
-          title: "Notificação enviada",
-          description: "A notificação de teste foi enviada com sucesso!",
-        });
-      } else {
-        toast({
-          title: "Erro na notificação",
-          description: "Você precisa permitir notificações para receber alertas.",
-          variant: "destructive"
-        });
-      }
-    } catch (error) {
-      console.error('[DEBUG] Erro ao enviar notificação de teste:', error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível enviar a notificação de teste.",
-        variant: "destructive"
-      });
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
@@ -380,10 +351,6 @@ const Obras = () => {
         <div className="flex items-center gap-2">
           <Button onClick={() => setShowDialog(true)}>
             <Plus className="h-4 w-4 mr-2" /> Nova Obra
-          </Button>
-          <Button onClick={handleTestarNotificacao} variant="outline" className="flex items-center gap-2">
-            <Bell className="h-4 w-4" />
-            <span>Testar Notificação</span>
           </Button>
         </div>
       </div>

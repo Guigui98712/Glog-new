@@ -1,5 +1,6 @@
 # Dependências
 /node_modules
+/server/node_modules/
 /.pnp
 .pnp.js
 
@@ -40,11 +41,15 @@ lerna-debug.log*
 *.sw?
 
 # Capacitor
-ios/
-android/
+# Descomente se você não quer versionar as plataformas nativas
+# ios/
+# android/
 
 # Google OAuth
 credentials.json
 token.json
 *.credentials.json
 *.token.json
+
+# Firebase Admin SDK Key
+server/glog-a2338-firebase-adminsdk-fbsvc-c6b901704e.json

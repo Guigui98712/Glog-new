@@ -4,7 +4,7 @@ export interface Projeto {
   id: string;
   nome: string;
   tipo: string;
-  dataUpload: string;
+  data_upload: string;
   url: string;
   obra_id: string;
 }
@@ -14,37 +14,99 @@ export class ProjetoService {
 
   async uploadProjeto(file: File, tipo: string, obraId: string): Promise<Projeto> {
     try {
+      console.log(`Iniciando upload - Arquivo: ${file.name}, Tipo: ${tipo}, Tamanho: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+      
+      // Verificar tamanho do arquivo (limite de 50MB)
+      if (file.size > 50 * 1024 * 1024) {
+        throw new Error(`O arquivo é muito grande. O tamanho máximo é 50MB.`);
+      }
+      
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
       const filePath = `${obraId}/${tipo.toLowerCase()}/${fileName}`;
 
+      console.log(`Preparando para upload no caminho: ${filePath}`);
+      
+      // Verificar se o bucket existe, se não, tenta criar
+      const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+      
+      if (bucketsError) {
+        console.error('Erro ao listar buckets:', bucketsError);
+        throw new Error(`Erro ao verificar buckets: ${bucketsError.message}`);
+      }
+
+      const bucketExists = buckets?.some(b => b.name === this.BUCKET_NAME);
+      
+      if (!bucketExists) {
+        console.log(`Bucket ${this.BUCKET_NAME} não existe, tentando criar...`);
+        const { error: createBucketError } = await supabase.storage.createBucket(this.BUCKET_NAME, {
+          public: true
+        });
+        
+        if (createBucketError) {
+          console.error(`Erro detalhado ao criar bucket: ${JSON.stringify(createBucketError)}`);
+          throw new Error(`Não foi possível criar o local de armazenamento: ${createBucketError.message}`);
+        }
+      }
+      
+      // Criar pasta se não existir
+      try {
+        const dirPath = `${obraId}/${tipo.toLowerCase()}`;
+        await supabase.storage.from(this.BUCKET_NAME).upload(`${dirPath}/.keep`, new Blob([''], { type: 'text/plain' }), {
+          upsert: true
+        });
+      } catch (dirError) {
+        console.error('Erro ao criar diretório:', dirError);
+        // Ignora erro se já existir
+        console.log('Verificação de diretório concluída ou já existe');
+      }
+      
+      // Fazer upload do arquivo
+      console.log('Enviando arquivo para o servidor...');
       const { error: uploadError, data } = await supabase.storage
         .from(this.BUCKET_NAME)
-        .upload(filePath, file);
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error(`Erro detalhado de upload: ${JSON.stringify(uploadError)}`);
+        throw new Error(`Erro ao enviar arquivo: ${uploadError.message}`);
+      }
 
+      console.log('Upload concluído com sucesso, obtendo URL pública');
+      
       const { data: { publicUrl } } = supabase.storage
         .from(this.BUCKET_NAME)
         .getPublicUrl(filePath);
 
+      console.log(`URL pública: ${publicUrl}`);
+      console.log('Registrando no banco de dados...');
+      
       const { data: projeto, error: insertError } = await supabase
         .from('projetos')
         .insert({
           nome: file.name,
           tipo: tipo,
           url: publicUrl,
-          dataUpload: new Date().toISOString(),
+          data_upload: new Date().toISOString(),
           obra_id: obraId
         })
         .select()
         .single();
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        console.error(`Erro detalhado ao inserir registro: ${JSON.stringify(insertError)}`);
+        // Se falhar ao inserir no banco, remover o arquivo enviado
+        await supabase.storage.from(this.BUCKET_NAME).remove([filePath]);
+        throw new Error(`Erro ao registrar projeto no banco de dados: ${insertError.message}`);
+      }
 
+      console.log('Projeto registrado com sucesso:', projeto);
       return projeto;
     } catch (error) {
-      console.error('Erro ao fazer upload do projeto:', error);
+      console.error('Erro completo ao fazer upload do projeto:', error);
       throw error;
     }
   }
@@ -56,7 +118,7 @@ export class ProjetoService {
         .select('*')
         .eq('tipo', tipo)
         .eq('obra_id', obraId)
-        .order('dataUpload', { ascending: false });
+        .order('data_upload', { ascending: false });
 
       if (error) throw error;
 
@@ -69,28 +131,55 @@ export class ProjetoService {
 
   async excluirProjeto(id: string): Promise<void> {
     try {
-      const { data: projeto } = await supabase
+      // Buscar o projeto para obter a URL do arquivo
+      const { data: projeto, error: selectError } = await supabase
         .from('projetos')
         .select('url')
         .eq('id', id)
         .single();
 
+      if (selectError) {
+        throw new Error(`Erro ao buscar projeto: ${selectError.message}`);
+      }
+
       if (projeto) {
-        const filePath = new URL(projeto.url).pathname.split('/').pop();
-        
-        if (filePath) {
-          await supabase.storage
-            .from(this.BUCKET_NAME)
-            .remove([filePath]);
+        // Extrair o caminho do arquivo da URL
+        try {
+          // Obter o caminho relativo do arquivo a partir da URL
+          const url = new URL(projeto.url);
+          const pathname = url.pathname;
+          // O caminho no storage é o que vem após o nome do bucket na URL
+          const pathParts = pathname.split('/');
+          const bucketIndex = pathParts.findIndex(part => part === this.BUCKET_NAME);
+          
+          if (bucketIndex !== -1 && bucketIndex < pathParts.length - 1) {
+            const storagePath = pathParts.slice(bucketIndex + 1).join('/');
+            
+            console.log(`Removendo arquivo: ${storagePath}`);
+            const { error: removeError } = await supabase.storage
+              .from(this.BUCKET_NAME)
+              .remove([storagePath]);
+            
+            if (removeError) {
+              console.error(`Erro ao remover arquivo: ${removeError.message}`);
+            }
+          }
+        } catch (parseError) {
+          console.error('Erro ao processar URL do arquivo:', parseError);
         }
       }
 
-      const { error } = await supabase
+      // Remover o registro do banco de dados
+      const { error: deleteError } = await supabase
         .from('projetos')
         .delete()
         .eq('id', id);
 
-      if (error) throw error;
+      if (deleteError) {
+        throw new Error(`Erro ao excluir registro: ${deleteError.message}`);
+      }
+
+      console.log('Projeto excluído com sucesso');
     } catch (error) {
       console.error('Erro ao excluir projeto:', error);
       throw error;
@@ -99,8 +188,14 @@ export class ProjetoService {
 
   async downloadProjeto(url: string): Promise<Blob> {
     try {
+      console.log(`Iniciando download do arquivo: ${url}`);
       const response = await fetch(url);
-      if (!response.ok) throw new Error('Erro ao baixar arquivo');
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Erro ao baixar arquivo (${response.status}): ${errorText}`);
+      }
+      
       return await response.blob();
     } catch (error) {
       console.error('Erro ao fazer download do projeto:', error);

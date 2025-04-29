@@ -37,7 +37,11 @@ const config: CapacitorConfig = {
   android: {
     allowMixedContent: true,
     captureInput: true,
-    webContentsDebuggingEnabled: true
+    webContentsDebuggingEnabled: true,
+    inputStyle: 'TEXT',
+    backgroundColor: '#FFFFFF',
+    allowBackForward: true,
+    backButtonBehavior: 'history'
   }
 };
 

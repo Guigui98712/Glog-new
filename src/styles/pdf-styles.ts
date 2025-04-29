@@ -1,162 +1,193 @@
 export const pdfStyles = `
   /* Estilos gerais */
   body {
-    font-family: 'Helvetica', Arial, sans-serif;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     line-height: 1.6;
     color: #333;
-    max-width: 210mm;
-    margin: 0 auto;
     padding: 20px;
+    margin: 0;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    margin-top: 0;
+    color: #1e293b;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  p {
+    margin-bottom: 0.8em;
+    orphans: 4;
+    widows: 4;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 15px 0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  th, td {
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  th {
+    background-color: #f8fafc;
+    font-weight: 600;
+  }
+
+  .card {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
     background-color: #fff;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
-  /* Cabeçalho do relatório */
-  .header {
-    margin-bottom: 30px;
-    border-bottom: 2px solid #eee;
-    padding-bottom: 15px;
-    text-align: center;
-  }
-
-  .header h1 {
-    margin: 0 0 10px;
-    color: #2c3e50;
-    font-size: 24px;
-  }
-
-  .obra-info, .data {
+  .labels-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
     margin: 5px 0;
-    color: #666;
-    font-size: 14px;
   }
 
-  /* Seções */
+  .label {
+    display: inline-block;
+    background-color: #e2e8f0;
+    color: #1e293b;
+    border-radius: 3px;
+    padding: 2px 4px;
+    font-size: 9px;
+    font-weight: 500;
+    margin-right: 3px;
+    margin-bottom: 3px;
+    white-space: nowrap;
+  }
+
+  .label.warning {
+    background-color: #fef3c7;
+    color: #92400e;
+  }
+
+  .label.error {
+    background-color: #fee2e2;
+    color: #b91c1c;
+  }
+
+  .label.success {
+    background-color: #dcfce7;
+    color: #166534;
+  }
+
+  .label.info {
+    background-color: #dbeafe;
+    color: #1e40af;
+  }
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 10px;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
   .section {
-    margin: 20px 0;
-    padding: 15px;
-    background-color: #f8f9fa;
-    border: 1px solid #e9ecef;
+    margin-bottom: 25px;
+    break-inside: avoid-page;
     page-break-inside: avoid;
   }
 
   .section-title {
-    margin: 0 0 15px;
-    color: #2c3e50;
     font-size: 18px;
-    border-bottom: 1px solid #dee2e6;
-    padding-bottom: 8px;
+    font-weight: 600;
+    margin-bottom: 15px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #e2e8f0;
+    break-after: avoid;
+    page-break-after: avoid;
   }
 
-  /* Cards */
-  .card {
-    background-color: #fff;
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
-    padding: 15px;
-    margin: 10px 0;
-    page-break-inside: avoid;
-  }
-
-  .card-title {
-    margin: 0 0 10px;
-    color: #2c3e50;
-    font-size: 16px;
-  }
-
-  .card-description {
-    margin: 10px 0;
-    color: #666;
-    font-size: 14px;
-    white-space: pre-wrap;
-  }
-
-  /* Etiquetas */
-  .labels-container {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-    margin: 10px 0;
-  }
-
-  .label {
-    padding: 3px 8px;
-    border-radius: 3px;
-    font-size: 12px;
-    font-weight: 500;
-  }
-
-  .label-green { background-color: #e3fcef; color: #0a7b3e; }
-  .label-yellow { background-color: #fff8e6; color: #946800; }
-  .label-red { background-color: #ffe9e9; color: #c92a2a; }
-  .label-blue { background-color: #e7f5ff; color: #1864ab; }
-  .label-purple { background-color: #f3f0ff; color: #5f3dc4; }
-  .label-default { background-color: #f8f9fa; color: #495057; }
-
-  /* Checklist */
-  .checklist {
-    margin: 15px 0;
-    border: 1px solid #e9ecef;
-    border-radius: 4px;
-    padding: 10px;
-    background-color: #f8f9fa;
-  }
-
-  .checklist-title {
-    margin: 0 0 10px;
-    font-size: 14px;
-    color: #495057;
+  .divider {
+    height: 1px;
+    background-color: #e2e8f0;
+    margin: 20px 0;
   }
 
   .checklist-item {
-    margin: 5px 0;
-    font-size: 13px;
-    color: #495057;
+    margin: 6px 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
   }
 
-  .checklist-item.completed {
-    color: #82c91e;
-    text-decoration: line-through;
-  }
-
-  /* Data de vencimento */
-  .card-due-date {
-    margin: 10px 0 0;
+  .checklist-status {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
     font-size: 12px;
-    color: #666;
+    margin-right: 6px;
   }
 
-  /* Estilos de impressão */
+  .status-pending {
+    background-color: #fef3c7;
+    color: #92400e;
+  }
+
+  .status-completed {
+    background-color: #dcfce7;
+    color: #166534;
+  }
+
   @media print {
     body {
-      background-color: #fff !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+      word-break: keep-all;
     }
-
-    .section, .card, .checklist {
+    
+    .page-break {
+      break-before: page;
+      page-break-before: always;
+    }
+    
+    .no-break {
+      break-inside: avoid;
       page-break-inside: avoid;
     }
-  }
-
-  /* Estilos para relatório de demandas */
-  .info-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 10px;
-    margin-top: 10px;
-  }
-
-  .items-container {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-  }
-
-  .valor-total {
-    font-size: 1.2em;
-    font-weight: bold;
-    color: #15803d;
-    text-align: right;
-    margin-top: 20px;
-    padding-top: 10px;
-    border-top: 2px solid #eee;
+    
+    * {
+      box-decoration-break: clone;
+    }
+    
+    p, span, div, li {
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      hyphens: auto;
+    }
   }
 `; 

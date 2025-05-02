@@ -567,6 +567,90 @@ const Obras = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Dialog para nova obra */}
+      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Criar Nova Obra</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-sm font-medium">Nome da Obra*</label>
+              <Input
+                value={novaObra.nome}
+                onChange={(e) => setNovaObra({ ...novaObra, nome: e.target.value })}
+                onBlur={(e) => setNovaObra({ ...novaObra, nome: capitalizarPrimeiraLetra(e.target.value) })}
+                placeholder="Digite o nome da obra"
+                spellCheck="true"
+                autoCorrect="on"
+                autoCapitalize="sentences"
+                lang="pt-BR"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Endereço*</label>
+              <Input
+                value={novaObra.endereco}
+                onChange={(e) => setNovaObra({ ...novaObra, endereco: e.target.value })}
+                onBlur={(e) => setNovaObra({ ...novaObra, endereco: capitalizarPrimeiraLetra(e.target.value) })}
+                placeholder="Digite o endereço da obra"
+                spellCheck="true"
+                autoCorrect="on"
+                autoCapitalize="sentences"
+                lang="pt-BR"
+              />
+            </div>
+             <div>
+              <label className="text-sm font-medium">Custo Previsto*</label>
+              <Input
+                type="number"
+                value={novaObra.custo_previsto}
+                onChange={(e) => setNovaObra({ ...novaObra, custo_previsto: parseFloat(e.target.value) || 0 })}
+                placeholder="Digite o custo previsto"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Cliente</label>
+              <Input
+                value={novaObra.cliente}
+                onChange={(e) => setNovaObra({ ...novaObra, cliente: e.target.value })}
+                 onBlur={(e) => setNovaObra({ ...novaObra, cliente: capitalizarPrimeiraLetra(e.target.value) })}
+                placeholder="Digite o nome do cliente (opcional)"
+                spellCheck="true"
+                autoCorrect="on"
+                autoCapitalize="sentences"
+                lang="pt-BR"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Responsável</label>
+              <Input
+                value={novaObra.responsavel}
+                onChange={(e) => setNovaObra({ ...novaObra, responsavel: e.target.value })}
+                onBlur={(e) => setNovaObra({ ...novaObra, responsavel: capitalizarPrimeiraLetra(e.target.value) })}
+                placeholder="Digite o nome do responsável (opcional)"
+                spellCheck="true"
+                autoCorrect="on"
+                autoCapitalize="sentences"
+                lang="pt-BR"
+              />
+            </div>
+             <div>
+              <label className="text-sm font-medium">Previsão de Término (AAAA-MM)</label>
+              <Input
+                type="month"
+                value={novaObra.data_previsao_fim}
+                onChange={(e) => setNovaObra({ ...novaObra, data_previsao_fim: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDialog(false)}>Cancelar</Button>
+            <Button onClick={handleNovaObra}>Salvar Obra</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

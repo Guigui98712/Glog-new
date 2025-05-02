@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from '@/components/ui/use-toast';
+import { listarObras } from '@/lib/api';
 
 interface Obra {
   id: string;
@@ -22,12 +23,7 @@ export default function SelecionarObraProjetos() {
   const carregarObras = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('obras')
-        .select('id, nome, endereco')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
+      const data = await listarObras();
       setObras(data || []);
     } catch (error) {
       console.error('Erro ao carregar obras:', error);

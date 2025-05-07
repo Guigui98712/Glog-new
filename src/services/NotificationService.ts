@@ -23,21 +23,21 @@ class NotificationService {
   private async getResponsavelObra(obraId: number) {
     const { data } = await supabase
       .from('obras')
-      .select('responsavel_id')
+      .select('responsavel_id, nome')
       .eq('id', obraId)
       .single();
     
-    return data?.responsavel_id;
+    return data;
   }
 
   public async notificarNovaDemanda(obraId: number, demandaDescricao: string) {
     try {
-    const responsavelId = await this.getResponsavelObra(obraId);
-    if (responsavelId) {
+    const obraInfo = await this.getResponsavelObra(obraId);
+    if (obraInfo && obraInfo.responsavel_id) {
         await this.sendNotification(
         'Nova Demanda Adicionada',
-        `Uma nova demanda foi adicionada: ${demandaDescricao}`,
-        responsavelId
+        `Obra: ${obraInfo.nome} - Uma nova demanda foi adicionada: ${demandaDescricao}`,
+        obraInfo.responsavel_id
       );
       }
     } catch (error) {
@@ -47,12 +47,12 @@ class NotificationService {
 
   public async notificarDemandaParaPedido(obraId: number, demandaDescricao: string) {
     try {
-    const responsavelId = await this.getResponsavelObra(obraId);
-    if (responsavelId) {
+    const obraInfo = await this.getResponsavelObra(obraId);
+    if (obraInfo && obraInfo.responsavel_id) {
         await this.sendNotification(
         'Demanda Movida para Pedido',
         `A demanda "${demandaDescricao}" foi movida para pedido`,
-        responsavelId
+        obraInfo.responsavel_id
       );
       }
     } catch (error) {
@@ -62,12 +62,12 @@ class NotificationService {
 
   public async notificarDemandaParaEntregue(obraId: number, demandaDescricao: string) {
     try {
-    const responsavelId = await this.getResponsavelObra(obraId);
-    if (responsavelId) {
+    const obraInfo = await this.getResponsavelObra(obraId);
+    if (obraInfo && obraInfo.responsavel_id) {
         await this.sendNotification(
         'Demanda Entregue',
         `A demanda "${demandaDescricao}" foi marcada como entregue`,
-        responsavelId
+        obraInfo.responsavel_id
       );
       }
     } catch (error) {
@@ -77,12 +77,12 @@ class NotificationService {
 
   public async notificarPendenciaConcluida(obraId: number, pendenciaDescricao: string) {
     try {
-    const responsavelId = await this.getResponsavelObra(obraId);
-    if (responsavelId) {
+    const obraInfo = await this.getResponsavelObra(obraId);
+    if (obraInfo && obraInfo.responsavel_id) {
         await this.sendNotification(
         'Pendência Concluída',
-        `A pendência "${pendenciaDescricao}" foi marcada como concluída`,
-        responsavelId
+        `Obra: ${obraInfo.nome} - Seção: Concluído - A pendência "${pendenciaDescricao}" foi marcada como concluída`,
+        obraInfo.responsavel_id
       );
       }
     } catch (error) {
@@ -92,12 +92,12 @@ class NotificationService {
 
   public async notificarDemandaParaPago(obraId: number, demandaDescricao: string) {
     try {
-      const responsavelId = await this.getResponsavelObra(obraId);
-      if (responsavelId) {
+      const obraInfo = await this.getResponsavelObra(obraId);
+      if (obraInfo && obraInfo.responsavel_id) {
         await this.sendNotification(
           'Demanda Paga',
           `A demanda "${demandaDescricao}" foi marcada como paga`,
-          responsavelId
+          obraInfo.responsavel_id
         );
       }
     } catch (error) {
@@ -118,27 +118,42 @@ class NotificationService {
         return;
       }
 
+      // URL do servidor de notificações - ajuste para seu servidor real
+      // Use um IP ou domínio acessível em sua rede, não localhost
+      const serverUrl = 'https://glog-server-feaw.onrender.com/api/notifications/send';
+      // ⬆️ IMPORTANTE: SUBSTITUA ESTA LINHA pelo URL real do seu serviço no Render ⬆️
+      // Exemplo: 'https://glog-notifications.onrender.com/api/notifications/send'
+      // Para testes em uma rede local, você pode usar seu IP local
+      // const serverUrl = 'http://192.168.0.x:3001/api/notifications/send';
+      
       // Enviar notificação para cada token através do seu backend
       for (const tokenObj of tokens) {
-        const response = await fetch('http://localhost:3001/api/notifications/send', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            token: tokenObj.fcm_token,
-            title,
-            body
-          })
-        });
+        try {
+          const response = await fetch(serverUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              token: tokenObj.fcm_token,
+              title,
+              body
+            })
+          });
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(`Erro ao enviar notificação: ${errorData.error || response.statusText}`);
+          if (!response.ok) {
+            const errorData = await response.json();
+            console.error(`Erro ao enviar notificação para token ${tokenObj.fcm_token}:`, errorData);
+          } else {
+            console.log(`Notificação enviada com sucesso para token ${tokenObj.fcm_token}`);
+          }
+        } catch (tokenError) {
+          // Continuar tentando outros tokens mesmo se um falhar
+          console.error(`Falha ao enviar para token ${tokenObj.fcm_token}:`, tokenError);
         }
       }
       
-      console.log('Notificações enviadas com sucesso');
+      console.log('Processo de envio de notificações concluído');
     } catch (error) {
       console.error('Erro ao enviar notificação:', error);
       throw error;
@@ -245,9 +260,9 @@ class NotificationService {
       
       // Verificar se o token já existe
       const { data: existingToken } = await supabase
-        .from('device_tokens')
+        .from('user_tokens')
         .select('*')
-        .eq('token', token)
+        .eq('fcm_token', token)
         .eq('user_id', user.id)
         .single();
         
@@ -258,12 +273,12 @@ class NotificationService {
       
       // Salvar novo token
       const { error } = await supabase
-        .from('device_tokens')
+        .from('user_tokens')
         .insert({
           user_id: user.id,
-          token,
+          fcm_token: token,
           device_info: navigator.userAgent,
-          created_at: new Date().toISOString()
+          updated_at: new Date().toISOString()
         });
         
       if (error) {

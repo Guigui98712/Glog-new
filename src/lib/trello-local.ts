@@ -1,13 +1,13 @@
 import { supabase } from './supabase';
-import { TrelloBoard, TrelloList, TrelloCard, TrelloChecklist, TrelloChecklistItem } from '@/types/trello';
+import { TrelloBoard, TrelloList as TrelloListType, TrelloCard as TrelloCardType, TrelloChecklist as TrelloChecklistType, TrelloChecklistItem as TrelloChecklistItemType } from '@/types/trello';
 
 interface TrelloList {
   id: number;
-  obra_id: number;
-  title: string;
+  board_id: number;
+  nome: string;
   position: number;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
 }
 
 interface TrelloCard {
@@ -23,7 +23,7 @@ interface TrelloCard {
 }
 
 interface TrelloBoard {
-  lists: (TrelloList & { cards: TrelloCard[] })[];
+  lists: (TrelloList & { cards: TrelloCard[], title?: string })[];
   nome: string;
 }
 
@@ -392,7 +392,7 @@ export const criarCard = async (
   description: string | null = null,
   dueDate: string | null = null,
   labels: string[] = []
-): Promise<TrelloCard> => {
+): Promise<TrelloCardType> => {
   try {
     console.log('[DEBUG] Criando card na lista:', listId);
     console.log('[DEBUG] Dados do card:', { title, description, dueDate, labels });
@@ -469,11 +469,15 @@ export const criarCard = async (
     if (labels && labels.length > 0) {
       console.log('[DEBUG] Adicionando etiquetas ao card:', labels);
       
+      // Remover duplicatas dos nomes de etiquetas
+      const uniqueLabels = [...new Set(labels)];
+      console.log('[DEBUG] Etiquetas após remover duplicatas:', uniqueLabels);
+      
       // Buscar IDs das etiquetas pelos nomes
       const { data: labelData, error: labelError } = await supabase
         .from('trello_labels')
         .select('id, title')
-        .in('title', labels);
+        .in('title', uniqueLabels);
       
       if (labelError) {
         console.error('[DEBUG] Erro ao buscar etiquetas:', labelError);
@@ -503,7 +507,7 @@ export const criarCard = async (
       checklists: [], // Inicializar com array vazio
       comments: [], // Inicializar com array vazio
       attachments: [] // Inicializar com array vazio
-    } as TrelloCard;
+    } as TrelloCardType;
   } catch (error) {
     console.error('[DEBUG] Erro ao criar card:', error);
     if (error instanceof Error) {
@@ -519,16 +523,21 @@ export const moverCard = async (
   novaListaId: number
 ): Promise<void> => {
   try {
-    // Obter a última posição na nova lista
-    const { data: lastCard } = await supabase
+    // Obter todos os cards da lista de destino para calcular a posição de forma inteligente
+    const { data: cardsDestino } = await supabase
       .from('trello_cards')
-      .select('position')
+      .select('id, position')
       .eq('list_id', novaListaId)
-      .order('position', { ascending: false })
-      .limit(1)
-      .single();
-
-    const newPosition = (lastCard?.position || 0) + 1;
+      .order('position', { ascending: true });
+    
+    let newPosition = 1000; // Posição padrão inicial
+    
+    if (cardsDestino && cardsDestino.length > 0) {
+      // Inserir no início (mais importante em Kanban)
+      // Calcular posição entre 0 e o primeiro card
+      const firstCardPosition = cardsDestino[0]?.position || 1000;
+      newPosition = firstCardPosition / 2;
+    }
 
     // Atualizar card
     const { error } = await supabase
@@ -578,7 +587,7 @@ export const atualizarCard = async (
     due_date?: string | null;
     labels?: string[];
   }
-): Promise<TrelloCard> => {
+): Promise<TrelloCardType> => {
   try {
     console.log('[DEBUG] Atualizando card:', { cardId, updates });
     
@@ -639,7 +648,7 @@ export const reordenarCards = async (
 export const criarChecklist = async (
   cardId: number,
   title: string
-): Promise<TrelloChecklist> => {
+): Promise<TrelloChecklistType> => {
   try {
     // Obter a última posição
     const { data: lastChecklist } = await supabase
@@ -679,7 +688,7 @@ export const criarChecklist = async (
 export const adicionarItemChecklist = async (
   checklistId: number,
   title: string
-): Promise<TrelloChecklistItem> => {
+): Promise<TrelloChecklistItemType> => {
   try {
     // Obter a última posição
     const { data: lastItem } = await supabase
@@ -719,8 +728,8 @@ export const adicionarItemChecklist = async (
 // Função para atualizar um item do checklist
 export const atualizarItemChecklist = async (
   itemId: number,
-  updates: Partial<TrelloChecklistItem>
-): Promise<TrelloChecklistItem> => {
+  updates: Partial<TrelloChecklistItemType>
+): Promise<TrelloChecklistItemType> => {
   try {
     const { data, error } = await supabase
       .from('trello_checklist_items')
@@ -1188,7 +1197,7 @@ export const removerEtiqueta = async (
 export const criarLista = async (
   obraId: number,
   title: string
-): Promise<TrelloList & { cards: TrelloCard[] }> => {
+): Promise<TrelloListType & { cards: TrelloCardType[] }> => {
   try {
     console.log('[DEBUG] Criando lista para obra:', obraId, 'com título:', title);
     
@@ -1348,12 +1357,11 @@ export const renomearLista = async (
     
     console.log('[DEBUG] Lista encontrada:', lista);
     
-    // Atualizar tanto o campo 'nome' quanto o campo 'title'
+    // Atualizar apenas o campo 'nome' que existe no banco de dados
     const { data, error } = await supabase
       .from('trello_lists')
       .update({
         nome: newTitle,
-        title: newTitle,
         updated_at: new Date().toISOString()
       })
       .eq('id', listId)
@@ -1380,6 +1388,44 @@ export const atualizarPosicaoCard = async (
   try {
     console.log('[DEBUG] Atualizando posição do card:', { cardId, novaListaId, novaPosicao });
 
+    // Verificar se o card existe 
+    const { data: cardExistente, error: cardExistenteError } = await supabase
+      .from('trello_cards')
+      .select('id, list_id, position')
+      .eq('id', cardId)
+      .single();
+      
+    if (cardExistenteError) {
+      console.error('[DEBUG] Erro ao verificar existência do card:', cardExistenteError);
+      throw cardExistenteError;
+    }
+    
+    if (!cardExistente) {
+      console.error('[DEBUG] Card não encontrado com id:', cardId);
+      throw new Error(`Card com ID ${cardId} não encontrado`);
+    }
+    
+    console.log('[DEBUG] Card encontrado:', cardExistente);
+    console.log('[DEBUG] Atualizando para nova posição:', novaPosicao);
+    
+    // Verificar se a lista de destino existe
+    const { data: listaExistente, error: listaExistenteError } = await supabase
+      .from('trello_lists')
+      .select('id')
+      .eq('id', novaListaId)
+      .single();
+      
+    if (listaExistenteError && listaExistenteError.code !== 'PGRST116') {
+      console.error('[DEBUG] Erro ao verificar existência da lista:', listaExistenteError);
+      throw listaExistenteError;
+    }
+    
+    if (!listaExistente) {
+      console.error('[DEBUG] Lista de destino não encontrada com id:', novaListaId);
+      throw new Error(`Lista com ID ${novaListaId} não encontrada`);
+    }
+    
+    // Atualizar posição do card
     const { error } = await supabase
       .from('trello_cards')
       .update({
@@ -1393,8 +1439,11 @@ export const atualizarPosicaoCard = async (
       console.error('[DEBUG] Erro ao atualizar posição do card:', error);
       throw error;
     }
+    
+    console.log('[DEBUG] Posição do card atualizada com sucesso para:', novaPosicao);
   } catch (error) {
     console.error('[DEBUG] Erro ao atualizar posição do card:', error);
+    // Rethrow para tratamento adequado no front-end
     throw error;
   }
 }; 

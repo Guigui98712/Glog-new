@@ -480,68 +480,17 @@ const Relatorios = () => {
     });
   };
 
-  const handleVisualizarRelatorio = (relatorio: any) => {
-    try {
-      console.log('[DEBUG] Visualizando relatório:', relatorio);
-      
-      // Criar um iframe temporário para exibir o relatório
-      const iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      document.body.appendChild(iframe);
-      
-      // Escrever o conteúdo HTML no iframe
-      const iframeDocument = iframe.contentDocument || iframe.contentWindow?.document;
-      if (iframeDocument) {
-        iframeDocument.open();
-        iframeDocument.write(relatorio.conteudo);
-        iframeDocument.close();
-        
-        // Imprimir o iframe em uma nova janela
-        iframe.onload = () => {
-          try {
-            iframe.contentWindow?.print();
-          } catch (printError) {
-            console.error('[DEBUG] Erro ao imprimir:', printError);
-            
-            // Alternativa: abrir em nova aba
-            const blob = new Blob([relatorio.conteudo], { type: 'text/html' });
-            const url = URL.createObjectURL(blob);
-            const newWindow = window.open('', '_blank');
-            if (newWindow) {
-              newWindow.document.write(relatorio.conteudo);
-              newWindow.document.close();
-            } else {
-              throw new Error('Não foi possível abrir uma nova janela. Verifique se o bloqueador de pop-ups está desativado.');
-            }
-          }
-          
-          // Remover o iframe após a impressão
-          setTimeout(() => {
-            document.body.removeChild(iframe);
-          }, 1000);
-        };
-      }
-    } catch (error) {
-      console.error('[DEBUG] Erro ao visualizar o relatório:', error);
-      
-      // Método alternativo se o principal falhar
-      try {
-        const newWindow = window.open('', '_blank');
-        if (newWindow) {
-          newWindow.document.write(relatorio.conteudo);
-          newWindow.document.close();
-        } else {
-          throw new Error('Não foi possível abrir uma nova janela. Verifique se o bloqueador de pop-ups está desativado.');
-        }
-      } catch (fallbackError) {
-        console.error('[DEBUG] Erro no método alternativo:', fallbackError);
-        toast({
-          title: "Erro de visualização",
-          description: "Não foi possível visualizar o relatório. Verifique se o bloqueador de pop-ups está desativado.",
-          variant: "destructive"
-        });
-      }
+  const handleVisualizarRelatorio = (relatorio: RelatorioSemanal) => {
+    if (!id || !relatorio || !relatorio.id) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível determinar o relatório para visualizar.",
+        variant: "destructive",
+      });
+      return;
     }
+    // Navega para a nova página de visualização
+    navigate(`/obras/${id}/relatorios/${relatorio.id}/view`);
   };
 
   const handleExcluirRelatorio = async (relatorioId: number) => {
@@ -650,7 +599,7 @@ const Relatorios = () => {
   // Obter os dias úteis da semana atual
   const diasUteis = getDiasUteis(startOfWeek(semanaAtual, { weekStartsOn: 0 }));
 
-  const handleDownloadPDF = async (relatorio: any) => {
+  const handleDownloadPDF = async (relatorio: RelatorioSemanal) => {
     try {
       console.log('[DEBUG] Iniciando download do PDF:', relatorio);
       
@@ -673,11 +622,14 @@ const Relatorios = () => {
         <head>
           <title>Relatório ${format(parseISO(relatorio.data_inicio), 'dd-MM-yyyy')} a ${format(parseISO(relatorio.data_fim), 'dd-MM-yyyy')}</title>
           <meta charset="UTF-8">
+          <script src="https://cdn.tailwindcss.com"></script>
           <style>
             body { 
               font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
               margin: 0;
               padding: 0;
+              -webkit-print-color-adjust: exact !important; 
+              print-color-adjust: exact !important;
             }
             img { max-width: 100%; }
             
@@ -691,6 +643,11 @@ const Relatorios = () => {
                 size: A4;
                 margin: 10mm;
               }
+              .no-print { display: none; }
+              .print-avoid-break {
+                 page-break-inside: avoid !important;
+                 break-inside: avoid !important;
+               }
             }
             
             .print-button {
@@ -720,71 +677,60 @@ const Relatorios = () => {
           </style>
         </head>
         <body>
-          <button class="print-button" onclick="prepararImpressao()">Salvar como PDF</button>
+          <button class="print-button no-print" onclick="prepararImpressao()">Salvar como PDF</button>
           ${relatorio.conteudo}
           <script>
-            // Função para carregar todas as imagens antes de imprimir
             function carregarImagens() {
-              return new Promise((resolve) => {
-                const imagens = document.querySelectorAll('img');
-                let imagensCarregadas = 0;
-                const totalImagens = imagens.length;
+              const imagens = document.querySelectorAll('img');
+              let imagensCarregadas = 0;
+              const totalImagens = imagens.length;
+              
+              console.log('Total de imagens:', totalImagens);
+              
+              if (totalImagens === 0) {
+                resolve();
+                return;
+              }
+              
+              imagens.forEach(img => {
+                img.crossOrigin = 'Anonymous';
                 
-                console.log('Total de imagens:', totalImagens);
-                
-                if (totalImagens === 0) {
-                  resolve();
-                  return;
-                }
-                
-                imagens.forEach(img => {
-                  // Adicionar crossOrigin para permitir imagens de outros domínios
-                  img.crossOrigin = 'Anonymous';
-                  
-                  if (img.complete) {
-                    console.log('Imagem já carregada:', img.src);
+                if (img.complete) {
+                  console.log('Imagem já carregada:', img.src);
+                  imagensCarregadas++;
+                  if (imagensCarregadas === totalImagens) {
+                    resolve();
+                  }
+                } else {
+                  img.onload = () => {
+                    console.log('Imagem carregada:', img.src);
                     imagensCarregadas++;
                     if (imagensCarregadas === totalImagens) {
                       resolve();
                     }
-                  } else {
-                    img.onload = () => {
-                      console.log('Imagem carregada:', img.src);
-                      imagensCarregadas++;
-                      if (imagensCarregadas === totalImagens) {
-                        resolve();
-                      }
-                    };
-                    img.onerror = () => {
-                      console.error('Erro ao carregar imagem:', img.src);
-                      img.style.display = 'none';
-                      imagensCarregadas++;
-                      if (imagensCarregadas === totalImagens) {
-                        resolve();
-                      }
-                    };
-                  }
-                });
+                  };
+                  img.onerror = () => {
+                    console.error('Erro ao carregar imagem:', img.src);
+                    img.style.display = 'none';
+                    imagensCarregadas++;
+                    if (imagensCarregadas === totalImagens) {
+                      resolve();
+                    }
+                  };
+                }
               });
             }
             
-            // Função para preparar a impressão com nome de arquivo personalizado
             async function prepararImpressao() {
               await carregarImagens();
               console.log('Todas as imagens carregadas, pronto para imprimir');
-              
-              // Definir o nome do arquivo no título da página
-              // Os navegadores geralmente usam o título da página como sugestão de nome de arquivo
               document.title = "Relatório_${format(parseISO(relatorio.data_inicio), 'dd-MM-yyyy')}_a_${format(parseISO(relatorio.data_fim), 'dd-MM-yyyy')}";
-              
-              // Iniciar a impressão
               window.print();
             }
             
-            // Quando a página carregar, aguardar o carregamento das imagens
             window.onload = async function() {
               await carregarImagens();
-              console.log('Todas as imagens carregadas, pronto para imprimir');
+              console.log('Todas as imagens carregadas.');
             };
           </script>
         </body>
@@ -1104,28 +1050,28 @@ const Relatorios = () => {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleDownloadPDF(relatorio)}
-                    className="flex-1 sm:flex-none"
+                      onClick={() => handleVisualizarRelatorio(relatorio)}
+                      className="flex-1 sm:flex-none"
                     >
-                    <FileText className="h-4 w-4 mr-2" />
-                    <span>Visualizar</span>
+                      <FileText className="h-4 w-4 mr-2" />
+                      <span>Visualizar</span>
                     </Button>
                     
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleVisualizarRelatorio(relatorio)}
-                    className="flex-1 sm:flex-none bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-300"
+                      onClick={() => handleDownloadPDF(relatorio)}
+                      className="flex-1 sm:flex-none bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-300"
                     >
-                    <Download className="h-4 w-4 mr-2" />
-                    <span>PDF</span>
+                      <Download className="h-4 w-4 mr-2" />
+                      <span>PDF</span>
                     </Button>
                     
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => handleExcluirRelatorio(relatorio.id)}
-                    className="flex-1 sm:flex-none text-red-600 hover:text-red-700 hover:bg-red-50"
+                      className="flex-1 sm:flex-none text-red-600 hover:text-red-700 hover:bg-red-50"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -1155,28 +1101,28 @@ const Relatorios = () => {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleDownloadPDF(relatorio)}
-                    className="flex-1 sm:flex-none"
+                      onClick={() => handleVisualizarRelatorio(relatorio)}
+                      className="flex-1 sm:flex-none"
                     >
-                    <FileText className="h-4 w-4 mr-2" />
-                    <span>Visualizar</span>
+                      <FileText className="h-4 w-4 mr-2" />
+                      <span>Visualizar</span>
                     </Button>
                     
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleVisualizarRelatorio(relatorio)}
-                    className="flex-1 sm:flex-none bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-300"
+                      onClick={() => handleDownloadPDF(relatorio)}
+                      className="flex-1 sm:flex-none bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-300"
                     >
-                    <Download className="h-4 w-4 mr-2" />
-                    <span>PDF</span>
+                      <Download className="h-4 w-4 mr-2" />
+                      <span>PDF</span>
                     </Button>
                     
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => handleExcluirRelatorio(relatorio.id)}
-                    className="flex-1 sm:flex-none text-red-600 hover:text-red-700 hover:bg-red-50"
+                      className="flex-1 sm:flex-none text-red-600 hover:text-red-700 hover:bg-red-50"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>

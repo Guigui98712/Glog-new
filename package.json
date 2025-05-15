@@ -16,7 +16,9 @@
     "cap:build:android": "npm run cap:build && cd android && gradlew.bat assembleDebug && cd ..",
     "cap:build:android:release": "npm run cap:build && cd android && gradlew.bat assembleRelease && cd ..",
     "cap:check-plugins": "node check-capacitor-plugins.js",
-    "setup:app-icon": "node setup-app-icon.js"
+    "setup:app-icon": "node setup-app-icon.js",
+    "setup:dictionaries": "node setup-dictionaries.cjs",
+    "prepare:apk": "npm run build && npm run cap:sync && npm run setup:dictionaries && npm run cap:build:android"
   },
   "dependencies": {
     "@capacitor/android": "^6.2.1",
@@ -78,12 +80,14 @@
     "@tiptap/suggestion": "^2.11.7",
     "@types/react-beautiful-dnd": "^13.1.8",
     "@types/react-router-dom": "^5.3.3",
+    "buffer": "^6.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.0",
     "component-emitter": "^2.0.0",
     "date-fns": "^3.6.0",
     "date-fns-tz": "^3.2.0",
+    "dictionary-pt": "^4.0.0",
     "embla-carousel-react": "^8.3.0",
     "filepond": "^4.32.7",
     "filepond-plugin-image-exif-orientation": "^1.0.11",
@@ -100,6 +104,7 @@
     "jspdf": "^3.0.1",
     "lucide-react": "^0.462.0",
     "next-themes": "^0.3.0",
+    "nspell": "^2.1.5",
     "react": "^18.3.1",
     "react-beautiful-dnd": "^13.1.1",
     "react-calendar": "^5.1.0",
@@ -139,6 +144,7 @@
     "terser": "^5.39.0",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.0.1",
-    "vite": "^5.4.18"
+    "vite": "^5.4.18",
+    "vite-plugin-node-polyfills": "^0.23.0"
   }
 }

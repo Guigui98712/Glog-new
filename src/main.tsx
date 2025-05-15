@@ -5,6 +5,10 @@ import './index.css'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 
+// Polyfill para Buffer (necessário para nspell)
+import { Buffer } from 'buffer'
+window.Buffer = Buffer;
+
 // Criar instância do QueryClient com configurações
 const queryClient = new QueryClient({
   defaultOptions: {

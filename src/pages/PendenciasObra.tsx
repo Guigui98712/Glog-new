@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Plus, Edit, Trash2, Clock, Tag, CheckSquare, MessageSquare, Paperclip, MoreHorizontal, Check, X, FileText, Share as ShareIcon } from 'lucide-react';
+import { ArrowLeft, Plus, Edit, Trash2, Clock, Tag, CheckSquare, MessageSquare, Paperclip, MoreHorizontal, Check, X, FileText, Share as ShareIcon, Check as CheckIcon } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { buscarObra } from '@/lib/api';
 import { Input } from '@/components/ui/input';
@@ -59,7 +59,7 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { Label } from '@/components/ui/label';
-import { DragDropContext, Droppable, Draggable, DropResult, DragStart, ResponderProvided } from 'react-beautiful-dnd';
+import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd'; // Removido DragStart, ResponderProvided se não usados diretamente
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 // Importações do Capacitor
@@ -72,7 +72,8 @@ import NotificationService from '@/services/NotificationService';
 // Importar React Query
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Device } from '@capacitor/device';
-import { LocalNotifications } from '@capacitor/local-notifications'; // Importar LocalNotifications
+import { App } from '@capacitor/app'; // Importar o App plugin
+import { LocalNotifications } from '@capacitor/local-notifications'; // Descomentando a importação
 
 const PendenciasObra = () => {
   const { id } = useParams();
@@ -113,6 +114,17 @@ const PendenciasObra = () => {
   const [editandoTitulo, setEditandoTitulo] = useState(false);
   const [novoTitulo, setNovoTitulo] = useState('');
 
+  const [editandoTituloCardId, setEditandoTituloCardId] = useState<number | null>(null);
+  const [novoTituloCard, setNovoTituloCard] = useState('');
+
+  // Estado para edição de descrição do card
+  const [editandoDescricaoCardId, setEditandoDescricaoCardId] = useState<number | null>(null);
+  const [novaDescricaoCard, setNovaDescricaoCard] = useState('');
+
+  const [editandoListaId, setEditandoListaId] = useState<number | null>(null);
+  // Estado para o input de nome de lista (tanto para criar nova quanto para editar existente)
+  const [valorInputNomeLista, setValorInputNomeLista] = useState(''); 
+
   // Consulta da obra
   const { data: obra, isLoading: obraLoading, error: obraError } = useQuery({
     queryKey: ['obra', id],
@@ -152,6 +164,7 @@ const PendenciasObra = () => {
   } = useQuery({
     queryKey: ['board', id],
     queryFn: async () => {
+      if (!id) throw new Error('ID da obra não fornecido para carregar o quadro.');
       console.log('Carregando quadro da obra:', id);
       const quadro = await obterQuadroObra(Number(id), (message, progress) => {
         console.log(`Progresso: ${message} (${progress}%)`);
@@ -183,7 +196,21 @@ const PendenciasObra = () => {
   // Consulta de etiquetas
   const { data: etiquetasDisponiveis = [] } = useQuery({
     queryKey: ['etiquetas'],
-    queryFn: buscarEtiquetas,
+    queryFn: async () => {
+      // Buscar etiquetas e garantir que não haja duplicatas
+      const etiquetas = await buscarEtiquetas();
+      
+      // Criar um Map para armazenar etiquetas por ID, eliminando duplicatas
+      const etiquetasMap = new Map();
+      etiquetas.forEach(etiqueta => {
+        if (!etiquetasMap.has(etiqueta.id)) {
+          etiquetasMap.set(etiqueta.id, etiqueta);
+        }
+      });
+      
+      // Converter o Map de volta para array
+      return Array.from(etiquetasMap.values());
+    },
     staleTime: 1000 * 60 * 60, // 60 minutos (etiquetas mudam com menos frequência)
     gcTime: 1000 * 60 * 60 * 24, // 24 horas
     refetchOnMount: false, // Não recarregar ao montar o componente
@@ -202,6 +229,7 @@ const PendenciasObra = () => {
       });
       queryClient.invalidateQueries({ queryKey: ['board', id] });
       setShowAddListDialog(false);
+      setValorInputNomeLista(''); // Limpar o input após sucesso
     },
     onError: (error) => {
       console.error('Erro ao criar seção:', error);
@@ -218,13 +246,15 @@ const PendenciasObra = () => {
     mutationFn: async ({ listaId, novoNome }: { listaId: number, novoNome: string }) => {
       return await renomearLista(listaId, novoNome);
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
       toast({
         title: "Sucesso",
         description: "Seção renomeada com sucesso!",
       });
       queryClient.invalidateQueries({ queryKey: ['board', id] });
-      setShowEditListDialog(false);
+      setEditandoListaId(null);
+      setValorInputNomeLista(''); 
+      setShowEditListDialog(false); 
     },
     onError: (error) => {
       console.error('Erro ao renomear seção:', error);
@@ -350,36 +380,15 @@ const PendenciasObra = () => {
       return await moverCard(cardId, novaListaId);
     },
     onSuccess: async (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['board', id] });
-      
-      // Notificar sobre conclusão se o card foi movido para lista "Concluído"
-      if (board) {
-        const listaDestino = board.lists.find(l => l.id === variables.novaListaId);
-        // Verificação mais robusta do título da lista
-        if (listaDestino?.title?.trim().toLowerCase() === 'concluído' || 
-            listaDestino?.title?.trim().toLowerCase() === 'concluido') { 
-          const card = board.lists
-            .flatMap(lista => lista.cards)
-            .find(c => c.id === variables.cardId);
-            
-          if (card) {
-            // Enviar notificação PUSH (já existente)
-            await notificationService.notificarPendenciaConcluida(
-              Number(id),
-              card.title
-            );
-            // Enviar notificação LOCAL
-            await enviarNotificacaoLocalConcluida(card.title);
-          }
-        }
-      }
-      
-      toast.success("Card movido com sucesso!");
+      // A invalidação será feita no handleDragEnd após todas as operações.
+      // A lógica de notificação e etiquetas também será movida para handleDragEnd.
+      // Apenas um toast de sucesso específico para o movimento aqui.
+      toast({ title: "Sucesso", description: "Card movido para outra seção!" });
     },
     onError: (error) => {
-      console.error('Erro ao mover card:', error);
-      toast.error("Erro ao mover card");
-      queryClient.invalidateQueries({ queryKey: ['board', id] });
+      console.error('Erro ao mover card para outra lista:', error);
+      toast({ title: "Erro", description: "Não foi possível mover o card para outra seção.", variant: "destructive" });
+      // A invalidação em caso de erro também será tratada no handleDragEnd.
     }
   });
 
@@ -393,11 +402,14 @@ const PendenciasObra = () => {
       return await atualizarPosicaoCard(cardId, listId, posicao);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['board', id] });
+      // A invalidação será feita no handleDragEnd.
+      // Toast específico para reordenação bem-sucedida.
+      toast({ title: "Sucesso", description: "Ordem do card atualizada!" });
     },
     onError: (error) => {
       console.error('Erro ao atualizar posição do card:', error);
-      queryClient.invalidateQueries({ queryKey: ['board', id] });
+      toast({ title: "Erro", description: "Não foi possível atualizar a ordem do card.", variant: "destructive" });
+      // A invalidação em caso de erro também será tratada no handleDragEnd.
     }
   });
 
@@ -422,56 +434,43 @@ const PendenciasObra = () => {
 
   // Funções para gerenciar listas (seções)
   const handleAddList = () => {
-    setNovaListaNome('');
+    setValorInputNomeLista(''); // Limpar o input ao abrir o diálogo de adicionar
     setShowAddListDialog(true);
   };
 
   const handleSaveNewList = async () => {
-    if (!novaListaNome.trim()) {
-      toast({
-        title: "Erro",
-        description: "O nome da seção é obrigatório.",
-        variant: "destructive"
-      });
+    if (!valorInputNomeLista.trim()) { // Usar valorInputNomeLista
+      toast({ title: "Erro", description: "O nome da seção é obrigatório.", variant: "destructive" });
       return;
     }
-
     criarListaMutation.mutate({ 
       obraId: Number(id), 
-      nome: novaListaNome 
+      nome: capitalizarPrimeiraLetra(valorInputNomeLista) // Usar valorInputNomeLista
     });
   };
 
-  const handleEditList = (lista: TrelloList) => {
-    console.log('[DEBUG] Iniciando edição da lista:', lista);
-    setListaAtual(lista);
-    setNovaListaNome(lista.title || (lista as any).nome);
+  const handleOpenEditListDialog = (lista: TrelloList) => {
+    setListaAtual(lista); 
+    setValorInputNomeLista(lista.title || (lista as any).nome || ''); 
     setShowEditListDialog(true);
   };
 
-  const handleSaveEditList = async () => {
-    if (!listaAtual) {
-      toast({
-        title: "Erro",
-        description: "Seção não selecionada.",
-        variant: "destructive"
-      });
+  const handleSaveEditListDialog = () => {
+    if (!listaAtual) return;
+    if (!valorInputNomeLista.trim()) { // Usar valorInputNomeLista
+      toast({ title: "Erro", description: "O nome da seção é obrigatório.", variant: "destructive" });
       return;
     }
-
-    if (!novaListaNome.trim()) {
-      toast({
-        title: "Erro",
-        description: "O nome da seção é obrigatório.",
-        variant: "destructive"
-      });
-      return;
-    }
-
     renomearListaMutation.mutate({ 
       listaId: listaAtual.id, 
-      novoNome: novaListaNome
+      novoNome: capitalizarPrimeiraLetra(valorInputNomeLista) // Usar valorInputNomeLista
     });
+  };
+
+  const handleCancelEditList = () => {
+    setEditandoListaId(null);
+    setValorInputNomeLista('');
+    setShowEditListDialog(false); // Fechar o diálogo ao cancelar
   };
 
   const handleDeleteList = (lista: TrelloList) => {
@@ -479,7 +478,7 @@ const PendenciasObra = () => {
     setShowDeleteListDialog(true);
   };
 
-  const handleConfirmDeleteList = async () => {
+  const handleConfirmDeleteList = () => {
     if (!listaAtual) {
       toast({
         title: "Erro",
@@ -581,7 +580,10 @@ const PendenciasObra = () => {
       labels.splice(index, 1);
     }
     
-    setNovoCard({...novoCard, labels});
+    // Garantir que não há etiquetas duplicadas usando Set
+    const uniqueLabels = [...new Set(labels)];
+    
+    setNovoCard({...novoCard, labels: uniqueLabels});
   };
   
   // Função auxiliar para obter a classe de cor da etiqueta
@@ -625,35 +627,62 @@ const PendenciasObra = () => {
         return;
       }
       
-      await criarChecklist(cardAtual.id, novoChecklistNome);
+      // Enviar requisição ao backend para criar a checklist
+      const novaChecklist = await criarChecklist(cardAtual.id, novoChecklistNome);
+      
+      // Limpar o input
+      setNovoChecklistNome('');
+      
+      // Se a checklist foi criada com sucesso, atualizar o estado local
+      if (novaChecklist) {
+        // Criar cópia profunda do cardAtual
+        const cardAtualizado = JSON.parse(JSON.stringify(cardAtual));
+        
+        // Adicionar a nova checklist com um array de items vazio
+        cardAtualizado.checklists.push({
+          ...novaChecklist,
+          items: []
+        });
+        
+        // Atualizar o estado do card
+        setCardAtual(cardAtualizado);
+        
+        // Atualizar também no board para manter consistência
+        if (board) {
+          const newBoard = JSON.parse(JSON.stringify(board));
+          const listaIndex = newBoard.lists.findIndex((l: TrelloList) => l.id === cardAtual.list_id);
+          
+          if (listaIndex !== -1) {
+            const cardIndex = newBoard.lists[listaIndex].cards.findIndex((c: TrelloCard) => c.id === cardAtual.id);
+            
+            if (cardIndex !== -1) {
+              const cardNoBoard = newBoard.lists[listaIndex].cards[cardIndex];
+              
+              // Garantir que a propriedade checklists existe
+              if (!cardNoBoard.checklists) {
+                cardNoBoard.checklists = [];
+              }
+              
+              // Adicionar a nova checklist com items vazio
+              cardNoBoard.checklists.push({
+                ...novaChecklist,
+                items: []
+              });
+            }
+          }
+          
+          // Atualizar o estado do board sem fazer fetch
+          queryClient.setQueryData(['board', id], newBoard);
+        }
+      }
       
       toast({
         title: "Sucesso",
         description: "Checklist criada com sucesso!",
       });
       
-      setNovoChecklistNome('');
-      await refetchBoard();
-      
-      // Recarregar o card atual para mostrar a nova checklist
-      const quadro = await obterQuadroObra(Number(id));
-      const lista = quadro.lists.find(l => l.id === cardAtual.list_id);
-      if (lista) {
-        const card = lista.cards.find(c => c.id === cardAtual.id);
-        if (card) {
-          setCardAtual({
-            ...(card as any),
-            checklists: (card as any).checklists || [],
-            comments: (card as any).comments || [],
-            attachments: (card as any).attachments || [],
-            labels: card.labels || []
-          });
-          setNovoCard({
-            ...novoCard,
-            labels: card.labels.map(l => l.title)
-          });
-        }
-      }
+      // Invalidar a query para garantir que os dados serão atualizados na próxima vez
+      queryClient.invalidateQueries({ queryKey: ['board', id] });
     } catch (error) {
       console.error('Erro ao criar checklist:', error);
       toast({
@@ -661,6 +690,9 @@ const PendenciasObra = () => {
         description: error instanceof Error ? error.message : "Não foi possível criar a checklist.",
         variant: "destructive"
       });
+      
+      // Em caso de erro, recarregar os dados para manter consistência
+      refetchBoard();
     }
   };
   
@@ -675,14 +707,78 @@ const PendenciasObra = () => {
         return;
       }
 
-      await adicionarItemChecklist(checklistId, capitalizarPrimeiraLetra(novoChecklistItem));
+      // Criar novo item na checklist
+      const novoItem = await adicionarItemChecklist(checklistId, capitalizarPrimeiraLetra(novoChecklistItem));
+      
+      // Limpar o campo de input
       setNovoChecklistItem('');
-      await refetchBoard();
+      
+      // Atualizar o estado local em vez de recarregar todo o board
+      if (cardAtual) {
+        // Criar uma cópia profunda do cardAtual para evitar modificações diretas no estado
+        const cardAtualizado = JSON.parse(JSON.stringify(cardAtual));
+        
+        // Encontrar a checklist para adicionar o item
+        const checklistIndex = cardAtualizado.checklists.findIndex(
+          (checklist: TrelloChecklist) => checklist.id === checklistId
+        );
+        
+        if (checklistIndex !== -1) {
+          // Garantir que o array de items existe
+          if (!cardAtualizado.checklists[checklistIndex].items) {
+            cardAtualizado.checklists[checklistIndex].items = [];
+          }
+          
+          // Adicionar o novo item à checklist
+          cardAtualizado.checklists[checklistIndex].items.push(novoItem);
+          
+          // Atualizar o estado do cardAtual com o novo item
+          setCardAtual(cardAtualizado);
+          
+          // Também atualizar o item no board em memória para manter a consistência
+          if (board) {
+            const newBoard = JSON.parse(JSON.stringify(board));
+            const listaIndex = newBoard.lists.findIndex((l: TrelloList) => l.id === cardAtual.list_id);
+            
+            if (listaIndex !== -1) {
+              const cardIndex = newBoard.lists[listaIndex].cards.findIndex((c: TrelloCard) => c.id === cardAtual.id);
+              
+              if (cardIndex !== -1 && newBoard.lists[listaIndex].cards[cardIndex]) {
+                // Garantir que a propriedade checklists existe
+                if (!newBoard.lists[listaIndex].cards[cardIndex].checklists) {
+                  newBoard.lists[listaIndex].cards[cardIndex].checklists = [];
+                }
+                
+                // Encontrar a checklist correspondente no board
+                const boardChecklistIndex = newBoard.lists[listaIndex].cards[cardIndex].checklists.findIndex(
+                  (cl: TrelloChecklist) => cl.id === checklistId
+                );
+                
+                if (boardChecklistIndex !== -1) {
+                  // Garantir que o array de items existe
+                  if (!newBoard.lists[listaIndex].cards[cardIndex].checklists[boardChecklistIndex].items) {
+                    newBoard.lists[listaIndex].cards[cardIndex].checklists[boardChecklistIndex].items = [];
+                  }
+                  
+                  // Adicionar o item à checklist no board
+                  newBoard.lists[listaIndex].cards[cardIndex].checklists[boardChecklistIndex].items.push(novoItem);
+                }
+              }
+            }
+            
+            // Atualizar o estado do board sem fazer um novo fetch do servidor
+            queryClient.setQueryData(['board', id], newBoard);
+          }
+        }
+      }
       
       toast({
         title: "Sucesso",
         description: "Item adicionado com sucesso!",
       });
+      
+      // Invalidar a query para garantir que os dados sejam atualizados na próxima vez que o componente for renderizado
+      queryClient.invalidateQueries({ queryKey: ['board', id] });
     } catch (error) {
       console.error('Erro ao adicionar item na checklist:', error);
       toast({
@@ -695,39 +791,61 @@ const PendenciasObra = () => {
   
   const handleToggleChecklistItem = async (item: TrelloChecklistItem) => {
     try {
-      await atualizarItemChecklist(item.id, {
-        ...item,
-        checked: !item.checked
-      });
+      // Criar uma cópia do item com o estado checked invertido
+      const itemAtualizado = { ...item, checked: !item.checked };
       
-      // Recarregar o card atual para mostrar a alteração
-      const quadro = await obterQuadroObra(Number(id));
-      const lista = quadro.lists.find(l => l.id === cardAtual?.list_id);
-      if (lista) {
-        const card = lista.cards.find(c => c.id === cardAtual?.id);
-        if (card) {
-          setCardAtual({
-            ...(card as any),
-            checklists: (card as any).checklists || [],
-            comments: (card as any).comments || [],
-            attachments: (card as any).attachments || [],
-            labels: card.labels || []
-          });
+      // Atualizar o estado local imediatamente para feedback instantâneo ao usuário
+      if (cardAtual) {
+        // Criar cópia profunda do cardAtual para evitar modificações diretas no estado
+        const cardAtualizado = JSON.parse(JSON.stringify(cardAtual));
+        
+        // Procurar o item em todas as checklists do card e atualizar seu estado
+        let itemEncontrado = false;
+        cardAtualizado.checklists.forEach((checklist: TrelloChecklist) => {
+          const itemIndex = checklist.items.findIndex((i: TrelloChecklistItem) => i.id === item.id);
+          if (itemIndex !== -1) {
+            checklist.items[itemIndex].checked = !item.checked;
+            itemEncontrado = true;
+          }
+        });
+        
+        if (itemEncontrado) {
+          // Atualizar o estado do card atual com o novo estado do item
+          setCardAtual(cardAtualizado);
           
-          // Atualizar o board para refletir as mudanças instantaneamente
-          const newBoard = {...board};
-          if (newBoard && newBoard.lists) {
-            const listaIndex = newBoard.lists.findIndex(l => l.id === cardAtual?.list_id);
+          // Também atualizar o item no board em memória para manter consistência
+          if (board) {
+            const newBoard = JSON.parse(JSON.stringify(board));
+            const listaIndex = newBoard.lists.findIndex((l: TrelloList) => l.id === cardAtual.list_id);
+            
             if (listaIndex !== -1) {
-              const cardIndex = newBoard.lists[listaIndex].cards.findIndex(c => c.id === cardAtual?.id);
-              if (cardIndex !== -1) {
-                newBoard.lists[listaIndex].cards[cardIndex] = card as any;
-                setBoard(newBoard);
+              const cardIndex = newBoard.lists[listaIndex].cards.findIndex((c: TrelloCard) => c.id === cardAtual.id);
+              
+              if (cardIndex !== -1 && newBoard.lists[listaIndex].cards[cardIndex]) {
+                const cardNoBoard = newBoard.lists[listaIndex].cards[cardIndex];
+                
+                if (cardNoBoard.checklists) {
+                  cardNoBoard.checklists.forEach((checklist: TrelloChecklist) => {
+                    const itemIndex = checklist.items.findIndex((i: TrelloChecklistItem) => i.id === item.id);
+                    if (itemIndex !== -1) {
+                      checklist.items[itemIndex].checked = !item.checked;
+                    }
+                  });
+                }
               }
             }
+            
+            // Atualizar o board no estado sem fazer uma nova requisição ao backend
+            queryClient.setQueryData(['board', id], newBoard);
           }
         }
       }
+      
+      // Após atualizar o estado local, enviar a mudança para o backend
+      await atualizarItemChecklist(item.id, itemAtualizado);
+      
+      // Invalidar a query para que os dados sejam recarregados na próxima vez
+      queryClient.invalidateQueries({ queryKey: ['board', id] });
     } catch (error) {
       console.error('Erro ao atualizar item:', error);
       toast({
@@ -735,11 +853,61 @@ const PendenciasObra = () => {
         description: error instanceof Error ? error.message : "Não foi possível atualizar o item.",
         variant: "destructive"
       });
+      
+      // Em caso de erro, recarregar os dados do board para manter consistência
+      refetchBoard();
     }
   };
   
   const handleDeleteChecklistItem = async (itemId: number) => {
     try {
+      // Atualizar estado local imediatamente para feedback instantâneo
+      if (cardAtual) {
+        // Criar cópia profunda do cardAtual
+        const cardAtualizado = JSON.parse(JSON.stringify(cardAtual));
+        let itemRemovido = false;
+        
+        // Remover o item de todas as checklists
+        cardAtualizado.checklists.forEach((checklist: TrelloChecklist) => {
+          const itemIndex = checklist.items.findIndex((i: TrelloChecklistItem) => i.id === itemId);
+          if (itemIndex !== -1) {
+            checklist.items.splice(itemIndex, 1);
+            itemRemovido = true;
+          }
+        });
+        
+        if (itemRemovido) {
+          // Atualizar o estado do card
+          setCardAtual(cardAtualizado);
+          
+          // Atualizar também no board
+          if (board) {
+            const newBoard = JSON.parse(JSON.stringify(board));
+            const listaIndex = newBoard.lists.findIndex((l: TrelloList) => l.id === cardAtual.list_id);
+            
+            if (listaIndex !== -1) {
+              const cardIndex = newBoard.lists[listaIndex].cards.findIndex((c: TrelloCard) => c.id === cardAtual.id);
+              
+              if (cardIndex !== -1) {
+                const cardNoBoard = newBoard.lists[listaIndex].cards[cardIndex];
+                if (cardNoBoard && cardNoBoard.checklists) {
+                  cardNoBoard.checklists.forEach((checklist: TrelloChecklist) => {
+                    const itemIndex = checklist.items.findIndex((i: TrelloChecklistItem) => i.id === itemId);
+                    if (itemIndex !== -1) {
+                      checklist.items.splice(itemIndex, 1);
+                    }
+                  });
+                }
+              }
+            }
+            
+            // Atualizar o estado do board sem fazer fetch
+            queryClient.setQueryData(['board', id], newBoard);
+          }
+        }
+      }
+      
+      // Enviar a exclusão para o backend
       await excluirItemChecklist(itemId);
       
       toast({
@@ -747,21 +915,8 @@ const PendenciasObra = () => {
         description: "Item excluído com sucesso!",
       });
       
-      // Recarregar o card atual para mostrar a alteração
-      const quadro = await obterQuadroObra(Number(id));
-      const lista = quadro.lists.find(l => l.id === cardAtual?.list_id);
-      if (lista) {
-        const card = lista.cards.find(c => c.id === cardAtual?.id);
-        if (card) {
-          setCardAtual({
-            ...(card as any),
-            checklists: (card as any).checklists || [],
-            comments: (card as any).comments || [],
-            attachments: (card as any).attachments || [],
-            labels: card.labels || []
-          });
-        }
-      }
+      // Invalidar a query para atualização futura
+      queryClient.invalidateQueries({ queryKey: ['board', id] });
     } catch (error) {
       console.error('Erro ao excluir item:', error);
       toast({
@@ -769,11 +924,60 @@ const PendenciasObra = () => {
         description: error instanceof Error ? error.message : "Não foi possível excluir o item.",
         variant: "destructive"
       });
+      
+      // Em caso de erro, recarregar os dados
+      refetchBoard();
     }
   };
   
   const handleDeleteChecklist = async (checklistId: number) => {
     try {
+      // Atualizar o estado local imediatamente para feedback instantâneo
+      if (cardAtual) {
+        // Criar cópia profunda
+        const cardAtualizado = JSON.parse(JSON.stringify(cardAtual));
+        
+        // Encontrar o índice da checklist a ser removida
+        const checklistIndex = cardAtualizado.checklists.findIndex(
+          (checklist: TrelloChecklist) => checklist.id === checklistId
+        );
+        
+        if (checklistIndex !== -1) {
+          // Remover a checklist do array
+          cardAtualizado.checklists.splice(checklistIndex, 1);
+          
+          // Atualizar o estado do card
+          setCardAtual(cardAtualizado);
+          
+          // Atualizar também no board
+          if (board) {
+            const newBoard = JSON.parse(JSON.stringify(board));
+            const listaIndex = newBoard.lists.findIndex((l: TrelloList) => l.id === cardAtual.list_id);
+            
+            if (listaIndex !== -1) {
+              const cardIndex = newBoard.lists[listaIndex].cards.findIndex((c: TrelloCard) => c.id === cardAtual.id);
+              
+              if (cardIndex !== -1) {
+                const cardNoBoard = newBoard.lists[listaIndex].cards[cardIndex];
+                if (cardNoBoard && cardNoBoard.checklists) {
+                  const boardChecklistIndex = cardNoBoard.checklists.findIndex(
+                    (cl: TrelloChecklist) => cl.id === checklistId
+                  );
+                  
+                  if (boardChecklistIndex !== -1) {
+                    cardNoBoard.checklists.splice(boardChecklistIndex, 1);
+                  }
+                }
+              }
+            }
+            
+            // Atualizar o estado do board sem fazer fetch
+            queryClient.setQueryData(['board', id], newBoard);
+          }
+        }
+      }
+      
+      // Enviar a exclusão para o backend
       await excluirChecklist(checklistId);
       
       toast({
@@ -781,21 +985,8 @@ const PendenciasObra = () => {
         description: "Checklist excluída com sucesso!",
       });
       
-      // Recarregar o card atual para mostrar a alteração
-      const quadro = await obterQuadroObra(Number(id));
-      const lista = quadro.lists.find(l => l.id === cardAtual?.list_id);
-      if (lista) {
-        const card = lista.cards.find(c => c.id === cardAtual?.id);
-        if (card) {
-          setCardAtual({
-            ...(card as any),
-            checklists: (card as any).checklists || [],
-            comments: (card as any).comments || [],
-            attachments: (card as any).attachments || [],
-            labels: card.labels || []
-          });
-        }
-      }
+      // Invalidar a query para atualização futura
+      queryClient.invalidateQueries({ queryKey: ['board', id] });
     } catch (error) {
       console.error('Erro ao excluir checklist:', error);
       toast({
@@ -803,6 +994,9 @@ const PendenciasObra = () => {
         description: error instanceof Error ? error.message : "Não foi possível excluir a checklist.",
         variant: "destructive"
       });
+      
+      // Em caso de erro, recarregar os dados para restaurar o estado correto
+      refetchBoard();
     }
   };
   
@@ -838,6 +1032,7 @@ const PendenciasObra = () => {
       const etiquetasAtuais = await buscarEtiquetas();
       const etiquetaObj = etiquetasAtuais.find(e => e.title === label);
       const etiquetaFazendo = etiquetasAtuais.find(e => e.title.toLowerCase() === 'fazendo');
+      const etiquetaUrgente = etiquetasAtuais.find(e => e.title.toLowerCase() === 'urgente');
       
       if (!etiquetaObj) {
         console.error('Etiqueta não encontrada:', label);
@@ -849,11 +1044,20 @@ const PendenciasObra = () => {
         (typeof l === 'string' ? l === label : l.title === label)
       );
       
+      // Se está adicionando a etiqueta "Concluído", remover "Fazendo" se existir
       if (!hasLabel && 
           label.toLowerCase() === 'concluído' && 
           etiquetaFazendo && 
-          cardLabels.some(l => (typeof l === 'string' ? l.toLowerCase() === 'fazendo' : l.title.toLowerCase() === 'fazendo'))) {
+          cardLabels.some(l => (typeof l === 'string' ? l === etiquetaFazendo.title : l.id === etiquetaFazendo.id))) {
         await removerEtiqueta(cardAtual.id, etiquetaFazendo.id);
+      }
+      
+      // Se está adicionando a etiqueta "Concluído", remover "Urgente" se existir
+      if (!hasLabel && 
+          label.toLowerCase() === 'concluído' && 
+          etiquetaUrgente && 
+          cardLabels.some(l => (typeof l === 'string' ? l === etiquetaUrgente.title : l.id === etiquetaUrgente.id))) {
+        await removerEtiqueta(cardAtual.id, etiquetaUrgente.id);
       }
       
       if (hasLabel) {
@@ -895,115 +1099,288 @@ const PendenciasObra = () => {
         }
       }
       
-      toast.success(hasLabel ? "Etiqueta removida com sucesso!" : "Etiqueta adicionada com sucesso!");
+      toast({ title: "Sucesso", description: hasLabel ? "Etiqueta removida com sucesso!" : "Etiqueta adicionada com sucesso!" });
     } catch (error) {
       console.error('Erro ao atualizar etiquetas:', error);
-      toast.error("Não foi possível atualizar as etiquetas.");
+      toast({ title: "Erro", description: "Não foi possível atualizar as etiquetas.", variant: "destructive" });
     }
   };
 
   // Função para editar o título do card diretamente na visualização
-  const handleEditarTitulo = () => {
-    if (!cardAtual) return;
-    setNovoTitulo(cardAtual.title);
-    setEditandoTitulo(true);
+  const handleEditarTituloCard = (card: TrelloCard) => {
+    setEditandoTituloCardId(card.id);
+    setNovoTituloCard(card.title);
   };
 
-  const handleSalvarTitulo = async () => {
-    if (!cardAtual || !novoTitulo.trim()) return;
+  const handleSalvarTituloCard = (cardId: number) => {
+    if (!novoTituloCard.trim()) {
+      toast({
+        title: "Erro",
+        description: "O título do card é obrigatório.",
+        variant: "destructive"
+      });
+      // Mantém a edição aberta para o usuário corrigir
+      return;
+    }
+    atualizarCardMutation.mutate({ cardId, updates: { title: novoTituloCard } });
+  };
+
+  const handleCancelEditTituloCard = () => {
+    setEditandoTituloCardId(null);
+    setNovoTituloCard('');
+  };
+
+  // Funções para editar título do card no diálogo
+  const handleEditarTituloCardNoDialogo = () => {
+    if (!cardAtual) return;
+    setEditandoTituloCardId(cardAtual.id);
+    setNovoTituloCard(cardAtual.title);
+  };
+
+  const handleSalvarTituloCardNoDialogo = async () => {
+    if (!cardAtual || !novoTituloCard.trim()) {
+      toast({
+        title: "Erro",
+        description: "O título do card é obrigatório.",
+        variant: "destructive"
+      });
+      return;
+    }
     
     try {
-      await atualizarCard(cardAtual.id, {
-        title: novoTitulo
+      await atualizarCard(cardAtual.id, { title: capitalizarPrimeiraLetra(novoTituloCard) });
+      
+      // Atualizar card atual
+      setCardAtual({
+        ...cardAtual,
+        title: capitalizarPrimeiraLetra(novoTituloCard)
       });
       
-      // Atualizar o card atual com o novo título usando 'as any' para evitar problemas de tipagem
-      const cardAtualizado = {...cardAtual, title: novoTitulo};
-      setCardAtual(cardAtualizado as any);
-      
-      // Atualizar o board para refletir as mudanças instantaneamente
-      const newBoard = {...board};
-      if (newBoard && newBoard.lists) {
-        const listaIndex = newBoard.lists.findIndex(l => l.id === cardAtual.list_id);
-        if (listaIndex !== -1) {
-          const cardIndex = newBoard.lists[listaIndex].cards.findIndex(c => c.id === cardAtual.id);
-          if (cardIndex !== -1) {
-            newBoard.lists[listaIndex].cards[cardIndex].title = novoTitulo;
-            setBoard(newBoard as any);
-          }
-        }
-      }
-      
-      setEditandoTitulo(false);
+      setEditandoTituloCardId(null);
+      queryClient.invalidateQueries({ queryKey: ['board', id] });
       
       toast({
         title: "Sucesso",
-        description: "Título atualizado com sucesso!",
+        description: "Título atualizado com sucesso!"
       });
     } catch (error) {
       console.error('Erro ao atualizar título:', error);
       toast({
         title: "Erro",
-        description: error instanceof Error ? error.message : "Não foi possível atualizar o título.",
+        description: "Não foi possível atualizar o título.",
         variant: "destructive"
       });
     }
   };
 
-  // Função para reordenar os cards
-  const handleDragEnd = async (result: any) => {
-    if (!result.destination || !board) return;
+  const handleCancelEditTituloCardNoDialogo = () => {
+    setEditandoTituloCardId(null);
+    setNovoTituloCard('');
+  };
 
+  // Funções para editar descrição do card no diálogo
+  const handleEditarDescricaoCardNoDialogo = () => {
+    if (!cardAtual) return;
+    setEditandoDescricaoCardId(cardAtual.id);
+    setNovaDescricaoCard(cardAtual.description || '');
+  };
+
+  const handleSalvarDescricaoCardNoDialogo = async () => {
+    if (!cardAtual) return;
+    
     try {
-      const sourceListId = parseInt(result.source.droppableId);
-      const destListId = parseInt(result.destination.droppableId);
-      const cardId = parseInt(result.draggableId);
-
-      // Criar uma cópia do board para atualizar o estado
-      const newBoard = JSON.parse(JSON.stringify(board));
-      const sourceListIndex = newBoard.lists.findIndex((l: any) => l.id === sourceListId);
-      const destListIndex = newBoard.lists.findIndex((l: any) => l.id === destListId);
-
-      if (sourceListIndex === -1 || destListIndex === -1) return;
-
-      // Remover o card da lista de origem
-      const [movedCard] = newBoard.lists[sourceListIndex].cards.splice(result.source.index, 1);
-
-      // Adicionar o card na lista de destino
-      newBoard.lists[destListIndex].cards.splice(result.destination.index, 0, movedCard);
-
-      // Atualizar o estado local imediatamente para feedback visual (atualização otimista)
-      queryClient.setQueryData(['board', id], newBoard);
-
-      // Atualizar no backend
-      await moverCardMutation.mutateAsync({ cardId, novaListaId: destListId });
-
-      // Atualizar a posição no backend
-      const destList = board.lists.find(l => l.id === destListId);
-      if (destList) {
-        const prevCard = result.destination.index > 0 
-          ? destList.cards[result.destination.index - 1]?.position || 0 
-          : 0;
-        const nextCard = result.destination.index < destList.cards.length 
-          ? destList.cards[result.destination.index]?.position || prevCard + 2000 
-          : prevCard + 2000;
-        const novaPosicao = (prevCard + nextCard) / 2;
-
-        await atualizarPosicaoCardMutation.mutateAsync({
-          cardId,
-          listId: destListId,
-          posicao: novaPosicao
-        });
-      }
+      await atualizarCard(cardAtual.id, { description: capitalizarPrimeiraLetra(novaDescricaoCard) });
+      
+      // Atualizar card atual
+      setCardAtual({
+        ...cardAtual,
+        description: capitalizarPrimeiraLetra(novaDescricaoCard)
+      });
+      
+      setEditandoDescricaoCardId(null);
+      queryClient.invalidateQueries({ queryKey: ['board', id] });
+      
+      toast({
+        title: "Sucesso",
+        description: "Descrição atualizada com sucesso!"
+      });
     } catch (error) {
-      console.error('Erro ao mover card:', error);
+      console.error('Erro ao atualizar descrição:', error);
       toast({
         title: "Erro",
-        description: "Não foi possível mover o card. Tentando recarregar...",
+        description: "Não foi possível atualizar a descrição.",
         variant: "destructive"
       });
-      // Recarregar o quadro em caso de erro
+    }
+  };
+
+  const handleCancelEditDescricaoCardNoDialogo = () => {
+    setEditandoDescricaoCardId(null);
+    setNovaDescricaoCard('');
+  };
+
+  // Mutação para atualizar card
+  const atualizarCardMutation = useMutation({
+    mutationFn: async ({ cardId, updates }: { cardId: number, updates: any }) => {
+      return await atualizarCard(cardId, updates);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Sucesso",
+        description: "Card atualizado com sucesso!",
+      });
       queryClient.invalidateQueries({ queryKey: ['board', id] });
+      setEditandoTituloCardId(null);
+      setNovoTituloCard('');
+    },
+    onError: (error) => {
+      console.error('Erro ao atualizar card:', error);
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : "Não foi possível atualizar o card.",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Função para reordenar os cards
+  const handleDragEnd = async (result: DropResult) => {
+    const { source, destination, draggableId } = result;
+
+    if (!destination || !board) {
+      console.log("[DragEnd] Sem destino ou board, retornando.");
+      return;
+    }
+
+    const cardId = parseInt(draggableId);
+    const sourceListId = parseInt(source.droppableId);
+    const destListId = parseInt(destination.droppableId);
+
+    if (sourceListId === destListId && source.index === destination.index) {
+      console.log("[DragEnd] Card solto na mesma posição.");
+      return; // Card foi solto na mesma posição
+    }
+
+    // 1. Atualização Otimista da UI
+    const currentBoard = queryClient.getQueryData<TrelloBoard>(['board', id]);
+    const newBoardOptimistic = JSON.parse(JSON.stringify(currentBoard || board)) as TrelloBoard;
+
+    const sourceListOptimistic = newBoardOptimistic.lists.find(l => l.id === sourceListId);
+    const destListOptimistic = newBoardOptimistic.lists.find(l => l.id === destListId);
+
+    if (!sourceListOptimistic || !destListOptimistic) {
+      console.error("[DragEnd] Lista de origem ou destino otimista não encontrada.");
+      // Não reverter aqui ainda, pois o backend pode estar ok.
+      // Apenas logar e deixar o try/catch principal lidar com falhas de API.
+      return;
+    }
+
+    const [movedCard] = sourceListOptimistic.cards.splice(source.index, 1);
+    if (!movedCard) {
+        console.error("[DragEnd] Card movido não encontrado na lista de origem otimista.");
+        return;
+    }
+    destListOptimistic.cards.splice(destination.index, 0, movedCard);
+    queryClient.setQueryData(['board', id], newBoardOptimistic);
+    console.log("[DragEnd] UI atualizada otimisticamente.");
+
+    try {
+      // 2. Mover Card entre Listas (se necessário)
+      if (sourceListId !== destListId) {
+        console.log(`[DragEnd] Movendo card ${cardId} da lista ${sourceListId} para ${destListId} no backend.`);
+        await moverCardMutation.mutateAsync({ cardId, novaListaId: destListId });
+        // Lógica de notificação e etiquetas será aqui, após sucesso do moverCard
+        if (board) { // usar 'board' do useQuery para dados mais recentes pós-mutação
+            const freshBoardData = queryClient.getQueryData<TrelloBoard>(['board', id]) || board;
+            const listaDestino = freshBoardData.lists.find(l => l.id === destListId);
+            if (listaDestino?.title?.trim().toLowerCase().includes('concluído')) {
+                const cardInfo = freshBoardData.lists.flatMap(l => l.cards).find(c => c.id === cardId);
+                if (cardInfo) {
+                    await notificationService.notificarPendenciaConcluida(Number(id), cardInfo.title);
+                    // await enviarNotificacaoLocalConcluida(cardInfo.title); // Descomentar se LocalNotifications estiver configurado
+                    
+                    // Lógica de etiquetas
+                    const etiquetasAtuais = await buscarEtiquetas(); 
+                    const etiquetaFazendo = etiquetasAtuais.find(e => e.title.toLowerCase() === 'fazendo');
+                    const etiquetaUrgente = etiquetasAtuais.find(e => e.title.toLowerCase() === 'urgente');
+                    const etiquetaConcluido = etiquetasAtuais.find(e => e.title.toLowerCase() === 'concluído');
+                    const cardLabels = Array.isArray(cardInfo.labels) ? cardInfo.labels : [];
+
+                    if(etiquetaConcluido){
+                        const hasConcluido = cardLabels.some(l => (typeof l === 'string' ? l === etiquetaConcluido.title : l.id === etiquetaConcluido.id));
+                        if(!hasConcluido) await adicionarEtiqueta(cardId, etiquetaConcluido.id);
+                    }
+                    if(etiquetaFazendo && cardLabels.some(l => (typeof l === 'string' ? l === etiquetaFazendo.title : l.id === etiquetaFazendo.id))){
+                        await removerEtiqueta(cardId, etiquetaFazendo.id);
+                    }
+                    if(etiquetaUrgente && cardLabels.some(l => (typeof l === 'string' ? l === etiquetaUrgente.title : l.id === etiquetaUrgente.id))){
+                        await removerEtiqueta(cardId, etiquetaUrgente.id);
+                    }
+                }
+            } else if (listaDestino?.title?.trim().toLowerCase().includes('fazendo')) {
+                const etiquetasAtuais = await buscarEtiquetas();
+                const etiquetaFazendo = etiquetasAtuais.find(e => e.title.toLowerCase() === 'fazendo');
+                const cardInfo = freshBoardData.lists.flatMap(l => l.cards).find(c => c.id === cardId);
+                if (cardInfo && etiquetaFazendo) {
+                    const cardLabels = Array.isArray(cardInfo.labels) ? cardInfo.labels : [];
+                    const hasFazendo = cardLabels.some(l => (typeof l === 'string' ? l === etiquetaFazendo.title : l.id === etiquetaFazendo.id));
+                    if (!hasFazendo) await adicionarEtiqueta(cardId, etiquetaFazendo.id);
+                }
+            }
+        }
+      }
+
+      // 3. Atualizar Posição do Card na Lista de Destino
+      // Usar newBoardOptimistic para calcular a posição, pois reflete o estado visual desejado
+      const cardsInDestList = newBoardOptimistic.lists.find(l => l.id === destListId)?.cards || [];
+      let newPosition;
+
+      if (destination.index === 0) {
+        const nextCard = cardsInDestList.length > 1 ? cardsInDestList[1] : null;
+        newPosition = nextCard && nextCard.position ? nextCard.position / 2 : 1000;
+      } else if (destination.index >= cardsInDestList.length - 1) {
+        const prevCard = cardsInDestList[cardsInDestList.length - 2]; 
+        newPosition = prevCard && prevCard.position ? prevCard.position + 1000 : (cardsInDestList[0]?.position || 0) + 1000;
+      } else {
+        const prevCard = cardsInDestList[destination.index - 1];
+        const nextCard = cardsInDestList[destination.index + 1];
+        const prevCardPos = prevCard && prevCard.position ? prevCard.position : 0;
+        const nextCardPos = nextCard && nextCard.position ? nextCard.position : (prevCardPos + 2000);
+        newPosition = (prevCardPos + nextCardPos) / 2;
+      }
+      
+      if (isNaN(newPosition) || newPosition <= 0) {
+        console.warn("[DragEnd] Cálculo de nova posição inválido, usando fallback:", newPosition);
+        newPosition = Date.now(); 
+      }
+      
+      console.log(`[DragEnd] Atualizando posição do card ${cardId} para ${newPosition} na lista ${destListId}.`);
+      await atualizarPosicaoCardMutation.mutateAsync({
+        cardId,
+        listId: destListId,
+        posicao: newPosition
+      });
+      
+      // 4. Sucesso: Invalidar query para buscar dados frescos e consistentes do backend.
+      console.log("[DragEnd] Todas as operações de backend concluídas. Invalidando query do board.");
+      await queryClient.refetchQueries({ queryKey: ['board', id], exact: true });
+
+      toast({
+        title: "Operação Concluída",
+        description: `Card "${movedCard.title.substring(0, 30)}${movedCard.title.length > 30 ? '...' : ''}" ${sourceListId === destListId ? 'reordenado' : 'movido'} com sucesso.`,
+      });
+
+    } catch (error) {
+      console.error('[DragEnd] Erro crítico ao mover/reordenar card:', error);
+      toast({
+        title: "Erro Crítico",
+        description: "Não foi possível completar a operação. Restaurando o quadro para o estado anterior...",
+        variant: "destructive"
+      });
+      // Reverter para o estado anterior do board em caso de erro em qualquer etapa crítica.
+      // queryClient.setQueryData(['board', id], currentBoard); // currentBoard é o estado antes da atualização otimista.
+      // Ou, de forma mais segura, apenas refetch para garantir consistência com o servidor.
+      await queryClient.refetchQueries({ queryKey: ['board', id], exact: true });
     }
   };
 
@@ -1011,7 +1388,7 @@ const PendenciasObra = () => {
   const gerarPDF = async () => {
     try {
       if (!board) {
-        toast.error('Nenhum dado disponível para gerar o PDF');
+        toast({ title: "Erro", description: 'Nenhum dado disponível para gerar o PDF', variant: 'destructive' });
         return;
       }
 
@@ -1208,17 +1585,17 @@ const PendenciasObra = () => {
         // Salvar o PDF
         pdf.save(`pendencias_${obra?.nome?.replace(/\s+/g, '_')}_${format(new Date(), 'dd-MM-yyyy')}.pdf`);
 
-        toast.success('PDF gerado com sucesso!');
+        toast({ title: "Sucesso", description: 'PDF gerado com sucesso!'});
       } catch (error) {
         console.error('Erro ao gerar PDF:', error);
-        toast.error('Erro ao gerar o PDF: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
+        toast({ title: "Erro", description: 'Erro ao gerar o PDF: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), variant: 'destructive' });
       } finally {
         // Limpar elemento temporário
         document.body.removeChild(tempDiv);
       }
     } catch (error) {
       console.error('Erro ao gerar PDF:', error);
-      toast.error('Erro ao gerar o PDF');
+      toast({ title: "Erro", description: 'Erro ao gerar o PDF', variant: 'destructive' });
     }
   };
 
@@ -1509,6 +1886,45 @@ const PendenciasObra = () => {
   const isLoading = obraLoading || boardLoading;
   const obraNome = obra?.nome || '';
 
+  const isDraggingCardRef = useRef(false); // Ref para controlar se um card está sendo arrastado
+
+  // Efeito para lidar com o botão de voltar do Android
+  useEffect(() => {
+    const listener = App.addListener('backButton', (event) => {
+      if (showCardDetailsDialog) {
+        event.canGoBack = false; // Impede o comportamento padrão de voltar
+        setShowCardDetailsDialog(false); // Fecha o diálogo
+      } else if (showAddCardDialog) {
+        event.canGoBack = false;
+        setShowAddCardDialog(false);
+      } else if (showDeleteCardDialog) {
+        event.canGoBack = false;
+        setShowDeleteCardDialog(false);
+      } else if (showAddListDialog) {
+        event.canGoBack = false;
+        setShowAddListDialog(false);
+      } else if (showEditListDialog) {
+        event.canGoBack = false;
+        setShowEditListDialog(false);
+      } else if (showDeleteListDialog) {
+        event.canGoBack = false;
+        setShowDeleteListDialog(false);
+      }
+      // Se nenhum diálogo estiver aberto, o comportamento padrão de voltar ocorrerá
+    });
+
+    return () => {
+      listener.remove();
+    };
+  }, [
+    showCardDetailsDialog, 
+    showAddCardDialog, 
+    showDeleteCardDialog, 
+    showAddListDialog, 
+    showEditListDialog, 
+    showDeleteListDialog
+  ]);
+
   // Renderização dos botões com estados de carregamento
   const renderizarBotaoNovaLista = () => (
     <Button 
@@ -1550,7 +1966,7 @@ const PendenciasObra = () => {
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1 className="text-2xl font-bold">Pendências: {obraNome}</h1>
+          <h1 className="text-2xl font-bold">Pendências: {obra?.nome || ''}</h1>
         </div>
         <div className="flex items-center gap-2">
           <Button 
@@ -1578,211 +1994,248 @@ const PendenciasObra = () => {
       ) : (
         <div ref={boardRef} className="w-full">
           <DragDropContext
-            onDragEnd={handleDragEnd}
-            enableDefaultSensors={false}
+            onDragStart={() => {
+              isDraggingCardRef.current = true;
+              if (navigator.vibrate) navigator.vibrate(50); // Feedback tátil ao iniciar arrasto
+            }}
+            onDragEnd={(result) => {
+              handleDragEnd(result);
+              // Pequeno timeout para garantir que o onClick não seja disparado imediatamente após o drop
+              setTimeout(() => {
+                isDraggingCardRef.current = false;
+              }, 150); 
+            }}
+            enableDefaultSensors={true} // Usar sensores padrão da biblioteca
           >
-            <DndSensors>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {board?.lists.map((lista) => (
-                  <Droppable key={lista.id} droppableId={lista.id.toString()}>
-                    {(provided, snapshot) => (
-                      <div
-                        ref={provided.innerRef}
-                        {...provided.droppableProps}
-                        className={`bg-muted/30 rounded-lg p-4 min-h-[200px] ${
-                          snapshot.isDraggingOver ? 'bg-muted/50' : ''
-                        }`}
-                      >
-                        <div className="flex justify-between items-center mb-4">
-                          <h2 className="text-lg font-semibold">{lista.title || (lista as any).nome}</h2>
-                          <div className="flex items-center gap-2">
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              onClick={() => handleAddCard(lista)}
-                              title="Adicionar Card"
-                            >
-                              <Plus className="h-5 w-5" />
-                            </Button>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon">
-                                  <MoreHorizontal className="h-5 w-5" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleEditList(lista)}>
-                                  <Edit className="h-4 w-4 mr-2" />
-                                  Editar Seção
-                                </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  onClick={() => handleDeleteList(lista)}
-                                  className="text-red-600"
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Excluir Seção
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </div>
-                        
-                        <div className="space-y-3">
-                          {lista.cards.map((card, index) => (
-                            <Draggable
-                              key={card.id}
-                              draggableId={card.id.toString()}
-                              index={index}
-                            >
-                              {(provided, snapshot) => (
-                                <div
-                                  ref={provided.innerRef}
-                                  {...provided.draggableProps}
-                                  {...provided.dragHandleProps}
-                                  data-drag-handle
-                                  className={`touch-none ${
-                                    snapshot.isDragging ? 'opacity-50' : ''
-                                  }`}
-                                >
-                                  <Card 
-                                    className={`shadow-sm hover:shadow-md transition-all ${
-                                      snapshot.isDragging
-                                        ? 'shadow-lg ring-2 ring-primary'
-                                        : ''
-                                    }`}
-                                    onClick={() => handleViewCardDetails(card)}
-                                  >
-                                    <CardHeader className="p-4 pb-2">
-                                      <CardTitle className="text-base">{card.title}</CardTitle>
-                                    </CardHeader>
-                                    
-                                    {card.description && (
-                                      <CardContent className="p-4 pt-0 pb-2">
-                                        <p className="text-sm text-muted-foreground line-clamp-3">{card.description}</p>
-                                      </CardContent>
-                                    )}
-                                    
-                                    <CardFooter className="p-4 pt-2 flex flex-wrap gap-2 justify-between">
-                                      <div className="flex flex-wrap gap-2">
-                                        {card.due_date && (
-                                          <Badge variant="outline" className="flex items-center gap-1 text-xs">
-                                            <Clock className="h-3 w-3" />
-                                            {formatarData(card.due_date)}
-                                          </Badge>
-                                        )}
-                                        
-                                        {renderizarLabels(card.labels)}
-                                        
-                                        {card.checklists && card.checklists.length > 0 && (
-                                          <Badge variant="outline" className="flex items-center gap-1 text-xs">
-                                            <CheckSquare className="h-3 w-3" />
-                                            {card.checklists.reduce((total, checklist) => 
-                                              total + checklist.items.filter(item => item.checked).length, 0
-                                            )} / {card.checklists.reduce((total, checklist) => 
-                                              total + checklist.items.length, 0
-                                            )}
-                                          </Badge>
-                                        )}
-                                      </div>
-                                      
-                                      <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                                        <Button 
-                                          variant="ghost" 
-                                          size="icon" 
-                                          className="h-7 w-7" 
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDeleteCard(card);
-                                          }}
-                                        >
-                                          <Trash2 className="h-3.5 w-3.5" />
-                                        </Button>
-                                      </div>
-                                    </CardFooter>
-                                  </Card>
-                                </div>
-                              )}
-                            </Draggable>
-                          ))}
-                          {provided.placeholder}
-                          {lista.cards.length === 0 && (
-                            <div className="text-center py-4 text-muted-foreground text-sm">
-                              Nenhum card nesta seção
-                            </div>
-                          )}
+            {/* Removido o <DndSensors> customizado */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {board?.lists.map((lista) => (
+                <Droppable key={lista.id} droppableId={lista.id.toString()}>
+                  {(providedDroppable, snapshotDroppable) => (
+                    <div
+                      ref={providedDroppable.innerRef}
+                      {...providedDroppable.droppableProps}
+                      className={`bg-muted/30 rounded-lg p-4 min-h-[200px] ${snapshotDroppable.isDraggingOver ? 'bg-muted/50' : ''}`}
+                    >
+                      <div className="flex justify-between items-center mb-4">
+                        {/* Título da Lista/Seção - Não será editável in-place aqui, mas sim via diálogo */}
+                        <h2 className="text-lg font-semibold truncate" title={lista.title || (lista as any).nome}>
+                          {lista.title || (lista as any).nome}
+                        </h2>
+                        <div className="flex items-center gap-2">
+                          <Button variant="ghost" size="icon" onClick={() => handleAddCard(lista)} title="Adicionar Card">
+                            <Plus className="h-5 w-5" />
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon"><MoreHorizontal className="h-5 w-5" /></Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleOpenEditListDialog(lista)}>
+                                <Edit className="h-4 w-4 mr-2" />
+                                Editar Seção
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleDeleteList(lista)} className="text-red-600">
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Excluir Seção
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </div>
-                    )}
-                  </Droppable>
-                ))}
-              </div>
-            </DndSensors>
+                      
+                      <div className="space-y-3">
+                        {lista.cards.map((card, index) => (
+                          <Draggable key={card.id} draggableId={card.id.toString()} index={index}>
+                            {(providedDraggableItem, snapshotDraggableItem) => (
+                              <div // Este é o elemento que será realmente movido pelo Draggable
+                                ref={providedDraggableItem.innerRef}
+                                {...providedDraggableItem.draggableProps} 
+                                // dragHandleProps será aplicado ao ícone específico
+                                className={`cursor-default ${snapshotDraggableItem.isDragging ? 'opacity-70 z-50' : ''}`}
+                                onClick={() => {
+                                  // Só abre detalhes se não estiver arrastando E se o clique não foi para iniciar um arrasto
+                                  if (!isDraggingCardRef.current && !snapshotDraggableItem.isDragging) {
+                                    handleViewCardDetails(card);
+                                  }
+                                }}
+                              >
+                                <Card 
+                                  className={`shadow-sm hover:shadow-md transition-all relative
+                                    ${snapshotDraggableItem.isDragging ? 'shadow-lg ring-2 ring-primary bg-background/95' : ''}
+                                    ${(card as any)._justMoved ? 'animate-pulse shadow-md ring-1 ring-primary/40 bg-primary/5' : ''}`}
+                                >
+                                  {/* Ícone de arrastar com dragHandleProps */}
+                                  <div 
+                                    {...providedDraggableItem.dragHandleProps} // Aplicar aqui!
+                                    className="absolute top-1 right-1 w-8 h-8 p-1 rounded-full bg-slate-200/50 hover:bg-slate-300/70 flex items-center justify-center cursor-grab opacity-50 hover:opacity-100 z-20"
+                                    title="Arrastar card"
+                                    onClick={(e) => e.stopPropagation()} // Impede que o clique aqui abra o card
+                                    onTouchStart={(e) => e.stopPropagation()} // Importante para priorizar o drag handle no touch
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <circle cx="9" cy="5.5" r="1" /> <circle cx="9" cy="12" r="1" /> <circle cx="9" cy="18.5" r="1" />
+                                      <circle cx="15" cy="5.5" r="1" /> <circle cx="15" cy="12" r="1" /> <circle cx="15" cy="18.5" r="1" />
+                                    </svg>
+                                  </div>
+                                  
+                                  {/* Conteúdo do Card */}
+                                  <CardContent className="p-3">
+                                    {/* Título do card */}
+                                    <h3 className="font-medium text-sm mb-1">{card.title}</h3>
+                                    
+                                    {/* Descrição do card (se existir) */}
+                                    {card.description && (
+                                      <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
+                                        {card.description}
+                                      </p>
+                                    )}
+                                    
+                                    {/* Footer com metadados */}
+                                    <div className="flex items-center justify-between text-xs text-muted-foreground mt-2 mb-2">
+                                      {/* Data de vencimento */}
+                                      {card.due_date && (
+                                        <div className="flex items-center">
+                                          <Clock className="w-3 h-3 mr-1" />
+                                          {formatarData(card.due_date)}
+                                        </div>
+                                      )}
+                                      
+                                      {/* Contadores */}
+                                      <div className="flex items-center gap-2">
+                                        {/* Contagem de checklists */}
+                                        {card.checklists && card.checklists.length > 0 && (
+                                          <div className="flex items-center">
+                                            <CheckSquare className="w-3 h-3 mr-1" />
+                                            {card.checklists.reduce((total, cl) => total + (cl.items?.filter(item => item.checked)?.length || 0), 0)}/
+                                            {card.checklists.reduce((total, cl) => total + (cl.items?.length || 0), 0)}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                    
+                                    {/* Etiquetas do card (movidas para o final) */}
+                                    {card.labels && card.labels.length > 0 && (
+                                      <div className="flex flex-wrap gap-1 mt-1">
+                                        {card.labels.map((label, labelIndex) => {
+                                          let labelTitle = '';
+                                          let labelClass = '';
+                                          
+                                          // Determinar o título da etiqueta
+                                          if (typeof label === 'string') {
+                                            labelTitle = label;
+                                            labelClass = 'bg-gray-500 text-white';
+                                            
+                                            // Aplicar cores com base no nome
+                                            if (label.toLowerCase().includes('urgente')) 
+                                              labelClass = 'bg-red-500 text-white';
+                                            else if (label.toLowerCase().includes('fazendo')) 
+                                              labelClass = 'bg-yellow-500 text-white';
+                                            else if (label.toLowerCase().includes('concluído') || label.toLowerCase().includes('concluido')) 
+                                              labelClass = 'bg-green-500 text-white';
+                                          } else {
+                                            labelTitle = label.title || '';
+                                            
+                                            // Cores específicas para cada tipo de etiqueta
+                                            if (label.color) {
+                                              // Mapear cores hexadecimais/nomes para classes do Tailwind
+                                              if (label.color === 'green' || labelTitle.toLowerCase().includes('concluído') || labelTitle.toLowerCase().includes('concluido'))
+                                                labelClass = 'bg-green-500 text-white';
+                                              else if (label.color === 'yellow' || labelTitle.toLowerCase().includes('fazendo'))
+                                                labelClass = 'bg-yellow-500 text-white';
+                                              else if (label.color === 'red' || labelTitle.toLowerCase().includes('urgente'))
+                                                labelClass = 'bg-red-500 text-white';
+                                              else if (label.color === 'blue')
+                                                labelClass = 'bg-blue-500 text-white';
+                                              else
+                                                labelClass = 'bg-gray-500 text-white';
+                                            } else {
+                                              labelClass = 'bg-gray-500 text-white';
+                                            }
+                                          }
+                                          
+                                          return (
+                                            <Badge 
+                                              key={labelIndex}
+                                              className={`text-xs ${labelClass}`}
+                                            >
+                                              {labelTitle}
+                                            </Badge>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </CardContent>
+                                </Card>
+                              </div>
+                            )}
+                          </Draggable>
+                        ))}
+                        {providedDroppable.placeholder}
+                      </div>
+                    </div>
+                  )}
+                </Droppable>
+              ))}
+            </div>
+            {/* Fim do <DndSensors> wrapper (se estivesse usando) */}
           </DragDropContext>
         </div>
       )}
 
-      {/* Dialog para adicionar seção */}
+      {/* DIÁLOGOS */}
+      {/* Dialog para adicionar seção (Nova Lista) */}
       <Dialog open={showAddListDialog} onOpenChange={setShowAddListDialog}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Adicionar Nova Seção</DialogTitle>
-          </DialogHeader>
-          
+          <DialogHeader><DialogTitle>Adicionar Nova Seção</DialogTitle></DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="list-name" className="text-sm font-medium">Nome da Seção</Label>
+              <Label htmlFor="new-list-name">Nome da Seção</Label>
               <Input
-                id="list-name"
-                value={novaListaNome}
-                onChange={(e) => setNovaListaNome(e.target.value)}
-                onBlur={(e) => setNovaListaNome(capitalizarPrimeiraLetra(e.target.value))}
+                id="new-list-name"
+                value={valorInputNomeLista} // Usar valorInputNomeLista
+                onChange={(e) => setValorInputNomeLista(e.target.value)} // Corrigido para novoListaNome
+                onBlur={(e) => setValorInputNomeLista(capitalizarPrimeiraLetra(e.target.value))} // Corrigido para novoListaNome
                 placeholder="Nome da seção"
-                spellCheck="true"
-                autoCorrect="on"
-                autoCapitalize="sentences"
-                lang="pt-BR"
+                spellCheck="true" autoCorrect="on" autoCapitalize="sentences" lang="pt-BR"
               />
             </div>
           </div>
-          
           <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancelar</Button>
-            </DialogClose>
-            {renderizarBotaoSalvarLista()}
+            <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
+            {renderizarBotaoSalvarLista()} 
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Dialog para editar seção */}
-      <Dialog open={showEditListDialog} onOpenChange={setShowEditListDialog}>
+      {/* Dialog para editar seção (Lista Existente) */}
+      <Dialog open={showEditListDialog} onOpenChange={(open) => { 
+        if(!open) { 
+          setListaAtual(null); 
+          setValorInputNomeLista('');
+        }
+        setShowEditListDialog(open);
+      }}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Editar Seção</DialogTitle>
-          </DialogHeader>
-          
+          <DialogHeader><DialogTitle>Editar Seção</DialogTitle></DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="edit-list-name" className="text-sm font-medium">Nome da Seção</Label>
+              <Label htmlFor="edit-list-name">Nome da Seção</Label>
               <Input
                 id="edit-list-name"
-                value={novaListaNome}
-                onChange={(e) => setNovaListaNome(e.target.value)}
-                onBlur={(e) => setNovaListaNome(capitalizarPrimeiraLetra(e.target.value))}
+                value={valorInputNomeLista} // Usar valorInputNomeLista
+                onChange={(e) => setValorInputNomeLista(e.target.value)}
+                onBlur={(e) => setValorInputNomeLista(capitalizarPrimeiraLetra(e.target.value))}
                 placeholder="Nome da seção"
-                spellCheck="true"
-                autoCorrect="on"
-                autoCapitalize="sentences"
-                lang="pt-BR"
+                spellCheck="true" autoCorrect="on" autoCapitalize="sentences" lang="pt-BR"
               />
             </div>
           </div>
-          
           <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancelar</Button>
-            </DialogClose>
-            <Button onClick={handleSaveEditList}>Salvar</Button>
+            <Button variant="outline" onClick={handleCancelEditList}>Cancelar</Button>
+            <Button onClick={handleSaveEditListDialog} disabled={renomearListaMutation.isPending}>
+              {renomearListaMutation.isPending ? 'Salvando...' : 'Salvar'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1790,133 +2243,143 @@ const PendenciasObra = () => {
       {/* Dialog para confirmar exclusão de seção */}
       <Dialog open={showDeleteListDialog} onOpenChange={setShowDeleteListDialog}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Confirmar Exclusão</DialogTitle>
-          </DialogHeader>
-          
+          <DialogHeader><DialogTitle>Excluir Seção</DialogTitle></DialogHeader>
           <div className="py-4">
-            <p>Tem certeza que deseja excluir a seção "{listaAtual?.title || (listaAtual as any)?.nome}"?</p>
-            <p className="text-sm text-muted-foreground mt-2">Esta ação excluirá todos os cards desta seção e não pode ser desfeita.</p>
+            <p>Tem certeza que deseja excluir a seção "{listaAtual?.title}"?</p>
+            <p className="text-sm text-muted-foreground mt-2">Todos os cards desta seção também serão excluídos.</p>
           </div>
-          
           <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancelar</Button>
-            </DialogClose>
-            <Button variant="destructive" onClick={handleConfirmDeleteList}>Excluir</Button>
+            <Button variant="outline" onClick={() => setShowDeleteListDialog(false)}>Cancelar</Button>
+            <Button variant="destructive" onClick={handleConfirmDeleteList} disabled={excluirListaMutation.isPending}>
+              {excluirListaMutation.isPending ? 'Excluindo...' : 'Excluir'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
+      
       {/* Dialog para adicionar card */}
       <Dialog open={showAddCardDialog} onOpenChange={setShowAddCardDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Adicionar Novo Card</DialogTitle>
-          </DialogHeader>
-          
+        <DialogContent>
+          <DialogHeader><DialogTitle>Adicionar Card</DialogTitle></DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="title" className="text-sm font-medium">Título</Label>
+              <Label htmlFor="card-title">Título</Label>
               <Input
-                id="title"
+                id="card-title"
                 value={novoCard.title}
                 onChange={(e) => setNovoCard({...novoCard, title: e.target.value})}
                 onBlur={(e) => setNovoCard({...novoCard, title: capitalizarPrimeiraLetra(e.target.value)})}
                 placeholder="Título do card"
-                spellCheck="true"
-                autoCorrect="on"
+                spellCheck="true" 
+                autoCorrect="on" 
                 autoCapitalize="sentences"
                 lang="pt-BR"
               />
             </div>
+            
             <div className="space-y-2">
-              <Label htmlFor="description" className="text-sm font-medium">Descrição</Label>
+              <Label htmlFor="card-description">Descrição</Label>
               <Textarea
-                id="description"
+                id="card-description"
                 value={novoCard.description}
                 onChange={(e) => setNovoCard({...novoCard, description: e.target.value})}
                 onBlur={(e) => setNovoCard({...novoCard, description: capitalizarPrimeiraLetra(e.target.value)})}
-                placeholder="Descrição do card"
-                spellCheck="true"
-                autoCorrect="on"
+                placeholder="Descrição (opcional)"
+                spellCheck="true" 
+                autoCorrect="on" 
                 autoCapitalize="sentences"
                 lang="pt-BR"
-                className="min-h-[100px]"
               />
             </div>
+            
+            <div className="space-y-2">
+              <Label>Etiquetas</Label>
+              <div className="flex flex-wrap gap-2">
+                {
+                  // Filtrar etiquetas duplicadas usando IDs únicos
+                  etiquetasDisponiveis
+                    .filter((etiqueta, index, self) => 
+                      index === self.findIndex(e => e.id === etiqueta.id)
+                    )
+                    .map((etiqueta) => {
+                      const isSelected = novoCard.labels.includes(etiqueta.title);
+                      return (
+                        <Badge 
+                          key={etiqueta.id}
+                          variant={isSelected ? "default" : "outline"}
+                          className="cursor-pointer"
+                          style={{
+                            backgroundColor: isSelected ? etiqueta.color : 'transparent',
+                            color: isSelected ? 'white' : etiqueta.color,
+                            borderColor: etiqueta.color
+                          }}
+                          onClick={() => handleToggleLabel(etiqueta.title)}
+                        >
+                          {etiqueta.title}
+                        </Badge>
+                      );
+                    })
+                }
+              </div>
+            </div>
           </div>
-          
           <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancelar</Button>
-            </DialogClose>
-            <Button onClick={handleSaveNewCard}>Salvar</Button>
+            <Button variant="outline" onClick={() => setShowAddCardDialog(false)}>Cancelar</Button>
+            <Button onClick={handleSaveNewCard} disabled={criarCardMutation.isPending}>
+              {criarCardMutation.isPending ? 'Salvando...' : 'Salvar'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Dialog para confirmar exclusão */}
+      
+      {/* Dialog para confirmar exclusão de card */}
       <Dialog open={showDeleteCardDialog} onOpenChange={setShowDeleteCardDialog}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Confirmar Exclusão</DialogTitle>
-          </DialogHeader>
-          
+          <DialogHeader><DialogTitle>Excluir Card</DialogTitle></DialogHeader>
           <div className="py-4">
             <p>Tem certeza que deseja excluir o card "{cardAtual?.title}"?</p>
             <p className="text-sm text-muted-foreground mt-2">Esta ação não pode ser desfeita.</p>
           </div>
-          
           <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancelar</Button>
-            </DialogClose>
-            <Button variant="destructive" onClick={handleConfirmDeleteCard}>Excluir</Button>
+            <Button variant="outline" onClick={() => setShowDeleteCardDialog(false)}>Cancelar</Button>
+            <Button variant="destructive" onClick={handleConfirmDeleteCard} disabled={excluirCardMutation.isPending}>
+              {excluirCardMutation.isPending ? 'Excluindo...' : 'Excluir'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Dialog para detalhes do card */}
+      
+      {/* Dialog para detalhes do card - Aqui aplicamos a edição in-place do título */}
       <Dialog open={showCardDetailsDialog} onOpenChange={setShowCardDetailsDialog}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            {editandoTitulo ? (
-              <div className="flex items-center gap-2">
-                <Input
-                  value={novoTitulo}
-                  onChange={(e) => setNovoTitulo(e.target.value)}
-                  className="text-xl font-semibold"
-                  autoFocus
-                />
-                <Button 
-                  variant="ghost" 
-                  size="icon"
-                  onClick={handleSalvarTitulo}
-                >
-                  <Check className="h-4 w-4" />
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  size="icon"
-                  onClick={() => setEditandoTitulo(false)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <DialogTitle className="text-xl">{cardAtual?.title}</DialogTitle>
-                <Button 
-                  variant="ghost" 
-                  size="icon"
-                  onClick={handleEditarTitulo}
-                  className="h-6 w-6"
-                >
-                  <Edit className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            )}
+          <DialogHeader className="border-b pb-3 mb-3 flex items-center justify-between">
+            <div className="flex items-center">
+              {editandoTituloCardId === cardAtual?.id ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={novoTituloCard}
+                    onChange={(e) => setNovoTituloCard(e.target.value)}
+                    className="h-8 font-medium"
+                    autoFocus
+                  />
+                  <Button variant="ghost" size="icon" onClick={handleSalvarTituloCardNoDialogo} className="h-6 w-6">
+                    <Check className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={handleCancelEditTituloCardNoDialogo} className="h-6 w-6">
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <DialogTitle>
+                    {cardAtual?.title}
+                  </DialogTitle>
+                  <Button variant="ghost" size="icon" onClick={handleEditarTituloCardNoDialogo} className="h-6 w-6">
+                    <Edit className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )}
+            </div>
           </DialogHeader>
           
           <div className="space-y-6 py-4">
@@ -1927,6 +2390,59 @@ const PendenciasObra = () => {
                 <p className="text-sm">{formatarData(cardAtual.due_date)}</p>
               </div>
             )}
+            
+            {/* Descrição */}
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <h3 className="text-sm font-medium">Descrição</h3>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={handleEditarDescricaoCardNoDialogo} 
+                  className="h-6 w-6"
+                >
+                  <Edit className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              
+              {editandoDescricaoCardId === cardAtual?.id ? (
+                <div className="space-y-2">
+                  <Textarea
+                    value={novaDescricaoCard}
+                    onChange={(e) => setNovaDescricaoCard(e.target.value)}
+                    className="min-h-[100px]"
+                    placeholder="Adicione uma descrição..."
+                    spellCheck="true"
+                    autoCorrect="on"
+                    autoCapitalize="sentences"
+                    lang="pt-BR"
+                  />
+                  <div className="flex justify-end gap-2 mt-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={handleCancelEditDescricaoCardNoDialogo}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      onClick={handleSalvarDescricaoCardNoDialogo}
+                    >
+                      Salvar
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-muted/30 rounded-md p-3">
+                  {cardAtual?.description ? (
+                    <p className="text-sm whitespace-pre-wrap">{cardAtual.description}</p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground italic">Nenhuma descrição</p>
+                  )}
+                </div>
+              )}
+            </div>
             
             {/* Etiquetas */}
             <div className="space-y-2">
@@ -2072,69 +2588,9 @@ const PendenciasObra = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+
+    </div> // Fechamento do container principal
   );
-};
-
-// Componente para customizar os sensores do drag and drop
-const DndSensors = ({ children }: { children: React.ReactNode }) => {
-  useEffect(() => {
-    let pressTimer: NodeJS.Timeout;
-    let isDragging = false;
-    let dragElement: HTMLElement | null = null;
-
-    const handleMouseDown = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      const dragHandle = target.closest('[data-drag-handle]');
-      
-      if (!dragHandle) return;
-      
-      dragElement = dragHandle as HTMLElement;
-      
-      pressTimer = setTimeout(() => {
-        isDragging = true;
-        dragElement?.setAttribute('draggable', 'true');
-        
-        // Adiciona feedback visual
-        const card = dragElement.querySelector('.card');
-        if (card) {
-          card.classList.add('ring-2', 'ring-primary', 'opacity-90');
-        }
-      }, 300); // Tempo que precisa segurar para começar o drag
-    };
-
-    const handleMouseUp = () => {
-      clearTimeout(pressTimer);
-      if (dragElement) {
-        dragElement.setAttribute('draggable', 'false');
-        const card = dragElement.querySelector('.card');
-        if (card) {
-          card.classList.remove('ring-2', 'ring-primary', 'opacity-90');
-        }
-      }
-      isDragging = false;
-      dragElement = null;
-    };
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging) {
-        clearTimeout(pressTimer);
-      }
-    };
-
-    document.addEventListener('mousedown', handleMouseDown);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.addEventListener('mousemove', handleMouseMove);
-
-    return () => {
-      document.removeEventListener('mousedown', handleMouseDown);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.removeEventListener('mousemove', handleMouseMove);
-      clearTimeout(pressTimer);
-    };
-  }, []);
-
-  return <>{children}</>;
 };
 
 export default PendenciasObra;

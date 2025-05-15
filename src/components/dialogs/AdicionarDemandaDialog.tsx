@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useId } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -33,9 +33,14 @@ export function AdicionarDemandaDialog({
 }: AdicionarDemandaDialogProps) {
   const [itens, setItens] = useState('');
   const [loading, setLoading] = useState(false);
+  const [useSimpleTextarea, setUseSimpleTextarea] = useState(true);
+  
+  const textareaId = useId();
+  const richTextLabelId = useId();
 
   const enviarNotificacaoLocalNovaDemanda = async (titulo: string) => {
     try {
+      console.log('[AdicionarDemandaDialog] Tentando enviar notificação local.');
       let permStatus = await LocalNotifications.checkPermissions();
       if (permStatus.display !== 'granted') {
         permStatus = await LocalNotifications.requestPermissions();
@@ -54,11 +59,14 @@ export function AdicionarDemandaDialog({
             }
           ]
         });
+        console.log('[AdicionarDemandaDialog] Notificação local agendada.');
       } else {
-        console.warn('Permissão de notificação local negada.');
+        console.warn('[AdicionarDemandaDialog] Permissão de notificação local negada.');
+        toast.warning("Permissão para notificações locais negada.");
       }
     } catch (error) {
-      console.error('Erro ao enviar notificação local de nova demanda:', error);
+      console.error('[AdicionarDemandaDialog] Erro ao enviar notificação local:', error);
+      toast.error("Erro ao tentar enviar notificação local.");
     }
   };
 
@@ -66,14 +74,20 @@ export function AdicionarDemandaDialog({
     try {
       setLoading(true);
 
-      const textoComQuebras = itens
-        .replace(/<\/p>/g, '\n')         
-        .replace(/<[^>]*>/g, '')       
-        .replace(/\n+/g, '\n')         
-        .trim();                      
+      let textoFinal = '';
+      if (useSimpleTextarea) {
+        textoFinal = itens.trim();
+      } else {
+        textoFinal = itens
+          .replace(/<\/p>/g, '\n')         
+          .replace(/<[^>]*>/g, '')       
+          .replace(/\n+/g, '\n')         
+          .trim();
+      }
 
-      if (!textoComQuebras) {
+      if (!textoFinal) {
         toast.error('Digite pelo menos um item para a lista');
+        setLoading(false); 
         return;
       }
 
@@ -90,7 +104,7 @@ export function AdicionarDemandaDialog({
         .insert({
           obra_id: obraId,
           titulo: 'Lista de Demanda',
-          descricao: textoComQuebras,
+          descricao: textoFinal,
           status: 'demanda'
         })
         .select()
@@ -101,10 +115,10 @@ export function AdicionarDemandaDialog({
       const notificationService = NotificationService.getInstance();
       await notificationService.notificarNovaDemanda(
         obraId,
-        textoComQuebras
+        textoFinal
       );
 
-      await enviarNotificacaoLocalNovaDemanda(textoComQuebras);
+      await enviarNotificacaoLocalNovaDemanda(textoFinal);
 
       toast.success('Lista de demanda adicionada com sucesso');
       onDemandaAdicionada();
@@ -118,6 +132,11 @@ export function AdicionarDemandaDialog({
     }
   };
 
+  const toggleEditor = () => {
+    setUseSimpleTextarea(!useSimpleTextarea);
+    setItens('');
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
@@ -129,13 +148,41 @@ export function AdicionarDemandaDialog({
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="itens">Itens da lista (um por linha)</Label>
-            <RichTextEditor
-              value={itens}
-              onChange={setItens}
-              placeholder="Digite os itens da lista, um em cada linha"
-              minHeight="200px"
-            />
+            <div className="flex justify-between items-center">
+              {useSimpleTextarea ? (
+                <Label htmlFor={textareaId}>Itens da lista (um por linha)</Label>
+              ) : (
+                <Label id={richTextLabelId}>Itens da lista (um por linha)</Label>
+              )}
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={toggleEditor} 
+                type="button"
+                className="text-xs"
+              >
+                {useSimpleTextarea ? "Usar editor rico" : "Usar textarea simples"}
+              </Button>
+            </div>
+            
+            {useSimpleTextarea ? (
+              <textarea
+                id={textareaId}
+                value={itens}
+                onChange={(e) => setItens(e.target.value)}
+                placeholder="Digite os itens da lista, um em cada linha"
+                className="w-full min-h-[200px] rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              />
+            ) : (
+              <div aria-labelledby={richTextLabelId}>
+                <RichTextEditor
+                  value={itens}
+                  onChange={setItens}
+                  placeholder="Digite os itens da lista, um em cada linha"
+                  minHeight="200px"
+                />
+              </div>
+            )}
           </div>
         </div>
         <div className="flex justify-end gap-2">
@@ -143,12 +190,14 @@ export function AdicionarDemandaDialog({
             variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={loading}
+            type="button"
           >
             Cancelar
           </Button>
           <Button
             onClick={handleSubmit}
             disabled={loading || !itens.trim()}
+            type="button"
           >
             {loading ? 'Adicionando...' : 'Adicionar'}
           </Button>

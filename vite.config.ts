@@ -1,6 +1,8 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import { Buffer } from 'buffer';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -12,14 +14,30 @@ export default defineConfig({
       usePolling: true
     }
   },
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Adicionando polyfills de Node.js incluindo Buffer
+    nodePolyfills({
+      include: ['buffer', 'process'],
+      globals: {
+        Buffer: true,
+        global: true,
+        process: true,
+      },
+    }),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
   },
   optimizeDeps: {
-    exclude: ['batch', 'emitter']
+    exclude: ['batch', 'emitter'],
+    esbuildOptions: {
+      define: {
+        global: 'globalThis'
+      },
+    },
   },
   build: {
     rollupOptions: {

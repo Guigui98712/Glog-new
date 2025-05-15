@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Plus, Edit, Trash2, FileUp, Tag, CheckSquare, MessageSquare, Paperclip, MoreHorizontal, Check, X, FileText } from 'lucide-react';
+import { ArrowLeft, Plus, Edit, Trash2, FileUp, Tag, CheckSquare, MessageSquare, Paperclip, MoreHorizontal, Check, X, FileText, Download, ExternalLink, Eye } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { buscarObra, atualizarObra } from '@/lib/api';
 import { Input } from '@/components/ui/input';
@@ -47,6 +47,11 @@ import 'filepond/dist/filepond.min.css';
 import FilePondPluginImageExifOrientation from 'filepond-plugin-image-exif-orientation';
 import FilePondPluginImagePreview from 'filepond-plugin-image-preview';
 import 'filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css';
+
+// Importações do Capacitor
+import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 
 // Registrar plugins do FilePond
 registerPlugin(FilePondPluginImageExifOrientation, FilePondPluginImagePreview);
@@ -1022,6 +1027,135 @@ const DefinicoesObra = () => {
     }
   };
 
+  // Função para abrir arquivo (Web: nova aba, Nativo: navegador padrão)
+  const handleOpenFile = async (url: string) => {
+    if (!url) {
+      toast({ title: "Erro", description: "URL do arquivo inválida.", variant: "destructive" });
+      return;
+    }
+    try {
+      // presentationStyle: 'popover' é mais relevante para iOS e InAppBrowser.
+      // Para web, geralmente abre nova aba. Para Android, pode abrir no app do Browser.
+      await Browser.open({ url: url }); 
+    } catch (error) {
+      console.error("Erro ao abrir arquivo:", error);
+      toast({
+        title: "Erro ao Abrir",
+        description: "Não foi possível abrir o link. Verifique se há um navegador ou app compatível.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Função para baixar arquivo (Nativo: pasta Downloads/ExternalStorage, Web: download do navegador)
+  const handleDownloadFile = async (attachmentUrl: string, inputFileName: string) => {
+    if (!attachmentUrl) {
+      toast({ title: "Erro", description: "URL do arquivo inválida para download.", variant: "destructive" });
+      return;
+    }
+    // Sanitização do nome do arquivo para remover caracteres inválidos ou excesso de underscores
+    const fileName = inputFileName.replace(/[^a-zA-Z0-9._~-]+/g, '_').replace(/_{2,}/g, '_');
+    
+    toast({ title: "Download", description: `Iniciando download de ${fileName}...`, duration: 2000 });
+
+    if (Capacitor.isNativePlatform()) {
+      // Lógica de download para plataformas nativas (Android/iOS)
+      try {
+        if (Capacitor.getPlatform() === 'android') {
+          let permStatus = await Filesystem.checkPermissions();
+          if (permStatus.publicStorage !== 'granted') {
+            const permissionResult = await Filesystem.requestPermissions();
+            if (permissionResult.publicStorage !== 'granted') {
+              toast({ title: "Permissão Negada", description: "Permissão de armazenamento é necessária para baixar o arquivo.", variant: "destructive" });
+              return;
+            }
+          }
+        }
+
+        const tempPath = `tmp_${Date.now()}_${fileName}`;
+        const downloadResult = await Filesystem.downloadFile({
+          path: tempPath,
+          url: attachmentUrl,
+          directory: Directory.Cache,
+          responseType: 'blob' 
+        });
+
+        if (!downloadResult || !downloadResult.path) {
+            throw new Error("Falha ao baixar o arquivo para o cache.");
+        }
+        
+        let finalFilePathForToast = fileName;
+        let savedFileUri: string | undefined;
+
+        try {
+            const copyResult = await Filesystem.copy({
+                from: downloadResult.path,
+                to: fileName,
+                directory: Directory.Downloads, 
+            });
+            finalFilePathForToast = `na pasta Downloads como ${fileName}`;
+            savedFileUri = copyResult.uri;
+            console.log('Arquivo salvo em Downloads:', savedFileUri);
+        } catch (e) {
+            console.warn("Não foi possível salvar na pasta Downloads, tentando ExternalStorage:", e);
+            try {
+                const copyResultExternal = await Filesystem.copy({
+                    from: downloadResult.path,
+                    to: fileName, 
+                    directory: Directory.ExternalStorage,
+                });
+                finalFilePathForToast = `no armazenamento externo como ${fileName}`;
+                savedFileUri = copyResultExternal.uri;
+                console.log('Arquivo salvo em ExternalStorage:', savedFileUri);
+            } catch (copyError) {
+                console.error("Erro ao copiar arquivo para armazenamento público:", copyError);
+                toast({ title: "Erro ao Salvar", description: `Falha ao salvar ${fileName} no dispositivo. Verifique as permissões.`, variant: "destructive"});
+                try { await Filesystem.deleteFile({ path: downloadResult.path }); } catch (delErr) { console.warn("Falha ao limpar cache após erro de cópia", delErr);}
+                return;
+            }
+        }
+
+        toast({ title: "Download Concluído", description: `${fileName} salvo ${finalFilePathForToast}.`, duration: 5000});
+
+        try {
+          await Filesystem.deleteFile({ path: downloadResult.path });
+        } catch (deleteError) {
+          console.warn("Erro ao limpar arquivo temporário do cache:", deleteError);
+        }
+
+      } catch (error) {
+        console.error("Erro durante o download nativo:", error);
+        toast({
+          title: "Erro no Download",
+          description: `Não foi possível baixar ${fileName}. ${error instanceof Error ? error.message : 'Verifique a URL e a conexão.'}`, 
+          variant: "destructive"
+        });
+      }
+    } else {
+      // Lógica de download para Web (deixa o navegador lidar)
+      try {
+        const response = await fetch(attachmentUrl);
+        if (!response.ok) throw new Error(`Falha ao buscar o arquivo: ${response.statusText}`);
+        const blob = await response.blob();
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute('download', fileName || 'download');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+        toast({ title: "Download Iniciado", description: `${fileName} deve começar a baixar em seu navegador.`, duration: 3000 });
+      } catch (error) {
+        console.error("Erro durante o download na web:", error);
+        toast({
+          title: "Erro no Download (Web)",
+          description: `Não foi possível baixar ${fileName}. ${error instanceof Error ? error.message : 'Verifique a URL.'}`, 
+          variant: "destructive"
+        });
+      }
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4">
@@ -1607,24 +1741,39 @@ const DefinicoesObra = () => {
                     <div className="space-y-2 pl-7">
                       {cardAtual.attachments.map((attachment, index) => {
                         // Extrair nome do arquivo da URL
-                        const fileName = attachment.split('/').pop() || `Arquivo ${index + 1}`;
+                        const attachmentFileNamePart = attachment.split('/').pop()?.split('?')[0];
+                        const decodedFileName = attachmentFileNamePart ? decodeURIComponent(attachmentFileNamePart) : `Arquivo ${index + 1}`;
                         
                         return (
                           <div key={index} className="flex items-center justify-between bg-gray-50 p-2 rounded-md">
                             <div className="flex items-center gap-2 overflow-hidden">
                               <FileText className="w-4 h-4 flex-shrink-0" />
-                              <span className="text-sm truncate">{fileName}</span>
+                              <span className="text-sm truncate" title={decodedFileName}>
+                                {decodedFileName}
+                              </span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <a 
-                                href={attachment} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="text-blue-600 hover:text-blue-800 text-sm"
-                                onClick={(e) => e.stopPropagation()}
+                              {/* Botão Abrir com ícone Eye */}
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="p-0 h-6 w-6 text-blue-600 hover:text-blue-800"
+                                title="Abrir/Visualizar arquivo"
+                                onClick={() => handleOpenFile(attachment)} 
                               >
-                                Abrir
-                              </a>
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              {/* Botão Baixar */}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="p-0 h-6 w-6 text-green-600 hover:text-green-800"
+                                title="Baixar arquivo"
+                                onClick={() => handleDownloadFile(attachment, decodedFileName)}
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                              {/* Botão Excluir Anexo */}
                               <Button
                                 size="sm"
                                 variant="ghost"
@@ -1634,7 +1783,7 @@ const DefinicoesObra = () => {
                                   handleDeleteAttachment(index);
                                 }}
                               >
-                                <X className="w-4 h-4" />
+                                <X className="w-4 w-4" />
                               </Button>
                             </div>
                           </div>

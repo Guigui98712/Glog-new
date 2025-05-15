@@ -41,7 +41,19 @@ const config: CapacitorConfig = {
     inputStyle: 'TEXT',
     backgroundColor: '#FFFFFF',
     allowBackForward: true,
-    backButtonBehavior: 'history'
+    backButtonBehavior: 'history',
+    webViewSettings: {
+      textZoom: 100,
+      mixedContentMode: 'compatibility',
+      allowFileAccess: true,
+      allowContentAccess: true,
+      usesSpellChecker: true
+    }
+  },
+  copy: {
+    include: [
+      { source: 'public/dictionaries', target: 'dictionaries' }
+    ]
   }
 };
 

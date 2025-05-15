@@ -137,6 +137,19 @@ export const gerarRelatorioSemanalV2 = async (
     const dataInicioObj = parseISO(dataInicio);
     const dataFimObj = parseISO(dataFim);
 
+    // String para armazenar o HTML das observações, para ser inserido no final
+    const observacoesHtml = `
+      ${registros
+        .filter(registro => registro.observacoes?.trim())
+        .map(registro => `
+          <div class="registro-observacoes bg-gray-50 p-3 rounded-md mb-3 italic text-gray-700 text-sm">
+            ${registro.observacoes.replace(/\\n/g, '<br>')}
+          </div>
+        `).join('')}
+      ${registros.filter(registro => registro.observacoes?.trim()).length === 0 ?
+        '<p class="text-sm text-gray-500">Nenhuma observação registrada para o período.</p>' : ''}
+    `;
+
     // Gerar HTML do relatório
     const html = `
       <!DOCTYPE html>
@@ -145,458 +158,209 @@ export const gerarRelatorioSemanalV2 = async (
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Relatório Semanal - ${obra.nome}</title>
+        <script src="https://cdn.tailwindcss.com"></script>
         <style>
           @page {
             margin: 15mm;
             size: A4;
           }
           body {
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            line-height: 1.4;
-            color: #333;
-            margin: 0;
-            padding: 0;
-            background-color: white;
-            font-size: 11pt;
+            font-family: Arial, sans-serif; /* Mantém fonte padrão para impressão */
+            -webkit-print-color-adjust: exact; /* Força impressão de cores */
+            print-color-adjust: exact;
           }
-          .container {
-            max-width: 100%;
-            margin: 0 auto;
+          .print-avoid-break {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
           }
-          h1, h2, h3 {
-            color: #2c3e50;
-            font-weight: 600;
-            margin: 0;
-            padding: 0;
-          }
-          h1 { font-size: 18pt; }
-          h2 { font-size: 16pt; }
-          h3 { 
-            font-size: 14pt;
-            margin-bottom: 8px;
-          }
-          .header {
-            text-align: center;
-            margin-bottom: 15px;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 10px;
-          }
-          .header p {
-            margin: 5px 0 0 0;
-          }
-          .info-block {
-            margin-bottom: 15px;
-            background-color: white;
-            border: 1px solid #eee;
-            border-radius: 4px;
-            padding: 12px;
-            page-break-inside: avoid;
-            break-inside: avoid;
-          }
-          .info-card {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 10px;
-            width: 100%;
-          }
-          .info-item {
-            padding: 8px;
-            border: 1px solid #eee;
-            border-radius: 4px;
-          }
-          .info-label {
-            font-size: 0.9em;
-            color: #6c757d;
-            margin-bottom: 2px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-          }
-          .info-value {
-            font-size: 1em;
-            font-weight: 500;
-          }
-          .atividade-item {
-            margin-bottom: 8px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid #eee;
-          }
-          .registro-descricao {
-            margin: 5px 0;
-            font-size: 0.95em;
-            line-height: 1.3;
-          }
-          .foto-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 10px;
-            margin-top: 10px;
-          }
-          .foto {
-            width: 100%;
-            height: auto;
-            border-radius: 4px;
-          }
+          /* Estilos específicos para impressão que o Tailwind pode não cobrir */
           @media print {
-            body {
-              background-color: white;
+            body { background-color: white !important; }
+            .no-print { display: none; }
+            .info-block, .registro, .foto-container, .presenca-table, .pendencia-item {
+              page-break-inside: avoid;
             }
-            .info-block {
-              break-inside: avoid;
-            }
-            .atividade-item {
-              break-inside: avoid;
-            }
-            .foto-container {
-              break-inside: avoid;
-            }
-          }
-          .etapa-inicio {
-            color: #15803d;
-            background-color: #dcfce7;
-            padding: 8px 12px;
-            margin: 4px 0;
-            font-size: 1.1em;
-            display: flex;
-            align-items: center;
-            justify-content: flex-start;
-            min-height: 40px;
-            line-height: 1.2;
-            border-radius: 4px;
-            font-weight: 500;
-          }
-          .etapa-fim {
-            color: #9a3412;
-            background-color: #ffedd5;
-            padding: 8px 12px;
-            margin: 4px 0;
-            font-size: 1.1em;
-            display: flex;
-            align-items: center;
-            justify-content: flex-start;
-            min-height: 40px;
-            line-height: 1.2;
-            border-radius: 4px;
-            font-weight: 500;
-          }
-          .presenca-table {
-            margin-top: 10px;
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-            display: table;
-            width: 100%;
-          }
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 15px;
-            border-radius: 4px;
-            overflow: hidden;
-            border: 1px solid #eee;
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-          }
-          th, td {
-            border: 1px solid #eee;
-            padding: 8px;
-            text-align: left;
-            font-size: 0.9em;
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-          }
-          .footer {
-            margin-top: 30px;
-            text-align: center;
-            font-size: 0.8em;
-            color: #777;
-            border-top: 1px solid #eee;
-            padding-top: 15px;
-            padding-bottom: 15px;
-            page-break-inside: avoid;
-            break-inside: avoid;
-          }
-          .footer p {
-            margin: 5px 0;
-          }
-          .registro-observacoes {
-            font-style: italic;
-            color: #555;
-            background-color: #f8f9fa;
-            padding: 8px;
-            border-radius: 4px;
-            font-size: 0.9em;
-            margin-bottom: 8px;
-          }
-          .presente {
-            background-color: #d4edda;
-            color: #155724;
-            text-align: center;
-            font-weight: bold;
-          }
-          .ausente {
-            background-color: #f8d7da;
-            color: #721c24;
-            text-align: center;
-            font-weight: bold;
-          }
-          .meio-periodo {
-            background-color: #fff3cd;
-            color: #856404;
-            text-align: center;
-            font-weight: bold;
-          }
-          .pendencia-item {
-            margin-bottom: 8px;
-            padding: 8px;
-            border-radius: 4px;
-            background-color: #f8f9fa;
-          }
-          .pendencia-titulo {
-            font-weight: 600;
-            margin-bottom: 4px;
-          }
-          .pendencia-descricao {
-            font-size: 0.9em;
-            color: #555;
-          }
-          .etapa-andamento {
-            background-color: #e9f5fe;
-            color: #0369a1;
-            padding: 8px 12px;
-            margin: 4px 0;
-            font-size: 1.1em;
-            border-radius: 4px;
-            font-weight: 500;
-          }
-          .data-inicio {
-            font-size: 0.8em;
-            color: #555;
-            margin-top: 2px;
-          }
-          .lista-titulo {
-            font-weight: 600;
-            color: #333;
-            margin-top: 12px;
-            margin-bottom: 8px;
-            padding-bottom: 4px;
-            border-bottom: 1px solid #eee;
           }
         </style>
       </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>Relatório Semanal de Obra</h1>
-            <h2>${obra.nome}</h2>
-            <p>Período: ${format(dataInicioObj, 'dd/MM/yyyy')} a ${format(dataFimObj, 'dd/MM/yyyy')}</p>
+      <body class="bg-gray-100 p-2 md:p-4">
+        <div class="container mx-auto bg-white p-4 md:p-6 rounded-lg shadow-md max-w-4xl print-avoid-break">
+          <div class="header text-center mb-6">
+            <h1 class="text-2xl md:text-3xl font-bold text-gray-800">${obra.nome}</h1>
+            <p class="text-lg md:text-xl text-gray-600">Relatório Semanal</p>
+            <p class="text-sm text-gray-500">${format(parseISO(dataInicio), 'dd/MM/yyyy')} a ${format(parseISO(dataFim), 'dd/MM/yyyy')}</p>
           </div>
 
-          <div class="content">
-            <div class="info-block">
-              <div class="info-card">
-                <div class="info-item">
-                  <div class="info-label">ENDEREÇO</div>
-                  <div class="info-value">${obra.endereco || 'Não informado'}</div>
-                </div>
-                <div class="info-item">
-                  <div class="info-label">RESPONSÁVEL</div>
-                  <div class="info-value">${obra.responsavel || 'Não informado'}</div>
-                </div>
-                <div class="info-item">
-                  <div class="info-label">DATA DE INÍCIO</div>
-                  <div class="info-value">${primeiroRegistro ? format(parseISO(primeiroRegistro.data), 'dd/MM/yyyy') : 'Não informado'}</div>
-                </div>
-                <div class="info-item">
-                  <div class="info-label">PREVISÃO DE TÉRMINO</div>
-                  <div class="info-value">${obra.data_previsao_fim ? format(parseISO(obra.data_previsao_fim), 'MM/yyyy') : 'Não informado'}</div>
-                </div>
-              </div>
-            </div>
+          <!-- Atividades e Etapas -->
+          <div class="info-block mb-6 print-avoid-break">
+            <h3 class="text-lg md:text-xl font-semibold text-gray-700 border-b pb-2 mb-3">Atividades e Etapas</h3>
+            ${registros.length === 0 ? '<p class="text-sm text-gray-500">Nenhum registro de atividade no período.</p>' :
+              registros.map(registro => {
+                const descricaoLinhas = registro.descricao
+                  ? registro.descricao.split('\\n').filter(linha => linha.trim())
+                  : [];
 
-            <div class="info-block">
-              <h3>Atividades Realizadas</h3>
-              <div>
-                ${registros.length > 0 ? 
-                  `<div class="atividades-container">
-                    ${registros.map(registro => {
-                      // Filtrar linhas que não são de etapas
-                      const descricaoLinhas = registro.descricao
-                        .split('\n')
-                        .filter(linha => 
-                          !linha.trim().startsWith('Iniciada a etapa:') && 
-                          !linha.trim().startsWith('Concluída a etapa:')
-                        );
-                      
-                      return `
-                        <div class="atividade-item">
-                          <div class="registro-descricao">
-                            ${descricaoLinhas.join('<br>')}
-                            
-                            ${registro.etapas_iniciadas?.length ? `
-                              <div style="margin-top: 4px">
-                                ${registro.etapas_iniciadas.map(etapa => 
-                                  `<span class="etapa-inicio">Etapa iniciada: ${etapa}</span>`
-                                ).join(', ')}
-                              </div>
-                            ` : ''}
-                            
-                            ${registro.etapas_concluidas?.length ? `
-                              <div style="margin-top: 4px">
-                                ${registro.etapas_concluidas.map(etapa => 
-                                  `<span class="etapa-fim">Etapa concluída: ${etapa}</span>`
-                                ).join(', ')}
-                              </div>
-                            ` : ''}
-                          </div>
-                          
-                          ${registro.fotos?.length ? `
-                            <div class="foto-container">
-                              ${registro.fotos.map(foto => 
-                                `<img src="${foto}" alt="Foto da atividade" class="foto" onerror="this.style.display='none'">`
-                              ).join('')}
-                            </div>
-                          ` : ''}
+                return `
+                  <div class="registro mb-4 pb-4 border-b last:border-b-0 print-avoid-break">
+                    <div class="mt-2 text-sm text-gray-700 space-y-2">
+                      <div>${descricaoLinhas.join('<br>')}</div>
+
+                      ${registro.etapas_iniciadas?.length ? `
+                        <div class="space-y-1">
+                          ${registro.etapas_iniciadas.map(etapa =>
+                            `<div class="flex items-center text-xs md:text-sm bg-green-100 text-green-800 px-3 py-1.5 rounded-md">
+                              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                              <span>Iniciada: ${etapa}</span>
+                             </div>`
+                          ).join('')}
                         </div>
-                      `;
-                    }).join('<hr style="margin: 10px 0; border: 0; border-top: 1px solid #eee;">')}
-                  </div>`
-                : '<p>Nenhuma atividade registrada para o período.</p>'}
-              </div>
-            </div>
+                      ` : ''}
 
-            <div class="info-block">
-              <h3>Etapas em Andamento</h3>
-              ${etapasEmAndamento.length > 0 ? `
-                <div>
-                  ${etapasEmAndamento.map(etapa => `
-                    <div class="etapa-andamento">
-                      ${etapa.nome}
-                      <div class="data-inicio">Iniciada em: ${format(parseISO(etapa.data_inicio), 'dd/MM/yyyy')}</div>
+                      ${registro.etapas_concluidas?.length ? `
+                        <div class="space-y-1">
+                          ${registro.etapas_concluidas.map(etapa =>
+                            `<div class="flex items-center text-xs md:text-sm bg-orange-100 text-orange-800 px-3 py-1.5 rounded-md">
+                              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                              <span>Concluída: ${etapa}</span>
+                             </div>`
+                          ).join('')}
+                        </div>
+                      ` : ''}
                     </div>
-                  `).join('')}
-                </div>
-              ` : '<p>Nenhuma etapa em andamento no momento.</p>'}
-            </div>
 
-            ${incluirPendencias ? `
-            <div class="info-block">
-              <h3>Pendências da Obra</h3>
-              ${pendencias.lists.length > 0 ? `
-                <div>
-                  ${pendencias.lists.map(lista => `
-                    <div class="lista-titulo">${lista.title}</div>
-                    ${lista.cards && lista.cards.length > 0 ? 
+                    ${registro.fotos?.length ? `
+                      <div class="foto-container mt-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 print-avoid-break">
+                        ${registro.fotos.map(foto =>
+                          `<img src="${foto}" alt="Foto da atividade" class="w-full h-auto rounded-md object-cover border" onerror="this.style.display='none'">`
+                        ).join('')}
+                      </div>
+                    ` : ''}
+                  </div>
+                `;
+              }).join('')
+            }
+          </div>
+
+          <!-- Etapas em Andamento -->
+          <div class="info-block mb-6 print-avoid-break">
+            <h3 class="text-lg md:text-xl font-semibold text-gray-700 border-b pb-2 mb-3">Etapas em Andamento</h3>
+            ${etapasEmAndamento.length > 0 ? `
+              <div class="space-y-2">
+                ${etapasEmAndamento.map(etapa => `
+                  <div class="etapa-andamento bg-blue-100 text-blue-800 p-3 rounded-md text-sm">
+                    ${etapa.nome}
+                    <div class="text-xs text-blue-600 mt-1">Iniciada em: ${format(parseISO(etapa.data_inicio), 'dd/MM/yyyy')}</div>
+                  </div>
+                `).join('')}
+              </div>
+            ` : '<p class="text-sm text-gray-500">Nenhuma etapa em andamento no momento.</p>'}
+          </div>
+
+          <!-- Pendências -->
+          ${incluirPendencias ? `
+          <div class="info-block mb-6 print-avoid-break">
+            <h3 class="text-lg md:text-xl font-semibold text-gray-700 border-b pb-2 mb-3">Pendências da Obra</h3>
+            ${pendencias.lists.length > 0 ? `
+              <div class="space-y-4">
+                ${pendencias.lists.map(lista => `
+                  <div>
+                    <div class="lista-titulo font-semibold text-gray-600 mb-2 text-base">${lista.title}</div>
+                    ${lista.cards && lista.cards.length > 0 ?
                       lista.cards
-                        .filter(card => {
-                          // Filtrar cards que NÃO possuem a etiqueta "Feito"
-                          if (!card.labels || card.labels.length === 0) return true;
-                          
-                          // Verificar se alguma das etiquetas é "Feito"
-                          return !card.labels.some(label => {
-                            const labelText = typeof label === 'string' ? label : (label.title || label.toString());
-                            return labelText === 'Feito';
-                          });
-                        })
+                        .filter(card => !card.labels?.some(label => (typeof label === 'string' ? label : (label.title || label.toString())) === 'Feito'))
                         .map(card => `
-                          <div class="pendencia-item">
-                            <div class="pendencia-titulo">${card.title}</div>
-                            ${card.description ? `<div class="pendencia-descricao">${card.description}</div>` : ''}
+                          <div class="pendencia-item bg-gray-50 p-3 rounded-md mb-2 border print-avoid-break">
+                            <div class="pendencia-titulo font-medium text-sm text-gray-800">${card.title}</div>
+                            ${card.description ? `<div class="pendencia-descricao text-xs text-gray-600 mt-1">${card.description.replace(/\\n/g, '<br>')}</div>` : ''}
                             ${card.labels && card.labels.length > 0 ? `
-                              <div style="margin-top: 5px; display: flex; gap: 5px; flex-wrap: wrap;">
+                              <div class="mt-2 flex flex-wrap gap-1.5">
                                 ${card.labels.map(label => {
                                   const labelText = typeof label === 'string' ? label : (label.title || label.toString());
-                                  let bgColor = '';
-                                  
-                                  if (labelText === 'Urgente') bgColor = '#ef4444';
-                                  else if (labelText === 'Fazendo') bgColor = '#eab308';
-                                  else if (labelText === 'Feito') bgColor = '#22c55e';
-                                  
-                                  return `<span style="padding: 2px 6px; border-radius: 4px; font-size: 0.8em; color: white; background-color: ${bgColor || '#6b7280'};">${labelText}</span>`;
+                                  let bgColorClass = 'bg-gray-500';
+                                  if (labelText === 'Urgente') bgColorClass = 'bg-red-500';
+                                  else if (labelText === 'Fazendo') bgColorClass = 'bg-yellow-500';
+                                  else if (labelText === 'Feito') bgColorClass = 'bg-green-500';
+                                  return `<span class="text-xs text-white ${bgColorClass} px-2 py-0.5 rounded-full">${labelText}</span>`;
                                 }).join('')}
                               </div>
                             ` : ''}
                           </div>
-                        `).join('') : '<p>Nenhuma pendência nesta lista.</p>'
+                        `).join('') : '<p class="text-xs text-gray-500">Nenhuma pendência nesta lista.</p>'
                     }
-                  `).join('')}
-                </div>
-              ` : '<p>Nenhuma pendência registrada para esta obra.</p>'}
-            </div>
-            ` : ''}
+                  </div>
+                `).join('')}
+              </div>
+            ` : '<p class="text-sm text-gray-500">Nenhuma pendência registrada para esta obra.</p>'}
+          </div>
+          ` : ''}
 
-            <div class="info-block">
-              <h3>Observações</h3>
-              ${registros
-                .filter(registro => registro.observacoes?.trim())
-                .map(registro => {
-                  return `
-                    <div class="registro-observacoes">
-                      ${registro.observacoes.replace(/\n/g, '<br>')}
-                    </div>
-                  `;
-                }).join('<hr style="margin: 10px 0; border: 0; border-top: 1px solid #eee;">')}
-              ${registros.filter(registro => registro.observacoes?.trim()).length === 0 ? 
-                '<p>Nenhuma observação registrada para o período.</p>' : ''}
-            </div>
-
-            ${incluirPresenca && presencas?.length ? `
-              <div class="info-block">
-                <h3>Controle de Presença</h3>
-                <table class="presenca-table">
-                  <tr>
-                    <th>Funcionário</th>
-                    ${(() => {
-                      // Obter as datas da semana (segunda a sexta)
-                      const diasUteis = [];
-                      const inicioSemana = parseISO(dataInicio);
-                      
-                      // Adicionar dias de segunda (índice 1) a sexta (índice 5)
-                      for (let i = 0; i < 5; i++) {
-                        const dia = new Date(inicioSemana);
-                        dia.setDate(inicioSemana.getDate() + i);
-                        diasUteis.push(format(dia, 'yyyy-MM-dd'));
-                      }
-                      
-                      return diasUteis.map(data => {
-                        const dataObj = parseISO(data);
-                        return `<th>${format(dataObj, 'EEE, dd/MM', { locale: ptBR })}</th>`;
-                      }).join('');
-                    })()}
-                  </tr>
-                  ${presencas.map((funcionario: any) => `
-                    <tr>
-                      <td>${funcionario.nome}</td>
+          <!-- Controle de Presença -->
+          ${incluirPresenca && presencas?.length ? `
+            <div class="info-block mb-6 print-avoid-break">
+              <h3 class="text-lg md:text-xl font-semibold text-gray-700 border-b pb-2 mb-3">Controle de Presença</h3>
+              <div class="overflow-x-auto">
+                <table class="presenca-table w-full border-collapse border border-gray-200 text-xs md:text-sm print-avoid-break">
+                  <thead>
+                    <tr class="bg-gray-100">
+                      <th class="border border-gray-200 p-2 text-left font-medium text-gray-600">Funcionário</th>
                       ${(() => {
-                        // Obter as datas da semana (segunda a sexta)
                         const diasUteis = [];
                         const inicioSemana = parseISO(dataInicio);
-                        
-                        // Adicionar dias de segunda (índice 1) a sexta (índice 5)
                         for (let i = 0; i < 5; i++) {
                           const dia = new Date(inicioSemana);
                           dia.setDate(inicioSemana.getDate() + i);
                           diasUteis.push(format(dia, 'yyyy-MM-dd'));
                         }
-                        
-                        return diasUteis.map(data => {
-                          const presenca = funcionario.presencas[data];
-                          if (presenca === 1) {
-                            return `<td class="presente">✓</td>`;
-                          } else if (presenca === 0.5) {
-                            return `<td class="meio-periodo">½</td>`;
-                          } else {
-                            return `<td class="ausente">✗</td>`;
-                          }
-                        }).join('');
+                        return diasUteis.map(data => `
+                          <th class="border border-gray-200 p-2 text-center font-medium text-gray-600 whitespace-nowrap">
+                            ${format(parseISO(data), 'EEE, dd/MM', { locale: ptBR })}
+                          </th>`).join('');
                       })()}
                     </tr>
-                  `).join('')}
+                  </thead>
+                  <tbody>
+                    ${presencas.map((funcionario: any) => `
+                      <tr class="border-b border-gray-200">
+                        <td class="border border-gray-200 p-2 whitespace-nowrap">${funcionario.nome}</td>
+                        ${(() => {
+                          const diasUteis = [];
+                          const inicioSemana = parseISO(dataInicio);
+                          for (let i = 0; i < 5; i++) {
+                            const dia = new Date(inicioSemana);
+                            dia.setDate(inicioSemana.getDate() + i);
+                            diasUteis.push(format(dia, 'yyyy-MM-dd'));
+                          }
+                          return diasUteis.map(data => {
+                            const presenca = funcionario.presencas[data];
+                            let classe = 'bg-red-100 text-red-700';
+                            let texto = '✗';
+                            if (presenca === 1) {
+                              classe = 'bg-green-100 text-green-700';
+                              texto = '✓';
+                            } else if (presenca === 0.5) {
+                              classe = 'bg-yellow-100 text-yellow-700';
+                              texto = '½';
+                            }
+                            return `<td class="border border-gray-200 p-2 text-center font-bold ${classe}">${texto}</td>`;
+                          }).join('');
+                        })()}
+                      </tr>
+                    `).join('')}
+                  </tbody>
                 </table>
               </div>
-            ` : ''}
+            </div>
+          ` : ''}
+
+          <!-- Observações do Período -->
+          <div class="info-block mb-6 print-avoid-break">
+            <h3 class="text-lg md:text-xl font-semibold text-gray-700 border-b pb-2 mb-3">Observações do Período</h3>
+            ${observacoesHtml}
           </div>
         </div>
 
-        <div class="footer">
+        <!-- Footer -->
+        <div class="footer mt-8 text-center text-xs text-gray-500 pt-4 border-t print-avoid-break">
           <p>Relatório gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm")}</p>
           <p>${obra.nome} - Todos os direitos reservados</p>
         </div>

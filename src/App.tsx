@@ -26,6 +26,9 @@ import { DemandaRelatorios } from "./pages/DemandaRelatorios";
 import Projetos from "./pages/Projetos";
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
+import RelatorioViewer from "./pages/RelatorioViewer";
+import TestSpellChecker from "./pages/TestSpellChecker";
+import TestNativeSpellCheck from "./pages/TestNativeSpellCheck";
 
 // Componente para redirecionar com base no estado de autenticação
 const RedirectBasedOnAuth = () => {
@@ -158,6 +161,10 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           
+          {/* Páginas de teste do corretor ortográfico */}
+          <Route path="/test-spellchecker" element={<TestSpellChecker />} />
+          <Route path="/test-native-spellcheck" element={<TestNativeSpellCheck />} />
+          
           {/* Rotas protegidas que requerem autenticação */}
           <Route 
             path="/obras" 
@@ -172,6 +179,7 @@ function App() {
             <Route path=":id/pendencias" element={<PendenciasObra />} />
             <Route path=":id/diario" element={<DiarioObra />} />
             <Route path=":id/relatorios" element={<Relatorios />} />
+            <Route path=":id/relatorios/:relatorioId/view" element={<RelatorioViewer />} />
             <Route path=":id/definicoes" element={<DefinicoesObra />} />
             <Route path=":id/demanda" element={<DemandaObra />} />
             <Route path=":id/demanda/relatorios" element={<DemandaRelatorios />} />

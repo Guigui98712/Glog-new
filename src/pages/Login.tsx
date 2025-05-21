@@ -288,6 +288,7 @@ const Login = () => {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   spellCheck={true}
+                  autoCorrect="on"
                   lang="pt-BR"
                   autoCapitalize="words"
                   inputMode="text"
@@ -308,6 +309,7 @@ const Login = () => {
                 autoComplete="email"
                 autoCapitalize="none"
                 spellCheck="false"
+                autoCorrect="off"
                 disabled={isLoading}
                 className={cn(
                   "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
@@ -324,6 +326,8 @@ const Login = () => {
                 autoComplete={isRegister ? "new-password" : "current-password"}
                 inputMode="text"
                 spellCheck={false}
+                autoCorrect="off"
+                autoCapitalize="none"
                 disabled={isLoading}
                 className="min-h-[44px]"
               />
@@ -338,6 +342,9 @@ const Login = () => {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
+                  spellCheck={false}
+                  autoCorrect="off"
+                  autoCapitalize="none"
                   className="min-h-[44px]"
                 />
               </div>
@@ -417,6 +424,7 @@ const Login = () => {
                 autoComplete="email"
                 autoCapitalize="none"
                 spellCheck="false"
+                autoCorrect="off"
                 disabled={isResetting}
                 placeholder="Digite seu email"
                 className={cn(

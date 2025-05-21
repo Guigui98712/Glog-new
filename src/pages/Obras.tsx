@@ -32,6 +32,8 @@ import {
 } from "@/lib/api";
 import { RegistroDiario } from "@/types/obra";
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 // Interface estendida para incluir o progresso calculado
 interface ObraComProgresso extends Obra {
@@ -58,14 +60,13 @@ const Obras = () => {
   const [error, setError] = useState<string | null>(null);
   const [showDialog, setShowDialog] = useState(false);
 
-  const [novaObra, setNovaObra] = useState({
-    nome: "",
-    endereco: "",
-    custo_previsto: 0,
-    cliente: "",
-    responsavel: "",
-    data_previsao_fim: ""
-  });
+  const [novaObraNome, setNovaObraNome] = useState("");
+  const [novaObraEndereco, setNovaObraEndereco] = useState("");
+  const [novaObraObservacoes, setNovaObraObservacoes] = useState("");
+  const [novaObraCustoPrevisto, setNovaObraCustoPrevisto] = useState(0);
+  const [novaObraCliente, setNovaObraCliente] = useState("");
+  const [novaObraResponsavel, setNovaObraResponsavel] = useState("");
+  const [novaObraDataPrevisaoFim, setNovaObraDataPrevisaoFim] = useState("");
 
   const [obraEmEdicao, setObraEmEdicao] = useState<Obra | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
@@ -162,7 +163,7 @@ const Obras = () => {
   };
 
   const handleNovaObra = async () => {
-    if (!novaObra.nome || !novaObra.endereco || !novaObra.custo_previsto) {
+    if (!novaObraNome || !novaObraEndereco || !novaObraCustoPrevisto) {
       toast({
         title: "Campos obrigatórios",
         description: "Por favor, preencha todos os campos obrigatórios: nome, endereço e custo previsto.",
@@ -173,17 +174,17 @@ const Obras = () => {
 
     try {
       const novaObraData: ObraParaEnvio = {
-        nome: novaObra.nome,
-        endereco: novaObra.endereco,
-        custo_previsto: novaObra.custo_previsto,
+        nome: novaObraNome,
+        endereco: novaObraEndereco,
+        custo_previsto: novaObraCustoPrevisto,
         custo_real: 0,
         progresso: 0,
         status: 'em_andamento' as const,
-        cliente: novaObra.cliente || null,
-        responsavel: novaObra.responsavel || null,
+        cliente: novaObraCliente || null,
+        responsavel: novaObraResponsavel || null,
         logo_url: null,
         data_inicio: null,
-        data_previsao_fim: novaObra.data_previsao_fim ? `${novaObra.data_previsao_fim}-01` : null,
+        data_previsao_fim: novaObraDataPrevisaoFim ? `${novaObraDataPrevisaoFim}-01` : null,
         user_id: null, // Será preenchido automaticamente pelo backend
         trello_board_id: null
       };
@@ -197,19 +198,18 @@ const Obras = () => {
       console.log('[DEBUG] Obras recarregadas após criação:', obrasAtualizadas);
       setObras(obrasAtualizadas || []);
       
-      setNovaObra({ 
-        nome: "", 
-        endereco: "", 
-        custo_previsto: 0, 
-        cliente: "", 
-        responsavel: "", 
-        data_previsao_fim: ""
-      });
+      setNovaObraNome("");
+      setNovaObraEndereco("");
+      setNovaObraObservacoes("");
+      setNovaObraCustoPrevisto(0);
+      setNovaObraCliente("");
+      setNovaObraResponsavel("");
+      setNovaObraDataPrevisaoFim("");
       setShowDialog(false);
       
       toast({
         title: "Obra criada com sucesso! 🏗️",
-        description: `A obra "${novaObra.nome}" foi criada e já está disponível no sistema.`
+        description: `A obra "${novaObraNome}" foi criada e já está disponível no sistema.`
       });
     } catch (error) {
       console.error('Erro ao criar obra:', error);
@@ -445,56 +445,43 @@ const Obras = () => {
           </DialogHeader>
           {obraEmEdicao && (
             <div className="space-y-4 py-4">
-              <div>
-                <label className="text-sm font-medium">Nome da Obra</label>
+              <div className="space-y-2">
+                <Label htmlFor="edit-nome">Nome da Obra</Label>
                 <Input
-                  value={obraEmEdicao.nome}
+                  id="edit-nome"
+                  value={obraEmEdicao?.nome || ''}
                   onChange={(e) => setObraEmEdicao(prev => prev ? { ...prev, nome: e.target.value } : null)}
-                  onBlur={(e) => setObraEmEdicao(prev => prev ? { ...prev, nome: capitalizarPrimeiraLetra(e.target.value) } : null)}
-                  placeholder="Digite o nome da obra"
-                  spellCheck="true"
+                  onBlur={(e) => setObraEmEdicao(prev => prev ? { ...prev, nome: capitalizarPrimeiraLetra(e.target.value)} : null)}
+                  placeholder="Ex: Reforma Apartamento Moema"
+                  spellCheck={true}
                   autoCorrect="on"
                   autoCapitalize="sentences"
-                  lang="pt-BR"
                 />
               </div>
-              <div>
-                <label className="text-sm font-medium">Endereço</label>
+              <div className="space-y-2">
+                <Label htmlFor="edit-endereco">Endereço</Label>
                 <Input
-                  value={obraEmEdicao.endereco}
+                  id="edit-endereco"
+                  value={obraEmEdicao?.endereco || ''}
                   onChange={(e) => setObraEmEdicao(prev => prev ? { ...prev, endereco: e.target.value } : null)}
-                  onBlur={(e) => setObraEmEdicao(prev => prev ? { ...prev, endereco: capitalizarPrimeiraLetra(e.target.value) } : null)}
-                  placeholder="Digite o endereço da obra"
-                  spellCheck="true"
+                  onBlur={(e) => setObraEmEdicao(prev => prev ? { ...prev, endereco: capitalizarPrimeiraLetra(e.target.value)} : null)}
+                  placeholder="Ex: Rua das Palmeiras, 123"
+                  spellCheck={true}
                   autoCorrect="on"
                   autoCapitalize="sentences"
-                  lang="pt-BR"
                 />
               </div>
-              <div>
-                <label className="text-sm font-medium">Cliente</label>
-                <Input
-                  value={obraEmEdicao.cliente || ''}
-                  onChange={(e) => setObraEmEdicao(prev => prev ? { ...prev, cliente: e.target.value } : null)}
-                  onBlur={(e) => setObraEmEdicao(prev => prev ? { ...prev, cliente: capitalizarPrimeiraLetra(e.target.value) } : null)}
-                  placeholder="Digite o nome do cliente"
-                  spellCheck="true"
+              <div className="space-y-2">
+                <Label htmlFor="edit-observacoes">Observações</Label>
+                <Textarea
+                  id="edit-observacoes"
+                  value={obraEmEdicao?.observacoes || ''}
+                  onChange={(e) => setObraEmEdicao(prev => prev ? { ...prev, observacoes: e.target.value } : null)}
+                  onBlur={(e) => setObraEmEdicao(prev => prev ? { ...prev, observacoes: capitalizarPrimeiraLetra(e.target.value)} : null)}
+                  placeholder="Detalhes adicionais sobre a obra"
+                  spellCheck={true}
                   autoCorrect="on"
                   autoCapitalize="sentences"
-                  lang="pt-BR"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Responsável</label>
-                <Input
-                  value={obraEmEdicao.responsavel || ''}
-                  onChange={(e) => setObraEmEdicao(prev => prev ? { ...prev, responsavel: e.target.value } : null)}
-                  onBlur={(e) => setObraEmEdicao(prev => prev ? { ...prev, responsavel: capitalizarPrimeiraLetra(e.target.value) } : null)}
-                  placeholder="Digite o nome do responsável"
-                  spellCheck="true"
-                  autoCorrect="on"
-                  autoCapitalize="sentences"
-                  lang="pt-BR"
                 />
               </div>
               <div className="space-y-2">
@@ -575,47 +562,60 @@ const Obras = () => {
             <DialogTitle>Criar Nova Obra</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div>
-              <label className="text-sm font-medium">Nome da Obra*</label>
+            <div className="space-y-2">
+              <Label htmlFor="nome">Nome da Obra</Label>
               <Input
-                value={novaObra.nome}
-                onChange={(e) => setNovaObra({ ...novaObra, nome: e.target.value })}
-                onBlur={(e) => setNovaObra({ ...novaObra, nome: capitalizarPrimeiraLetra(e.target.value) })}
-                placeholder="Digite o nome da obra"
-                spellCheck="true"
+                id="nome"
+                value={novaObraNome}
+                onChange={(e) => setNovaObraNome(e.target.value)}
+                onBlur={(e) => setNovaObraNome(capitalizarPrimeiraLetra(e.target.value))}
+                placeholder="Ex: Construção Casa Térrea"
+                spellCheck={true}
                 autoCorrect="on"
                 autoCapitalize="sentences"
-                lang="pt-BR"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="endereco">Endereço</Label>
+              <Input
+                id="endereco"
+                value={novaObraEndereco}
+                onChange={(e) => setNovaObraEndereco(e.target.value)}
+                onBlur={(e) => setNovaObraEndereco(capitalizarPrimeiraLetra(e.target.value))}
+                placeholder="Ex: Av. Principal, 456, Bairro Centro"
+                spellCheck={true}
+                autoCorrect="on"
+                autoCapitalize="sentences"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="observacoes">Observações</Label>
+              <Textarea
+                id="observacoes"
+                value={novaObraObservacoes}
+                onChange={(e) => setNovaObraObservacoes(e.target.value)}
+                onBlur={(e) => setNovaObraObservacoes(capitalizarPrimeiraLetra(e.target.value))}
+                placeholder="Informações relevantes sobre a obra"
+                spellCheck={true}
+                autoCorrect="on"
+                autoCapitalize="sentences"
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Endereço*</label>
-              <Input
-                value={novaObra.endereco}
-                onChange={(e) => setNovaObra({ ...novaObra, endereco: e.target.value })}
-                onBlur={(e) => setNovaObra({ ...novaObra, endereco: capitalizarPrimeiraLetra(e.target.value) })}
-                placeholder="Digite o endereço da obra"
-                spellCheck="true"
-                autoCorrect="on"
-                autoCapitalize="sentences"
-                lang="pt-BR"
-              />
-            </div>
-             <div>
               <label className="text-sm font-medium">Custo Previsto*</label>
               <Input
                 type="number"
-                value={novaObra.custo_previsto}
-                onChange={(e) => setNovaObra({ ...novaObra, custo_previsto: parseFloat(e.target.value) || 0 })}
+                value={novaObraCustoPrevisto}
+                onChange={(e) => setNovaObraCustoPrevisto(parseFloat(e.target.value) || 0)}
                 placeholder="Digite o custo previsto"
               />
             </div>
             <div>
               <label className="text-sm font-medium">Cliente</label>
               <Input
-                value={novaObra.cliente}
-                onChange={(e) => setNovaObra({ ...novaObra, cliente: e.target.value })}
-                 onBlur={(e) => setNovaObra({ ...novaObra, cliente: capitalizarPrimeiraLetra(e.target.value) })}
+                value={novaObraCliente}
+                onChange={(e) => setNovaObraCliente(e.target.value)}
+                 onBlur={(e) => setNovaObraCliente(capitalizarPrimeiraLetra(e.target.value))}
                 placeholder="Digite o nome do cliente (opcional)"
                 spellCheck="true"
                 autoCorrect="on"
@@ -626,9 +626,9 @@ const Obras = () => {
             <div>
               <label className="text-sm font-medium">Responsável</label>
               <Input
-                value={novaObra.responsavel}
-                onChange={(e) => setNovaObra({ ...novaObra, responsavel: e.target.value })}
-                onBlur={(e) => setNovaObra({ ...novaObra, responsavel: capitalizarPrimeiraLetra(e.target.value) })}
+                value={novaObraResponsavel}
+                onChange={(e) => setNovaObraResponsavel(e.target.value)}
+                onBlur={(e) => setNovaObraResponsavel(capitalizarPrimeiraLetra(e.target.value))}
                 placeholder="Digite o nome do responsável (opcional)"
                 spellCheck="true"
                 autoCorrect="on"
@@ -640,8 +640,8 @@ const Obras = () => {
               <label className="text-sm font-medium">Previsão de Término (AAAA-MM)</label>
               <Input
                 type="month"
-                value={novaObra.data_previsao_fim}
-                onChange={(e) => setNovaObra({ ...novaObra, data_previsao_fim: e.target.value })}
+                value={novaObraDataPrevisaoFim}
+                onChange={(e) => setNovaObraDataPrevisaoFim(e.target.value)}
               />
             </div>
           </div>

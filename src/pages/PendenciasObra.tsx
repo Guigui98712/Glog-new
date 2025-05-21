@@ -2197,7 +2197,9 @@ const PendenciasObra = () => {
                 onChange={(e) => setValorInputNomeLista(e.target.value)} // Corrigido para novoListaNome
                 onBlur={(e) => setValorInputNomeLista(capitalizarPrimeiraLetra(e.target.value))} // Corrigido para novoListaNome
                 placeholder="Nome da seção"
-                spellCheck="true" autoCorrect="on" autoCapitalize="sentences" lang="pt-BR"
+                spellCheck="true"
+                autoCorrect="on"
+                autoCapitalize="sentences"
               />
             </div>
           </div>
@@ -2227,7 +2229,9 @@ const PendenciasObra = () => {
                 onChange={(e) => setValorInputNomeLista(e.target.value)}
                 onBlur={(e) => setValorInputNomeLista(capitalizarPrimeiraLetra(e.target.value))}
                 placeholder="Nome da seção"
-                spellCheck="true" autoCorrect="on" autoCapitalize="sentences" lang="pt-BR"
+                spellCheck="true"
+                autoCorrect="on"
+                autoCapitalize="sentences"
               />
             </div>
           </div>
@@ -2270,10 +2274,9 @@ const PendenciasObra = () => {
                 onChange={(e) => setNovoCard({...novoCard, title: e.target.value})}
                 onBlur={(e) => setNovoCard({...novoCard, title: capitalizarPrimeiraLetra(e.target.value)})}
                 placeholder="Título do card"
-                spellCheck="true" 
-                autoCorrect="on" 
+                spellCheck="true"
+                autoCorrect="on"
                 autoCapitalize="sentences"
-                lang="pt-BR"
               />
             </div>
             
@@ -2285,10 +2288,9 @@ const PendenciasObra = () => {
                 onChange={(e) => setNovoCard({...novoCard, description: e.target.value})}
                 onBlur={(e) => setNovoCard({...novoCard, description: capitalizarPrimeiraLetra(e.target.value)})}
                 placeholder="Descrição (opcional)"
-                spellCheck="true" 
-                autoCorrect="on" 
+                spellCheck="true"
+                autoCorrect="on"
                 autoCapitalize="sentences"
-                lang="pt-BR"
               />
             </div>
             
@@ -2361,6 +2363,9 @@ const PendenciasObra = () => {
                     onChange={(e) => setNovoTituloCard(e.target.value)}
                     className="h-8 font-medium"
                     autoFocus
+                    spellCheck="true"
+                    autoCorrect="on"
+                    autoCapitalize="sentences"
                   />
                   <Button variant="ghost" size="icon" onClick={handleSalvarTituloCardNoDialogo} className="h-6 w-6">
                     <Check className="h-3.5 w-3.5" />
@@ -2415,7 +2420,6 @@ const PendenciasObra = () => {
                     spellCheck="true"
                     autoCorrect="on"
                     autoCapitalize="sentences"
-                    lang="pt-BR"
                   />
                   <div className="flex justify-end gap-2 mt-2">
                     <Button 
@@ -2485,6 +2489,9 @@ const PendenciasObra = () => {
                     onChange={(e) => setNovoChecklistNome(e.target.value)}
                     placeholder="Nome da checklist"
                     className="flex-1"
+                    spellCheck="true"
+                    autoCorrect="on"
+                    autoCapitalize="sentences"
                   />
                   <Button onClick={handleAddChecklist}>Adicionar</Button>
                 </div>
@@ -2543,10 +2550,9 @@ const PendenciasObra = () => {
                           onBlur={(e) => setNovoChecklistItem(capitalizarPrimeiraLetra(e.target.value))}
                           placeholder="Novo item da checklist"
                           className="flex-1"
-                          spellCheck={true}
+                          spellCheck="true"
                           autoCorrect="on"
                           autoCapitalize="sentences"
-                          lang="pt-BR"
                         />
                         <Button 
                           size="sm"

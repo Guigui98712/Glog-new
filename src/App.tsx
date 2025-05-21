@@ -1,8 +1,8 @@
-import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { useEffect } from "react";
+import React, { useEffect, useState } from "react";
+import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
-import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { useAuth } from "./contexts/AuthContext";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import Obras from "./pages/Obras";
@@ -29,6 +29,49 @@ import { Capacitor } from '@capacitor/core';
 import RelatorioViewer from "./pages/RelatorioViewer";
 import TestSpellChecker from "./pages/TestSpellChecker";
 import TestNativeSpellCheck from "./pages/TestNativeSpellCheck";
+import TestSmartSpellChecker from "./pages/TestSmartSpellChecker";
+import Debug from "./pages/Debug";
+
+// Componente para capturar erros
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("[APP ERROR]", error, errorInfo);
+    this.setState({ errorInfo });
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-gray-100">
+          <div className="p-6 bg-white rounded-lg shadow-lg max-w-md w-full">
+            <h1 className="text-xl font-bold text-red-600 mb-4">Ocorreu um erro na aplicação</h1>
+            <p className="mb-2">Por favor, recarregue a página e tente novamente.</p>
+            <pre className="bg-gray-100 p-3 rounded text-xs overflow-auto max-h-40 mb-4">
+              {this.state.error?.toString()}
+            </pre>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Recarregar Página
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 // Componente para redirecionar com base no estado de autenticação
 const RedirectBasedOnAuth = () => {
@@ -149,9 +192,42 @@ const NavigationManager = () => {
 };
 
 function App() {
+  const [initialized, setInitialized] = useState(false);
+  
+  useEffect(() => {
+    console.log("[APP] Componente App montado");
+    
+    // Verificar conexão com Supabase
+    const checkSupabaseConnection = async () => {
+      try {
+        const { data, error } = await supabase.from('obras').select('id').limit(1);
+        console.log("[APP] Teste de conexão Supabase:", error ? "Falhou" : "Sucesso");
+        if (error) console.error("[APP] Erro de conexão:", error);
+      } catch (e) {
+        console.error("[APP] Erro ao testar conexão Supabase:", e);
+      }
+      setInitialized(true);
+    };
+    
+    checkSupabaseConnection();
+    
+    return () => {
+      console.log("[APP] Componente App desmontado");
+    };
+  }, []);
+  
+  if (!initialized) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        <p className="ml-2">Inicializando aplicação...</p>
+      </div>
+    );
+  }
+
   return (
-    <AuthProvider>
-      <BrowserRouter>
+    <ErrorBoundary>
+      <>
         <NavigationManager />
         <Routes>
           {/* Redirecionar a rota raiz com base no estado de autenticação */}
@@ -160,10 +236,12 @@ function App() {
           {/* Rotas públicas */}
           <Route path="/login" element={<Login />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/debug" element={<Debug />} />
           
           {/* Páginas de teste do corretor ortográfico */}
           <Route path="/test-spellchecker" element={<TestSpellChecker />} />
           <Route path="/test-native-spellcheck" element={<TestNativeSpellCheck />} />
+          <Route path="/test-smart-spellchecker" element={<TestSmartSpellChecker />} />
           
           {/* Rotas protegidas que requerem autenticação */}
           <Route 
@@ -248,8 +326,8 @@ function App() {
           <Route path="*" element={<Navigate to="/404" replace />} />
         </Routes>
         <Toaster />
-      </BrowserRouter>
-    </AuthProvider>
+      </>
+    </ErrorBoundary>
   );
 }
 

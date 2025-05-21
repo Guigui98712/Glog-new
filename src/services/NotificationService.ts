@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import { messaging } from "../firebase-config";
 import { initializeApp } from 'firebase/app';
+import NotificationDBService from './NotificationDBService';
 
 class NotificationService {
   private static instance: NotificationService;
@@ -30,15 +31,64 @@ class NotificationService {
     return data;
   }
 
+  // Método para obter os IDs de todos os membros de uma obra
+  private async getMembrosObra(obraId: number) {
+    try {
+      // Buscar o responsável da obra
+      const responsavelData = await this.getResponsavelObra(obraId);
+      const responsavelId = responsavelData?.responsavel_id;
+      
+      // Buscar os membros da equipe da obra
+      const { data: membrosEquipe, error } = await supabase
+        .from('obra_membros')
+        .select('user_id')
+        .eq('obra_id', obraId);
+        
+      if (error) throw error;
+      
+      // Criar um conjunto único de IDs de usuário (sem duplicatas)
+      const membrosIds = new Set<string>();
+      
+      // Adicionar o responsável se existir
+      if (responsavelId) membrosIds.add(responsavelId);
+      
+      // Adicionar os membros da equipe
+      if (membrosEquipe) {
+        membrosEquipe.forEach(membro => membrosIds.add(membro.user_id));
+      }
+      
+      return Array.from(membrosIds);
+    } catch (error) {
+      console.error('Erro ao obter membros da obra:', error);
+      return [];
+    }
+  }
+
   public async notificarNovaDemanda(obraId: number, demandaDescricao: string) {
     try {
-    const obraInfo = await this.getResponsavelObra(obraId);
-    if (obraInfo && obraInfo.responsavel_id) {
-        await this.sendNotification(
-        'Nova Demanda Adicionada',
-        `Obra: ${obraInfo.nome} - Uma nova demanda foi adicionada: ${demandaDescricao}`,
-        obraInfo.responsavel_id
+      const obraInfo = await this.getResponsavelObra(obraId);
+      const membrosIds = await this.getMembrosObra(obraId);
+      
+      // Criar notificações no banco de dados
+      const notificationDBService = NotificationDBService.getInstance();
+      await notificationDBService.createMultipleNotifications(
+        membrosIds,
+        {
+          title: 'Nova Demanda Adicionada',
+          message: `Obra: ${obraInfo?.nome} - Uma nova demanda foi adicionada: ${demandaDescricao}`,
+          obra_id: obraId,
+          type: 'info',
+          source: 'demanda'
+        }
       );
+      
+      // Enviar notificação push para todos os membros da obra
+      for (const userId of membrosIds) {
+        await this.sendNotification(
+          'Nova Demanda Adicionada',
+          `Obra: ${obraInfo?.nome} - Uma nova demanda foi adicionada: ${demandaDescricao}`,
+          userId
+        );
       }
     } catch (error) {
       console.error('Erro ao enviar notificação de nova demanda:', error);
@@ -47,13 +97,29 @@ class NotificationService {
 
   public async notificarDemandaParaPedido(obraId: number, demandaDescricao: string) {
     try {
-    const obraInfo = await this.getResponsavelObra(obraId);
-    if (obraInfo && obraInfo.responsavel_id) {
-        await this.sendNotification(
-        'Demanda Movida para Pedido',
-        `A demanda "${demandaDescricao}" foi movida para pedido`,
-        obraInfo.responsavel_id
+      const obraInfo = await this.getResponsavelObra(obraId);
+      const membrosIds = await this.getMembrosObra(obraId);
+      
+      // Criar notificações no banco de dados
+      const notificationDBService = NotificationDBService.getInstance();
+      await notificationDBService.createMultipleNotifications(
+        membrosIds,
+        {
+          title: 'Demanda Movida para Pedido',
+          message: `Obra: ${obraInfo?.nome} - A demanda "${demandaDescricao}" foi movida para pedido`,
+          obra_id: obraId,
+          type: 'info',
+          source: 'demanda'
+        }
       );
+      
+      // Enviar notificação push para todos os membros da obra
+      for (const userId of membrosIds) {
+        await this.sendNotification(
+          'Demanda Movida para Pedido',
+          `Obra: ${obraInfo?.nome} - A demanda "${demandaDescricao}" foi movida para pedido`,
+          userId
+        );
       }
     } catch (error) {
       console.error('Erro ao enviar notificação de demanda para pedido:', error);
@@ -62,13 +128,29 @@ class NotificationService {
 
   public async notificarDemandaParaEntregue(obraId: number, demandaDescricao: string) {
     try {
-    const obraInfo = await this.getResponsavelObra(obraId);
-    if (obraInfo && obraInfo.responsavel_id) {
-        await this.sendNotification(
-        'Demanda Entregue',
-        `A demanda "${demandaDescricao}" foi marcada como entregue`,
-        obraInfo.responsavel_id
+      const obraInfo = await this.getResponsavelObra(obraId);
+      const membrosIds = await this.getMembrosObra(obraId);
+      
+      // Criar notificações no banco de dados
+      const notificationDBService = NotificationDBService.getInstance();
+      await notificationDBService.createMultipleNotifications(
+        membrosIds,
+        {
+          title: 'Demanda Entregue',
+          message: `Obra: ${obraInfo?.nome} - A demanda "${demandaDescricao}" foi marcada como entregue`,
+          obra_id: obraId,
+          type: 'success',
+          source: 'demanda'
+        }
       );
+      
+      // Enviar notificação push para todos os membros da obra
+      for (const userId of membrosIds) {
+        await this.sendNotification(
+          'Demanda Entregue',
+          `Obra: ${obraInfo?.nome} - A demanda "${demandaDescricao}" foi marcada como entregue`,
+          userId
+        );
       }
     } catch (error) {
       console.error('Erro ao enviar notificação de demanda entregue:', error);
@@ -77,13 +159,29 @@ class NotificationService {
 
   public async notificarPendenciaConcluida(obraId: number, pendenciaDescricao: string) {
     try {
-    const obraInfo = await this.getResponsavelObra(obraId);
-    if (obraInfo && obraInfo.responsavel_id) {
-        await this.sendNotification(
-        'Pendência Concluída',
-        `Obra: ${obraInfo.nome} - Seção: Concluído - A pendência "${pendenciaDescricao}" foi marcada como concluída`,
-        obraInfo.responsavel_id
+      const obraInfo = await this.getResponsavelObra(obraId);
+      const membrosIds = await this.getMembrosObra(obraId);
+      
+      // Criar notificações no banco de dados
+      const notificationDBService = NotificationDBService.getInstance();
+      await notificationDBService.createMultipleNotifications(
+        membrosIds,
+        {
+          title: 'Pendência Concluída',
+          message: `Obra: ${obraInfo?.nome} - Seção: Concluído - A pendência "${pendenciaDescricao}" foi marcada como concluída`,
+          obra_id: obraId,
+          type: 'success',
+          source: 'pendencia'
+        }
       );
+      
+      // Enviar notificação push para todos os membros da obra
+      for (const userId of membrosIds) {
+        await this.sendNotification(
+          'Pendência Concluída',
+          `Obra: ${obraInfo?.nome} - Seção: Concluído - A pendência "${pendenciaDescricao}" foi marcada como concluída`,
+          userId
+        );
       }
     } catch (error) {
       console.error('Erro ao enviar notificação de pendência concluída:', error);
@@ -93,11 +191,27 @@ class NotificationService {
   public async notificarDemandaParaPago(obraId: number, demandaDescricao: string) {
     try {
       const obraInfo = await this.getResponsavelObra(obraId);
-      if (obraInfo && obraInfo.responsavel_id) {
+      const membrosIds = await this.getMembrosObra(obraId);
+      
+      // Criar notificações no banco de dados
+      const notificationDBService = NotificationDBService.getInstance();
+      await notificationDBService.createMultipleNotifications(
+        membrosIds,
+        {
+          title: 'Demanda Paga',
+          message: `Obra: ${obraInfo?.nome} - A demanda "${demandaDescricao}" foi marcada como paga`,
+          obra_id: obraId,
+          type: 'success',
+          source: 'demanda'
+        }
+      );
+      
+      // Enviar notificação push para todos os membros da obra
+      for (const userId of membrosIds) {
         await this.sendNotification(
           'Demanda Paga',
-          `A demanda "${demandaDescricao}" foi marcada como paga`,
-          obraInfo.responsavel_id
+          `Obra: ${obraInfo?.nome} - A demanda "${demandaDescricao}" foi marcada como paga`,
+          userId
         );
       }
     } catch (error) {
@@ -120,37 +234,36 @@ class NotificationService {
 
       // URL do servidor de notificações - ajuste para seu servidor real
       // Use um IP ou domínio acessível em sua rede, não localhost
-      const serverUrl = 'https://glog-server-feaw.onrender.com/api/notifications/send';
+      const serverUrl = 'https://glog-server-feaw.onrender.com/api/notifications/send-multiple';
       // ⬆️ IMPORTANTE: SUBSTITUA ESTA LINHA pelo URL real do seu serviço no Render ⬆️
-      // Exemplo: 'https://glog-notifications.onrender.com/api/notifications/send'
-      // Para testes em uma rede local, você pode usar seu IP local
-      // const serverUrl = 'http://192.168.0.x:3001/api/notifications/send';
+      // Exemplo: 'https://glog-notifications.onrender.com/api/notifications/send-multiple'
       
-      // Enviar notificação para cada token através do seu backend
-      for (const tokenObj of tokens) {
-        try {
-          const response = await fetch(serverUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              token: tokenObj.fcm_token,
-              title,
-              body
-            })
-          });
+      // Extrair todos os tokens
+      const fcmTokens = tokens.map(tokenObj => tokenObj.fcm_token);
+      
+      try {
+        // Enviar notificação para todos os tokens de uma vez
+        const response = await fetch(serverUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            tokens: fcmTokens,
+            title,
+            body
+          })
+        });
 
-          if (!response.ok) {
-            const errorData = await response.json();
-            console.error(`Erro ao enviar notificação para token ${tokenObj.fcm_token}:`, errorData);
-          } else {
-            console.log(`Notificação enviada com sucesso para token ${tokenObj.fcm_token}`);
-          }
-        } catch (tokenError) {
-          // Continuar tentando outros tokens mesmo se um falhar
-          console.error(`Falha ao enviar para token ${tokenObj.fcm_token}:`, tokenError);
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error(`Erro ao enviar notificações em massa:`, errorData);
+        } else {
+          const result = await response.json();
+          console.log(`Notificações enviadas em massa: ${result.results.successful.length} com sucesso, ${result.results.failed.length} falhas`);
         }
+      } catch (error) {
+        console.error(`Falha ao enviar notificações em massa:`, error);
       }
       
       console.log('Processo de envio de notificações concluído');
@@ -204,12 +317,91 @@ class NotificationService {
         this.showNotification(payload);
       });
       
+      // Solicitar permissão para notificações locais se ainda não concedida
+      this.requestNotificationPermission();
+      
+      // Configurar assinatura de realtime para notificações
+      this.setupRealtimeSubscription();
+      
       this.initialized = true;
       console.log('Serviço de notificações inicializado');
       return true;
     } catch (error) {
       console.error('Erro ao inicializar serviço de notificações:', error);
       return false;
+    }
+  }
+
+  // Solicitar permissão para notificações locais
+  private async requestNotificationPermission() {
+    if ('Notification' in window && Notification.permission !== 'granted') {
+      try {
+        const permission = await Notification.requestPermission();
+        console.log('Permissão de notificação:', permission);
+      } catch (error) {
+        console.error('Erro ao solicitar permissão para notificações:', error);
+      }
+    }
+  }
+
+  // Configurar assinatura para notificações em tempo real via Supabase
+  private async setupRealtimeSubscription() {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        console.warn('Usuário não autenticado, assinatura de realtime não configurada');
+        return;
+      }
+
+      // Assinatura para novas notificações via Supabase Realtime
+      const userId = user.id;
+      const channel = supabase
+        .channel('notification-service-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'notifications',
+            filter: `user_id=eq.${userId}`,
+          },
+          (payload) => {
+            // Mostrar notificação nativa quando receber uma nova notificação
+            if ('Notification' in window && Notification.permission === 'granted') {
+              const notification = payload.new;
+              this.showLocalNotification(notification.title, notification.message);
+            }
+          }
+        )
+        .subscribe();
+
+      console.log('Assinatura de notificações realtime configurada');
+    } catch (error) {
+      console.error('Erro ao configurar assinatura realtime:', error);
+    }
+  }
+
+  // Mostrar notificação local
+  private showLocalNotification(title: string, body: string) {
+    try {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(title, {
+          body,
+          icon: '/logo.png',
+          badge: '/badge.png',
+        });
+      } else if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then(registration => {
+          registration.showNotification(title, {
+            body,
+            icon: '/logo.png',
+            badge: '/badge.png',
+          });
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao mostrar notificação local:', error);
     }
   }
 

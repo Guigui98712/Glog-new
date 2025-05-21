@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import ConstructionLogo from "./ConstructionLogo";
 import useDevice from "@/hooks/useDevice";
 import { hapticFeedback, HapticType } from "@/lib/haptics";
+import { NotificationsIndicator } from "@/components/ui/NotificationsIndicator";
+import { NotificationsDialog } from "@/components/dialogs/NotificationsDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,6 +29,7 @@ const Layout = () => {
   const [lastScrollTop, setLastScrollTop] = useState(0);
   const [isHeaderVisible, setIsHeaderVisible] = useState(true);
   const device = useDevice();
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   // Determinar o título da página atual
   const getPageTitle = () => {
@@ -223,6 +226,12 @@ const Layout = () => {
           </div>
           
           <div className="flex items-center space-x-4">
+            {/* Indicador de notificações */}
+            <NotificationsIndicator 
+              onClick={() => setNotificationsOpen(true)} 
+              className="text-white" 
+            />
+            
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button 
@@ -264,6 +273,9 @@ const Layout = () => {
           </div>
         </div>
       </header>
+
+      {/* Diálogo de notificações */}
+      <NotificationsDialog open={notificationsOpen} onOpenChange={setNotificationsOpen} />
 
       {/* Menu móvel com animação */}
       <div 

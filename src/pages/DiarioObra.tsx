@@ -715,6 +715,9 @@ const DiarioObra = () => {
                 onChange={(e) => setDescricao(e.target.value)}
                 className="min-h-[100px]"
                 placeholder="Descreva as atividades realizadas hoje..."
+                spellCheck="true"
+                autoCorrect="on"
+                autoCapitalize="sentences"
               />
             </div>
 
@@ -726,6 +729,9 @@ const DiarioObra = () => {
                 onChange={(e) => setObservacoes(e.target.value)}
                 className="min-h-[100px]"
                 placeholder="Adicione observações importantes..."
+                spellCheck="true"
+                autoCorrect="on"
+                autoCapitalize="sentences"
               />
             </div>
 
@@ -1030,6 +1036,8 @@ const DiarioObra = () => {
                     placeholder="Descreva as atividades realizadas na obra"
                     className="min-h-[100px]"
                     spellCheck={true}
+                    autoCorrect="on"
+                    autoCapitalize="sentences"
                     lang="pt-BR"
                   />
                 </div>
@@ -1043,6 +1051,8 @@ const DiarioObra = () => {
                     placeholder="Adicione observações importantes sobre a obra"
                     className="min-h-[100px]"
                     spellCheck={true}
+                    autoCorrect="on"
+                    autoCapitalize="sentences"
                     lang="pt-BR"
                   />
                 </div>

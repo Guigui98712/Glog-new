@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FileDown, FileUp, Trash2, AlertCircle } from 'lucide-react';
+import { FileDown, FileUp, Trash2, AlertCircle, Eye, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +8,7 @@ import { ProjetoService, Projeto } from '@/services/ProjetoService';
 import { toast } from '@/components/ui/use-toast';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Capacitor } from '@capacitor/core';
 
 export default function Projetos() {
   const { id: obraId } = useParams();
@@ -153,20 +154,85 @@ export default function Projetos() {
       
       console.log(`Iniciando download de ${nome} - URL: ${url}`);
       
-      const blob = await projetoService.downloadProjeto(url);
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = nome;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(downloadUrl);
-      
-      toast({
-        title: "Download iniciado",
-        description: `Arquivo: ${nome}`
-      });
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const { Filesystem, Directory } = await import('@capacitor/filesystem');
+          const { Share } = await import('@capacitor/share');
+          
+          // Notificar início do download
+          toast({
+            title: "Download iniciado",
+            description: `Baixando: ${nome}...`
+          });
+          
+          // Fazer download do arquivo
+          const response = await fetch(url);
+          
+          if (!response.ok) {
+            throw new Error(`Erro ao baixar arquivo (${response.status})`);
+          }
+          
+          const blob = await response.blob();
+          const reader = new FileReader();
+          
+          // Converter blob para base64
+          const base64Data = await new Promise<string>((resolve, reject) => {
+            reader.onloadend = () => {
+              const base64 = reader.result?.toString().split(',')[1];
+              if (base64) resolve(base64);
+              else reject(new Error('Erro ao converter arquivo para base64'));
+            };
+            reader.readAsDataURL(blob);
+          });
+          
+          // Determinar o diretório de salvamento
+          // Salvar arquivo localmente
+          const result = await Filesystem.writeFile({
+            path: nome,
+            data: base64Data,
+            directory: Directory.Cache,
+            recursive: true
+          });
+          
+          console.log('Arquivo salvo localmente:', result.uri);
+          
+          toast({
+            title: "Download concluído",
+            description: `${nome} baixado com sucesso`
+          });
+          
+          // Perguntar ao usuário se deseja abrir o arquivo
+          const confirm = window.confirm(`Deseja abrir o arquivo ${nome}?`);
+          
+          if (confirm) {
+            // Tentar compartilhar o arquivo, que permite ao usuário escolher qual app usar para abri-lo
+            await Share.share({
+              title: nome,
+              url: result.uri,
+              dialogTitle: 'Abrir com'
+            });
+          }
+        } catch (error) {
+          console.error('Erro ao baixar/abrir arquivo nativo:', error);
+          throw error;
+        }
+      } else {
+        // Em ambiente web, manter o comportamento atual
+        const blob = await projetoService.downloadProjeto(url);
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = nome;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+        
+        toast({
+          title: "Download iniciado",
+          description: `Arquivo: ${nome}`
+        });
+      }
     } catch (error) {
       console.error('Erro ao fazer download do projeto:', error);
       const mensagem = error instanceof Error ? error.message : 'Erro desconhecido ao baixar arquivo';
@@ -215,13 +281,76 @@ export default function Projetos() {
     try {
       console.log(`Abrindo arquivo ${nome} - URL: ${url}`);
       
-      // Abre a URL diretamente em uma nova aba
-      window.open(url, '_blank');
-      
-      toast({
-        title: "Arquivo Aberto",
-        description: `Abrindo: ${nome}`
-      });
+      if (Capacitor.isNativePlatform()) {
+        // Mostrar indicador de carregamento
+        setLoading(true);
+        
+        try {
+          // Baixar o arquivo temporariamente para poder abri-lo com apps nativos
+          const { Filesystem, Directory } = await import('@capacitor/filesystem');
+          const { Share } = await import('@capacitor/share');
+          
+          toast({
+            title: "Preparando arquivo",
+            description: `Carregando: ${nome}...`
+          });
+          
+          // Fazer download do arquivo
+          const response = await fetch(url);
+          
+          if (!response.ok) {
+            throw new Error(`Erro ao carregar arquivo (${response.status})`);
+          }
+          
+          const blob = await response.blob();
+          const reader = new FileReader();
+          
+          // Converter blob para base64
+          const base64Data = await new Promise<string>((resolve, reject) => {
+            reader.onloadend = () => {
+              const base64 = reader.result?.toString().split(',')[1];
+              if (base64) resolve(base64);
+              else reject(new Error('Erro ao converter arquivo para base64'));
+            };
+            reader.readAsDataURL(blob);
+          });
+          
+          // Salvar arquivo temporariamente
+          const result = await Filesystem.writeFile({
+            path: nome,
+            data: base64Data,
+            directory: Directory.Cache,
+            recursive: true
+          });
+          
+          console.log('Arquivo temporário salvo:', result.uri);
+          
+          // Abrir com o visualizador apropriado usando o Share API
+          await Share.share({
+            title: nome,
+            url: result.uri,
+            dialogTitle: 'Abrir com'
+          });
+          
+          toast({
+            title: "Arquivo Aberto",
+            description: `${nome} aberto com sucesso`
+          });
+        } catch (error) {
+          console.error('Erro ao abrir arquivo nativo:', error);
+          throw error;
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        // Comportamento para web - abrir em nova aba
+        window.open(url, '_blank');
+        
+        toast({
+          title: "Arquivo Aberto",
+          description: `Abrindo: ${nome}`
+        });
+      }
     } catch (error) {
       console.error('Erro ao abrir arquivo:', error);
       const mensagem = error instanceof Error ? error.message : 'Erro desconhecido ao abrir arquivo';
@@ -231,6 +360,7 @@ export default function Projetos() {
         description: mensagem,
         variant: "destructive"
       });
+      setLoading(false);
     }
   };
 
@@ -273,7 +403,7 @@ export default function Projetos() {
                     title="Abrir arquivo"
                     className="p-2"
                   >
-                    <FileDown size={16} />
+                    <ExternalLink size={16} />
                   </Button>
                   <Button
                     variant="ghost"

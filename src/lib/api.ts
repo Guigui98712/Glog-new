@@ -60,14 +60,40 @@ export const buscarObra = async (id: number) => {
   }
 
   try {
-    const { data, error } = await supabase
+    // Buscar na tabela obras (dono)
+    let { data, error } = await supabase
       .from('obras')
       .select('*')
       .eq('id', id)
       .single();
 
+    if (data) return data;
+
+    // Se não encontrou, buscar na view obras_compartilhadas (compartilhada)
+    const { data: userData, error: sessionError } = await supabase.auth.getSession();
+    const userId = userData?.session?.user?.id;
+    const userEmail = userData?.session?.user?.email;
+
+    let query = supabase
+      .from('obras_compartilhadas')
+      .select('*')
+      .eq('obra_id', id)
+      .order('criado_em', { ascending: false });
+
+    if (userId && userEmail) {
+      query = query.or(`colaborador_id.eq.${userId},colaborador_email.eq.${userEmail}`);
+    } else if (userId) {
+      query = query.eq('colaborador_id', userId);
+    } else if (userEmail) {
+      query = query.eq('colaborador_email', userEmail);
+    }
+
+    const { data: compartilhada, error: compartilhadaError } = await query.single();
+    if (compartilhada) return compartilhada;
+
     if (error) throw error;
-    return data;
+    if (compartilhadaError) throw compartilhadaError;
+    return null;
   } catch (error) {
     console.error('Erro ao buscar obra:', error);
     throw error;
@@ -1332,6 +1358,103 @@ export const atualizarTrelloBoardId = async (obraId: number, boardId: string) =>
     return data;
   } catch (error) {
     console.error('Erro detalhado ao atualizar ID do quadro do Trello:', error);
+    throw error;
+  }
+};
+
+export const listarObrasCompartilhadas = async () => {
+  try {
+    // Obter o usuário atual
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    const userEmail = session?.user?.email;
+
+    if (!userId && !userEmail) {
+      throw new Error('Usuário não autenticado');
+    }
+
+    // Buscar obras compartilhadas com o usuário logado (por id ou email)
+    let query = supabase
+      .from('obras_compartilhadas')
+      .select('*')
+      .order('criado_em', { ascending: false });
+
+    if (userId && userEmail) {
+      query = query.or(`colaborador_id.eq.${userId},colaborador_email.eq.${userEmail}`);
+    } else if (userId) {
+      query = query.eq('colaborador_id', userId);
+    } else if (userEmail) {
+      query = query.eq('colaborador_email', userEmail);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Erro ao listar obras compartilhadas:', error);
+    throw error;
+  }
+};
+
+export const compartilharObra = async (obraId: number, colaboradorEmail: string, permissao: string = 'editar') => {
+  try {
+    // Obter o usuário atual
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    if (!userId) throw new Error('Usuário não autenticado');
+
+    const { data, error } = await supabase
+      .from('compartilhamentos')
+      .insert([
+        {
+          obra_id: obraId,
+          user_id: userId,
+          colaborador_email: colaboradorEmail,
+          permissao,
+        }
+      ])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Erro ao compartilhar obra:', error);
+    throw error;
+  }
+};
+
+export const listarCompartilhamentosEnviados = async () => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    if (!userId) throw new Error('Usuário não autenticado');
+
+    // Buscar todos os compartilhamentos enviados pelo usuário logado
+    const { data, error } = await supabase
+      .from('compartilhamentos')
+      .select('id, obra_id, colaborador_email, colaborador_id, permissao, criado_em, obras(nome, endereco)')
+      .eq('user_id', userId)
+      .order('criado_em', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Erro ao listar compartilhamentos enviados:', error);
+    throw error;
+  }
+};
+
+export const excluirCompartilhamento = async (compartilhamentoId: number) => {
+  try {
+    const { error } = await supabase
+      .from('compartilhamentos')
+      .delete()
+      .eq('id', compartilhamentoId);
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error('Erro ao excluir compartilhamento:', error);
     throw error;
   }
 };

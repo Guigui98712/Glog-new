@@ -28,7 +28,8 @@ import {
   uploadFoto,
   listarRegistrosDiario,
   type Obra,
-  type ObraParaEnvio
+  type ObraParaEnvio,
+  compartilharObra
 } from "@/lib/api";
 import { RegistroDiario } from "@/types/obra";
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -73,6 +74,11 @@ const Obras = () => {
   const [logoEditFile, setLogoEditFile] = useState<File | null>(null);
   const [logoEditPreview, setLogoEditPreview] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+
+  const [compartilharObraId, setCompartilharObraId] = useState<number | null>(null);
+  const [compartilharEmail, setCompartilharEmail] = useState("");
+  const [compartilharDialogOpen, setCompartilharDialogOpen] = useState(false);
+  const [compartilhando, setCompartilhando] = useState(false);
 
   useEffect(() => {
     carregarObras();
@@ -335,6 +341,40 @@ const Obras = () => {
     }
   };
 
+  const abrirDialogCompartilhar = (obraId: number) => {
+    setCompartilharObraId(obraId);
+    setCompartilharEmail("");
+    setCompartilharDialogOpen(true);
+  };
+
+  const handleCompartilharObra = async () => {
+    if (!compartilharObraId || !compartilharEmail) {
+      toast({
+        title: "Preencha o e-mail",
+        description: "Informe o e-mail de quem vai receber o acesso.",
+        variant: "destructive"
+      });
+      return;
+    }
+    setCompartilhando(true);
+    try {
+      await compartilharObra(compartilharObraId, compartilharEmail);
+      toast({
+        title: "Obra compartilhada!",
+        description: `A obra foi compartilhada com ${compartilharEmail}`
+      });
+      setCompartilharDialogOpen(false);
+    } catch (error: any) {
+      toast({
+        title: "Erro ao compartilhar",
+        description: error.message || "Não foi possível compartilhar a obra.",
+        variant: "destructive"
+      });
+    } finally {
+      setCompartilhando(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
@@ -401,6 +441,9 @@ const Obras = () => {
                     <DropdownMenuItem onClick={() => handleExcluirObra(obra.id)}>
                       <Trash2 className="w-4 h-4 mr-2" />
                       Excluir
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => abrirDialogCompartilhar(obra.id)}>
+                      Compartilhar
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -648,6 +691,29 @@ const Obras = () => {
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDialog(false)}>Cancelar</Button>
             <Button onClick={handleNovaObra}>Salvar Obra</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog para compartilhar obra */}
+      <Dialog open={compartilharDialogOpen} onOpenChange={setCompartilharDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Compartilhar Obra</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <Input
+              type="email"
+              placeholder="E-mail do colaborador"
+              value={compartilharEmail}
+              onChange={e => setCompartilharEmail(e.target.value)}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button onClick={handleCompartilharObra} disabled={compartilhando || !compartilharEmail}>
+              {compartilhando ? "Compartilhando..." : "Compartilhar"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

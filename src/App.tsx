@@ -31,6 +31,7 @@ import TestSpellChecker from "./pages/TestSpellChecker";
 import TestNativeSpellCheck from "./pages/TestNativeSpellCheck";
 import TestSmartSpellChecker from "./pages/TestSmartSpellChecker";
 import Debug from "./pages/Debug";
+import Compartilhadas from "./pages/Compartilhadas";
 
 // Componente para capturar erros
 class ErrorBoundary extends React.Component {
@@ -310,6 +311,17 @@ function App() {
             }
           >
             <Route index element={<SelecionarObraProjetos />} />
+          </Route>
+          
+          <Route 
+            path="/compartilhadas" 
+            element={
+              <ProtectedRoute>
+                <Layout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<Compartilhadas />} />
           </Route>
           
           <Route 

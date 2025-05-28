@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Link, useLocation, Outlet, useNavigate } from "react-router-dom";
-import { Building2, Calculator, RefreshCw, LogOut, User, Menu, X, ChevronLeft, FolderKanban } from "lucide-react";
+import { Building2, Calculator, RefreshCw, LogOut, User, Menu, X, ChevronLeft, FolderKanban, Share as ShareIcon } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -118,6 +118,7 @@ const Layout = () => {
 
   const menuItems = [
     { icon: Building2, label: "Obras", path: "/obras" },
+    { icon: ShareIcon, label: "Compartilhadas", path: "/compartilhadas" },
     { icon: Calculator, label: "Orçamentos", path: "/orcamentos" },
     { icon: FolderKanban, label: "Projetos", path: "/projetos" }
   ];

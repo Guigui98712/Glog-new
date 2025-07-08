@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Plus, ArrowRight, ArrowLeft as ArrowLeftIcon, X, Image as ImageIcon, FileText, FolderOpen, Trash2, Pencil, Camera as CameraIcon } from 'lucide-react';
+import { ArrowLeft, Plus, ArrowRight, ArrowLeft as ArrowLeftIcon, X, Image as ImageIcon, FileText, FolderOpen, Trash2, Pencil, Camera as CameraIcon, Share as ShareIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { DemandaItem } from '@/types/demanda';
@@ -477,6 +477,51 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
       setLoading(false);
       setShowExcluirDialog(false);
       setSelectedItem(null);
+    }
+  };
+
+  const compartilharViaWhatsApp = async (item: DemandaItem) => {
+    try {
+      // Formatar a mensagem para WhatsApp
+      const itensFormatados = item.descricao?.split('\n').filter(item => item.trim()).map(item => `• ${item.trim()}`).join('\n') || '';
+      
+      const mensagem = `🏗️ *Demanda Atualizada*
+
+📋 *Obra:* ${obraNome}
+📅 *Data:* ${new Date().toLocaleDateString('pt-BR')}
+⏰ *Hora:* ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+📊 *Status:* ${item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+
+📝 *Itens da Demanda:*
+${itensFormatados}
+
+${item.valor ? `💰 *Valor:* R$ ${item.valor.toFixed(2)}` : ''}
+
+---
+Enviado via GLog App`;
+
+      // Detectar plataforma
+      const deviceInfo = await Device.getInfo();
+      const isMobile = deviceInfo.platform !== 'web';
+
+      if (isMobile) {
+        // No mobile, usar o Share API do Capacitor
+        await Share.share({
+          title: 'Demanda Atualizada',
+          text: mensagem.replace(/\*\*/g, ''), // Remover markdown para compatibilidade
+          dialogTitle: 'Compartilhar via WhatsApp'
+        });
+      } else {
+        // Na web, abrir WhatsApp Web
+        const mensagemCodificada = encodeURIComponent(mensagem);
+        const whatsappUrl = `https://wa.me/?text=${mensagemCodificada}`;
+        window.open(whatsappUrl, '_blank');
+      }
+
+      toast.success('Compartilhamento iniciado!');
+    } catch (error) {
+      console.error('Erro ao compartilhar via WhatsApp:', error);
+      toast.error('Erro ao compartilhar via WhatsApp');
     }
   };
 
@@ -966,6 +1011,15 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
                   >
                     {status !== 'pago' && (
                       <div className="absolute top-1 right-1 flex items-center gap-1 z-10">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-green-600 hover:bg-green-100"
+                          onClick={() => compartilharViaWhatsApp(item)}
+                          title="Compartilhar via WhatsApp"
+                        >
+                          <ShareIcon className="h-4 w-4" />
+                        </Button>
                         {status !== 'demanda' || item.titulo === 'Lista de Demanda' ? (
                           <Button
                             variant="ghost"
@@ -1071,7 +1125,6 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
                           </Button>
                         )}
                       </div>
-
                       {/* Botão Avançar (Direita) */}
                       <div>
                         {status === 'demanda' && (

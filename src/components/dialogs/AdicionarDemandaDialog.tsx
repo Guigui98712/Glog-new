@@ -7,6 +7,8 @@ import { supabase } from '@/lib/supabase';
 import NotificationService from '@/services/NotificationService';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { Device } from '@capacitor/device';
+import { Share } from '@capacitor/share';
 
 interface DemandaItem {
   id: number;
@@ -70,6 +72,48 @@ export function AdicionarDemandaDialog({
     }
   };
 
+  const compartilharViaWhatsApp = async (obraNome: string, textoFinal: string) => {
+    try {
+      // Formatar a mensagem para WhatsApp
+      const itensFormatados = textoFinal.split('\n').filter(item => item.trim()).map(item => `• ${item.trim()}`).join('\n');
+      
+      const mensagem = `🏗️ *Nova Demanda Adicionada*
+
+📋 *Obra:* ${obraNome}
+📅 *Data:* ${new Date().toLocaleDateString('pt-BR')}
+⏰ *Hora:* ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+
+📝 *Itens da Demanda:*
+${itensFormatados}
+
+---
+Enviado via GLog App`;
+
+      // Detectar plataforma
+      const deviceInfo = await Device.getInfo();
+      const isMobile = deviceInfo.platform !== 'web';
+
+      if (isMobile) {
+        // No mobile, usar o Share API do Capacitor
+        await Share.share({
+          title: 'Nova Demanda Adicionada',
+          text: mensagem.replace(/\*\*/g, ''), // Remover markdown para compatibilidade
+          dialogTitle: 'Compartilhar via WhatsApp'
+        });
+      } else {
+        // Na web, abrir WhatsApp Web
+        const mensagemCodificada = encodeURIComponent(mensagem);
+        const whatsappUrl = `https://wa.me/?text=${mensagemCodificada}`;
+        window.open(whatsappUrl, '_blank');
+      }
+
+      toast.success('Compartilhamento iniciado!');
+    } catch (error) {
+      console.error('Erro ao compartilhar via WhatsApp:', error);
+      toast.error('Erro ao compartilhar via WhatsApp');
+    }
+  };
+
   const handleSubmit = async () => {
     try {
       setLoading(true);
@@ -127,6 +171,71 @@ export function AdicionarDemandaDialog({
     } catch (error) {
       console.error('Erro ao adicionar lista de demanda:', error);
       toast.error('Erro ao adicionar lista de demanda');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmitAndShare = async () => {
+    try {
+      setLoading(true);
+
+      let textoFinal = '';
+      if (useSimpleTextarea) {
+        textoFinal = itens.trim();
+      } else {
+        textoFinal = itens
+          .replace(/<\/p>/g, '\n')         
+          .replace(/<[^>]*>/g, '')       
+          .replace(/\n+/g, '\n')         
+          .trim();
+      }
+
+      if (!textoFinal) {
+        toast.error('Digite pelo menos um item para a lista');
+        setLoading(false); 
+        return;
+      }
+
+      const { data: obra, error: obraError } = await supabase
+        .from('obras')
+        .select('nome, responsavel')
+        .eq('id', obraId)
+        .single();
+
+      if (obraError) throw obraError;
+
+      const { data: novaDemanda, error: insertError } = await supabase
+        .from('demanda_itens')
+        .insert({
+          obra_id: obraId,
+          titulo: 'Lista de Demanda',
+          descricao: textoFinal,
+          status: 'demanda'
+        })
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
+      const notificationService = NotificationService.getInstance();
+      await notificationService.notificarNovaDemanda(
+        obraId,
+        textoFinal
+      );
+
+      await enviarNotificacaoLocalNovaDemanda(textoFinal);
+
+      // Compartilhar via WhatsApp
+      await compartilharViaWhatsApp(obra.nome, textoFinal);
+
+      toast.success('Lista de demanda adicionada e compartilhada com sucesso');
+      onDemandaAdicionada();
+      onOpenChange(false);
+      setItens('');
+    } catch (error) {
+      console.error('Erro ao adicionar e compartilhar lista de demanda:', error);
+      toast.error('Erro ao adicionar e compartilhar lista de demanda');
     } finally {
       setLoading(false);
     }
@@ -200,6 +309,15 @@ export function AdicionarDemandaDialog({
             type="button"
           >
             {loading ? 'Adicionando...' : 'Adicionar'}
+          </Button>
+          <Button
+            onClick={handleSubmitAndShare}
+            disabled={loading || !itens.trim()}
+            type="button"
+            variant="default"
+            className="bg-green-600 hover:bg-green-700"
+          >
+            {loading ? 'Adicionando...' : 'Adicionar e Compartilhar'}
           </Button>
         </div>
       </DialogContent>

@@ -1,14 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FileDown, FileUp, Trash2, AlertCircle, Eye, ExternalLink } from 'lucide-react';
+import { FileDown, FileUp, Trash2, AlertCircle, Eye, ExternalLink, Share, Folder, FolderOpen, Plus, Edit, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ProjetoService, Projeto } from '@/services/ProjetoService';
+import { ProjetoService, Projeto, Pasta } from '@/services/ProjetoService';
 import { toast } from '@/components/ui/use-toast';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Capacitor } from '@capacitor/core';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 
 export default function Projetos() {
   const { id: obraId } = useParams();
@@ -16,6 +25,10 @@ export default function Projetos() {
   const [projetosDWG, setProjetosDWG] = useState<Projeto[]>([]);
   const [projetosREVIT, setProjetosREVIT] = useState<Projeto[]>([]);
   const [projetosPDF, setProjetosPDF] = useState<Projeto[]>([]);
+  const [pastasDWG, setPastasDWG] = useState<Pasta[]>([]);
+  const [pastasREVIT, setPastasREVIT] = useState<Pasta[]>([]);
+  const [pastasPDF, setPastasPDF] = useState<Pasta[]>([]);
+  const [pastaSelecionada, setPastaSelecionada] = useState<Pasta | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
@@ -23,6 +36,13 @@ export default function Projetos() {
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const projetoService = new ProjetoService();
+
+  // Estados para diálogos de pastas
+  const [showCriarPastaDialog, setShowCriarPastaDialog] = useState(false);
+  const [showRenomearPastaDialog, setShowRenomearPastaDialog] = useState(false);
+  const [novaPastaNome, setNovaPastaNome] = useState('');
+  const [pastaParaRenomear, setPastaParaRenomear] = useState<Pasta | null>(null);
+  const [novoNomePasta, setNovoNomePasta] = useState('');
 
   const carregarProjetos = async () => {
     if (!obraId) return;
@@ -33,9 +53,9 @@ export default function Projetos() {
       
       console.log('Carregando projetos para a obra:', obraId);
       const [dwg, revit, pdf] = await Promise.all([
-        projetoService.buscarProjetos('DWG', obraId),
-        projetoService.buscarProjetos('REVIT', obraId),
-        projetoService.buscarProjetos('PDF', obraId)
+        projetoService.buscarProjetosPorPasta('DWG', obraId, pastaSelecionada?.id),
+        projetoService.buscarProjetosPorPasta('REVIT', obraId, pastaSelecionada?.id),
+        projetoService.buscarProjetosPorPasta('PDF', obraId, pastaSelecionada?.id)
       ]);
 
       console.log(`Projetos carregados - DWG: ${dwg.length}, REVIT: ${revit.length}, PDF: ${pdf.length}`);
@@ -57,6 +77,24 @@ export default function Projetos() {
     }
   };
 
+  const carregarPastas = async () => {
+    if (!obraId) return;
+    
+    try {
+      const [dwg, revit, pdf] = await Promise.all([
+        projetoService.listarPastas('DWG', obraId),
+        projetoService.listarPastas('REVIT', obraId),
+        projetoService.listarPastas('PDF', obraId)
+      ]);
+
+      setPastasDWG(dwg);
+      setPastasREVIT(revit);
+      setPastasPDF(pdf);
+    } catch (error) {
+      console.error('Erro ao carregar pastas:', error);
+    }
+  };
+
   useEffect(() => {
     if (!obraId) {
       const mensagem = "ID da obra não fornecido";
@@ -69,8 +107,9 @@ export default function Projetos() {
       navigate('/obras');
       return;
     }
+    carregarPastas();
     carregarProjetos();
-  }, [obraId, navigate]);
+  }, [obraId, navigate, pastaSelecionada]);
 
   const handleUpload = async (tipo: string) => {
     if (!fileInputRef.current || !obraId) return;
@@ -112,9 +151,9 @@ export default function Projetos() {
       // O 'tipo' vem do estado 'uploadTipo', definido quando o botão Upload foi clicado
       let tipo = uploadTipo;
 
-      console.log(`Iniciando upload - Arquivo: ${file.name}, Categoria: ${tipo}, Tamanho: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+      console.log(`Iniciando upload - Arquivo: ${file.name}, Categoria: ${tipo}, Pasta: ${pastaSelecionada?.nome || 'Raiz'}, Tamanho: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
 
-      await projetoService.uploadProjeto(file, tipo, obraId);
+      await projetoService.uploadProjeto(file, tipo, obraId, pastaSelecionada?.id);
 
       // Completa o progresso
       setUploadProgress(100);
@@ -124,9 +163,10 @@ export default function Projetos() {
         stopProgress();
         setUploadProgress(0);
         carregarProjetos();
+        carregarPastas();
         toast({
           title: "Sucesso",
-          description: `${file.name} enviado para a categoria ${tipo} com sucesso` // Mensagem ajustada
+          description: `${file.name} enviado para ${pastaSelecionada ? `a pasta "${pastaSelecionada.nome}"` : 'a raiz'} com sucesso`
         });
       }, 500);
 
@@ -145,6 +185,115 @@ export default function Projetos() {
         fileInputRef.current.value = '';
       }
     }
+  };
+
+  // Funções para gerenciar pastas
+  const handleCriarPasta = async () => {
+    if (!novaPastaNome.trim() || !obraId) return;
+
+    try {
+      setLoading(true);
+      await projetoService.criarPasta(novaPastaNome.trim(), uploadTipo, obraId);
+      
+      setNovaPastaNome('');
+      setShowCriarPastaDialog(false);
+      await carregarPastas();
+      
+      toast({
+        title: "Sucesso",
+        description: `Pasta "${novaPastaNome.trim()}" criada com sucesso`
+      });
+    } catch (error) {
+      console.error('Erro ao criar pasta:', error);
+      const mensagem = error instanceof Error ? error.message : 'Erro desconhecido ao criar pasta';
+      toast({
+        title: "Erro ao Criar Pasta",
+        description: mensagem,
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRenomearPasta = async () => {
+    if (!pastaParaRenomear || !novoNomePasta.trim()) return;
+
+    try {
+      setLoading(true);
+      await projetoService.renomearPasta(pastaParaRenomear.id, novoNomePasta.trim());
+      
+      setNovoNomePasta('');
+      setPastaParaRenomear(null);
+      setShowRenomearPastaDialog(false);
+      await carregarPastas();
+      
+      // Se a pasta renomeada era a selecionada, atualizar o estado
+      if (pastaSelecionada?.id === pastaParaRenomear.id) {
+        setPastaSelecionada({ ...pastaSelecionada, nome: novoNomePasta.trim() });
+      }
+      
+      toast({
+        title: "Sucesso",
+        description: `Pasta renomeada para "${novoNomePasta.trim()}"`
+      });
+    } catch (error) {
+      console.error('Erro ao renomear pasta:', error);
+      const mensagem = error instanceof Error ? error.message : 'Erro desconhecido ao renomear pasta';
+      toast({
+        title: "Erro ao Renomear Pasta",
+        description: mensagem,
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExcluirPasta = async (pasta: Pasta) => {
+    if (!confirm(`Tem certeza que deseja excluir a pasta "${pasta.nome}"?`)) return;
+
+    try {
+      setLoading(true);
+      await projetoService.excluirPasta(pasta.id);
+      
+      // Se a pasta excluída era a selecionada, voltar para a raiz
+      if (pastaSelecionada?.id === pasta.id) {
+        setPastaSelecionada(null);
+      }
+      
+      await carregarPastas();
+      await carregarProjetos();
+      
+      toast({
+        title: "Sucesso",
+        description: `Pasta "${pasta.nome}" excluída com sucesso`
+      });
+    } catch (error) {
+      console.error('Erro ao excluir pasta:', error);
+      const mensagem = error instanceof Error ? error.message : 'Erro desconhecido ao excluir pasta';
+      toast({
+        title: "Erro ao Excluir Pasta",
+        description: mensagem,
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVoltarParaRaiz = () => {
+    setPastaSelecionada(null);
+  };
+
+  const handleSelecionarPasta = (pasta: Pasta) => {
+    setPastaSelecionada(pasta);
+  };
+
+  const abrirDialogRenomearPasta = (pasta: Pasta) => {
+    setPastaParaRenomear(pasta);
+    setNovoNomePasta(pasta.nome);
+    setShowRenomearPastaDialog(true);
   };
 
   const handleDownload = async (url: string, nome: string) => {
@@ -364,83 +513,307 @@ export default function Projetos() {
     }
   };
 
-  const ProjetosList = ({ projetos, tipo }: { projetos: Projeto[], tipo: string }) => (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row justify-between items-center">
-        <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-0">Projetos {tipo}</h3>
-        <Button 
-          onClick={() => handleUpload(tipo)} 
-          className="w-full sm:w-auto flex items-center gap-2"
-          disabled={loading || uploading}
-        >
-          <FileUp size={16} />
-          Upload
-        </Button>
-      </div>
+  const handleShare = async (url: string, nome: string) => {
+    try {
+      setLoading(true);
+      setError(null);
       
-      {uploading && uploadTipo === tipo && (
-        <div className="mb-4">
-          <div className="flex justify-between mb-2">
-            <span className="text-sm">Enviando arquivo...</span>
-            <span className="text-sm">{Math.round(uploadProgress)}%</span>
+      console.log(`Iniciando compartilhamento de ${nome} - URL: ${url}`);
+      
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const { Filesystem, Directory } = await import('@capacitor/filesystem');
+          const { Share: ShareAPI } = await import('@capacitor/share');
+          
+          toast({
+            title: "Preparando arquivo",
+            description: `Carregando: ${nome}...`
+          });
+          
+          // Fazer download do arquivo
+          const response = await fetch(url);
+          
+          if (!response.ok) {
+            throw new Error(`Erro ao carregar arquivo (${response.status})`);
+          }
+          
+          const blob = await response.blob();
+          const reader = new FileReader();
+          
+          // Converter blob para base64
+          const base64Data = await new Promise<string>((resolve, reject) => {
+            reader.onloadend = () => {
+              const base64 = reader.result?.toString().split(',')[1];
+              if (base64) resolve(base64);
+              else reject(new Error('Erro ao converter arquivo para base64'));
+            };
+            reader.readAsDataURL(blob);
+          });
+          
+          // Salvar arquivo em local permanente para compartilhamento
+          const result = await Filesystem.writeFile({
+            path: `projetos/${nome}`,
+            data: base64Data,
+            directory: Directory.Documents,
+            recursive: true
+          });
+          
+          console.log('Arquivo salvo para compartilhamento:', result.uri);
+          
+          // Compartilhar o arquivo
+          await ShareAPI.share({
+            title: nome,
+            text: `Projeto: ${nome}`,
+            url: result.uri,
+            dialogTitle: 'Compartilhar projeto'
+          });
+          
+          toast({
+            title: "Compartilhamento iniciado",
+            description: `${nome} pronto para compartilhar`
+          });
+        } catch (error) {
+          console.error('Erro ao compartilhar arquivo nativo:', error);
+          throw new Error(`Erro ao compartilhar: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+        }
+      } else {
+        // Em ambiente web, tentar usar Web Share API se disponível
+        if (navigator.share) {
+          try {
+            // Para web, baixar o arquivo primeiro
+            const blob = await projetoService.downloadProjeto(url);
+            const file = new File([blob], nome, { type: blob.type });
+            
+            await navigator.share({
+              title: nome,
+              text: `Projeto: ${nome}`,
+              files: [file]
+            });
+            
+            toast({
+              title: "Compartilhamento iniciado",
+              description: `${nome} compartilhado com sucesso`
+            });
+          } catch (shareError) {
+            console.error('Erro no Web Share API:', shareError);
+            // Fallback: abrir em nova aba
+            window.open(url, '_blank');
+            toast({
+              title: "Arquivo aberto",
+              description: `${nome} aberto em nova aba`
+            });
+          }
+        } else {
+          // Fallback para navegadores sem Web Share API
+          window.open(url, '_blank');
+          toast({
+            title: "Arquivo aberto",
+            description: `${nome} aberto em nova aba`
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao compartilhar projeto:', error);
+      const mensagem = error instanceof Error ? error.message : 'Erro desconhecido ao compartilhar arquivo';
+      setError(mensagem);
+      toast({
+        title: "Erro no Compartilhamento",
+        description: mensagem,
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const ProjetosList = ({ projetos, tipo }: { projetos: Projeto[], tipo: string }) => {
+    const pastas = tipo === 'DWG' ? pastasDWG : tipo === 'REVIT' ? pastasREVIT : pastasPDF;
+    
+    return (
+      <div className="space-y-4">
+        {/* Navegação de pastas */}
+        <div className="flex flex-col space-y-3">
+          {/* Breadcrumb */}
+          <div className="flex items-center space-x-2 text-sm text-gray-600">
+            <span>Projetos {tipo}</span>
+            {pastaSelecionada && (
+              <>
+                <span>/</span>
+                <span className="font-medium text-gray-800">{pastaSelecionada.nome}</span>
+              </>
+            )}
           </div>
-          <Progress value={uploadProgress} className="h-2" />
+
+          {/* Botões de ação */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div className="flex items-center space-x-2">
+              {pastaSelecionada && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleVoltarParaRaiz}
+                  className="flex items-center gap-2"
+                >
+                  <ArrowLeft size={16} />
+                  Voltar à Raiz
+                </Button>
+              )}
+              <Button 
+                onClick={() => {
+                  setUploadTipo(tipo);
+                  setShowCriarPastaDialog(true);
+                }}
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                <Plus size={16} />
+                Nova Pasta
+              </Button>
+            </div>
+            
+            <Button 
+              onClick={() => handleUpload(tipo)} 
+              className="w-full sm:w-auto flex items-center gap-2"
+              disabled={loading || uploading}
+            >
+              <FileUp size={16} />
+              Upload
+            </Button>
+          </div>
         </div>
-      )}
-      
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {projetos.map((projeto) => (
-          <Card key={projeto.id} className="w-full">
-            <CardHeader className="p-4 pb-2">
-              <CardTitle className="text-base flex flex-col sm:flex-row justify-between items-center space-y-2 sm:space-y-0">
-                <span className="truncate text-center sm:text-left w-full">{projeto.nome}</span>
-                <div className="flex gap-2 mt-2 sm:mt-0">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleOpenFile(projeto.url, projeto.nome)}
-                    disabled={loading}
-                    title="Abrir arquivo"
-                    className="p-2"
-                  >
-                    <ExternalLink size={16} />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDownload(projeto.url, projeto.nome)}
-                    disabled={loading}
-                    title="Baixar arquivo"
-                    className="p-2"
-                  >
-                    <FileDown size={16} />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDelete(projeto.id, tipo, projeto.nome)}
-                    disabled={loading}
-                    title="Excluir arquivo"
-                    className="p-2"
-                  >
-                    <Trash2 size={16} />
-                  </Button>
-                </div>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 pt-0 text-sm text-gray-500 text-center sm:text-left">
-              Enviado em: {new Date(projeto.dataUpload).toLocaleDateString()}
-            </CardContent>
-          </Card>
-        ))}
-        {projetos.length === 0 && (
-          <div className="col-span-full text-center py-8 text-gray-500">
-            Nenhum projeto {tipo} encontrado
+
+        {/* Lista de pastas (se estiver na raiz) */}
+        {!pastaSelecionada && pastas.length > 0 && (
+          <div className="mb-6">
+            <h4 className="text-sm font-medium text-gray-700 mb-3">Pastas disponíveis:</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {pastas.map((pasta) => (
+                <Card 
+                  key={pasta.id} 
+                  className="cursor-pointer hover:shadow-md transition-shadow"
+                  onClick={() => handleSelecionarPasta(pasta)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <FolderOpen size={20} className="text-blue-500" />
+                        <div>
+                          <h5 className="font-medium text-sm">{pasta.nome}</h5>
+                          <p className="text-xs text-gray-500">
+                            {pasta.projeto_count} projeto{pasta.projeto_count !== 1 ? 's' : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex space-x-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            abrirDialogRenomearPasta(pasta);
+                          }}
+                          className="p-1 h-8 w-8"
+                        >
+                          <Edit size={14} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleExcluirPasta(pasta);
+                          }}
+                          className="p-1 h-8 w-8 text-red-600 hover:text-red-700"
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </div>
         )}
+        
+        {uploading && uploadTipo === tipo && (
+          <div className="mb-4">
+            <div className="flex justify-between mb-2">
+              <span className="text-sm">Enviando arquivo...</span>
+              <span className="text-sm">{Math.round(uploadProgress)}%</span>
+            </div>
+            <Progress value={uploadProgress} className="h-2" />
+          </div>
+        )}
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {projetos.map((projeto) => (
+            <Card key={projeto.id} className="w-full">
+              <CardHeader className="p-4 pb-2">
+                <CardTitle className="text-base flex flex-col sm:flex-row justify-between items-center space-y-2 sm:space-y-0">
+                  <span className="truncate text-center sm:text-left w-full">{projeto.nome}</span>
+                  <div className="flex gap-2 mt-2 sm:mt-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleOpenFile(projeto.url, projeto.nome)}
+                      disabled={loading}
+                      title="Abrir arquivo"
+                      className="p-2"
+                    >
+                      <Eye size={16} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleShare(projeto.url, projeto.nome)}
+                      disabled={loading}
+                      title="Compartilhar arquivo"
+                      className="p-2"
+                    >
+                      <Share size={16} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDownload(projeto.url, projeto.nome)}
+                      disabled={loading}
+                      title="Baixar arquivo"
+                      className="p-2"
+                    >
+                      <FileDown size={16} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDelete(projeto.id, tipo, projeto.nome)}
+                      disabled={loading}
+                      title="Excluir arquivo"
+                      className="p-2"
+                    >
+                      <Trash2 size={16} />
+                    </Button>
+                  </div>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 pt-0 text-sm text-gray-500 text-center sm:text-left">
+                Enviado em: {new Date(projeto.data_upload).toLocaleDateString()}
+              </CardContent>
+            </Card>
+          ))}
+          {projetos.length === 0 && (
+            <div className="col-span-full text-center py-8 text-gray-500">
+              {pastaSelecionada 
+                ? `Nenhum projeto encontrado na pasta "${pastaSelecionada.nome}"`
+                : `Nenhum projeto ${tipo} encontrado`
+              }
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderError = () => {
     if (!error) return null;
@@ -501,6 +874,62 @@ export default function Projetos() {
           </p>
         </TabsContent>
       </Tabs>
+
+      {/* Diálogo para criar pasta */}
+      <Dialog open={showCriarPastaDialog} onOpenChange={setShowCriarPastaDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Criar Nova Pasta</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="nomePasta" className="text-right">
+                Nome da Pasta:
+              </Label>
+              <Input
+                id="nomePasta"
+                value={novaPastaNome}
+                onChange={(e) => setNovaPastaNome(e.target.value)}
+                className="col-span-3"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCriarPastaDialog(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleCriarPasta}>Criar Pasta</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo para renomear pasta */}
+      <Dialog open={showRenomearPastaDialog} onOpenChange={setShowRenomearPastaDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Renomear Pasta</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="renomearPasta" className="text-right">
+                Novo Nome:
+              </Label>
+              <Input
+                id="renomearPasta"
+                value={novoNomePasta}
+                onChange={(e) => setNovoNomePasta(e.target.value)}
+                className="col-span-3"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRenomearPastaDialog(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleRenomearPasta}>Renomear Pasta</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 

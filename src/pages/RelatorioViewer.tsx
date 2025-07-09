@@ -52,6 +52,16 @@ const RelatorioViewer = () => {
     fetchRelatorio();
   }, [obraId, relatorioId, navigate, toast]);
 
+  // Função utilitária para limpar as tags <html>, <head> e <body> do HTML salvo
+  function extrairConteudoRelatorio(html: string): string {
+    // Remove <html>, </html>, <head>...</head>, <body>, </body>
+    return html
+      .replace(/<\/?html[^>]*>/gi, '')
+      .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
+      .replace(/<body[^>]*>/gi, '')
+      .replace(/<\/body>/gi, '');
+  }
+
   return (
     <div className="relative h-screen w-screen bg-gray-100">
       {/* Botão Voltar Fixo */}
@@ -74,9 +84,27 @@ const RelatorioViewer = () => {
       {/* Conteúdo do Relatório em um Iframe */}
       {!loading && relatorioHtml && (
         <iframe
-          srcDoc={relatorioHtml} // Carrega o HTML diretamente
+          srcDoc={`<html><head><style>
+            html,body{min-height:100vh;height:auto;width:100vw;box-sizing:border-box;}
+            body{margin:0;padding:32px 0 32px 0;font-family:'Segoe UI',sans-serif;background:#f8fafc;box-sizing:border-box;overflow-y:auto;max-width:100vw;}
+            *{box-sizing:border-box;}
+            .container{min-height:100vh;overflow:auto;background:#fff;border-radius:16px;box-shadow:0 2px 16px #0001;padding:32px 24px;max-width:900px;margin:0 auto;}
+            h1,h2,h3{color:#1e293b;margin-top:0;margin-bottom:0.5em;}
+            h1{font-size:2.2rem;font-weight:700;}
+            h2{font-size:1.5rem;font-weight:600;}
+            h3{font-size:1.2rem;font-weight:500;}
+            p,li,td,th,span,div{font-size:1.08rem;line-height:1.7;color:#222;}
+            .foto-container{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;}
+            .foto-container img{max-width:220px;max-height:160px;object-fit:cover;border-radius:10px;box-shadow:0 1px 8px #0002;margin:0 auto;}
+            img{max-width:100%;height:auto;display:block;}
+            table{max-width:100%;border-radius:8px;overflow:hidden;box-shadow:0 1px 8px #0001;}
+            th{background:#f1f5f9;font-weight:600;}
+            td,th{padding:10px 8px;}
+            .page-break{page-break-before:always;}
+          </style></head><body>${extrairConteudoRelatorio(relatorioHtml)}</body></html>`}
           title="Visualização do Relatório"
-          className="w-full h-full border-0 pt-16" // Adiciona padding-top para não sobrepor o botão
+          className="w-full h-full border-0 pt-16"
+          style={{ minHeight: '100vh', height: '100vh' }}
         />
       )}
 

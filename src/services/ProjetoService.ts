@@ -7,14 +7,168 @@ export interface Projeto {
   data_upload: string;
   url: string;
   obra_id: string;
+  pasta_id?: string; // Nova propriedade para associar projeto a uma pasta
+}
+
+export interface Pasta {
+  id: string;
+  nome: string;
+  tipo: string;
+  obra_id: number;
+  data_criacao: string;
+  projeto_count?: number; // Número de projetos na pasta
 }
 
 export class ProjetoService {
   private readonly BUCKET_NAME = 'projetos';
 
-  async uploadProjeto(file: File, tipo: string, obraId: string): Promise<Projeto> {
+  // Métodos para gerenciar pastas
+  async criarPasta(nome: string, tipo: string, obraId: string): Promise<Pasta> {
     try {
-      console.log(`Iniciando upload - Arquivo: ${file.name}, Tipo: ${tipo}, Tamanho: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+      console.log(`Criando pasta: ${nome}, Tipo: ${tipo}, Obra: ${obraId}`);
+      
+      const { data: pasta, error } = await supabase
+        .from('pastas_projetos')
+        .insert({
+          nome: nome,
+          tipo: tipo,
+          obra_id: obraId,
+          data_criacao: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Erro ao criar pasta:', error);
+        throw new Error(`Erro ao criar pasta: ${error.message}`);
+      }
+
+      console.log('Pasta criada com sucesso:', pasta);
+      return pasta;
+    } catch (error) {
+      console.error('Erro completo ao criar pasta:', error);
+      throw error;
+    }
+  }
+
+  async listarPastas(tipo: string, obraId: string): Promise<Pasta[]> {
+    try {
+      const { data, error } = await supabase
+        .from('pastas_projetos')
+        .select(`
+          *,
+          projetos:projetos(count)
+        `)
+        .eq('tipo', tipo)
+        .eq('obra_id', obraId)
+        .order('nome', { ascending: true });
+
+      if (error) throw error;
+
+      // Processar contagem de projetos
+      const pastas = data?.map(pasta => ({
+        ...pasta,
+        projeto_count: pasta.projetos?.[0]?.count || 0
+      })) || [];
+
+      return pastas;
+    } catch (error) {
+      console.error('Erro ao listar pastas:', error);
+      throw error;
+    }
+  }
+
+  async renomearPasta(id: string, novoNome: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('pastas_projetos')
+        .update({ nome: novoNome })
+        .eq('id', id);
+
+      if (error) {
+        throw new Error(`Erro ao renomear pasta: ${error.message}`);
+      }
+    } catch (error) {
+      console.error('Erro ao renomear pasta:', error);
+      throw error;
+    }
+  }
+
+  async excluirPasta(id: string): Promise<void> {
+    try {
+      // Verificar se há projetos na pasta
+      const { data: projetos, error: projetosError } = await supabase
+        .from('projetos')
+        .select('id')
+        .eq('pasta_id', id);
+
+      if (projetosError) {
+        throw new Error(`Erro ao verificar projetos na pasta: ${projetosError.message}`);
+      }
+
+      if (projetos && projetos.length > 0) {
+        throw new Error('Não é possível excluir uma pasta que contém projetos. Mova ou exclua os projetos primeiro.');
+      }
+
+      // Excluir a pasta
+      const { error } = await supabase
+        .from('pastas_projetos')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        throw new Error(`Erro ao excluir pasta: ${error.message}`);
+      }
+    } catch (error) {
+      console.error('Erro ao excluir pasta:', error);
+      throw error;
+    }
+  }
+
+  async buscarProjetosPorPasta(tipo: string, obraId: string, pastaId?: string): Promise<Projeto[]> {
+    try {
+      let query = supabase
+        .from('projetos')
+        .select('*')
+        .eq('tipo', tipo)
+        .eq('obra_id', obraId);
+
+      if (pastaId) {
+        query = query.eq('pasta_id', pastaId);
+      } else {
+        query = query.is('pasta_id', null); // Projetos sem pasta
+      }
+
+      const { data, error } = await query.order('data_upload', { ascending: false });
+
+      if (error) throw error;
+
+      return data || [];
+    } catch (error) {
+      console.error('Erro ao buscar projetos por pasta:', error);
+      throw error;
+    }
+  }
+
+  async moverProjetoParaPasta(projetoId: string, pastaId: string | null): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('projetos')
+        .update({ pasta_id: pastaId })
+        .eq('id', projetoId);
+
+      if (error) {
+        throw new Error(`Erro ao mover projeto: ${error.message}`);
+      }
+    } catch (error) {
+      console.error('Erro ao mover projeto:', error);
+      throw error;
+    }
+  }
+
+  async uploadProjeto(file: File, tipo: string, obraId: string, pastaId?: string): Promise<Projeto> {
+    try {
+      console.log(`Iniciando upload - Arquivo: ${file.name}, Tipo: ${tipo}, Pasta: ${pastaId || 'Raiz'}, Tamanho: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
       
       // Verificar tamanho do arquivo (limite de 50MB)
       if (file.size > 50 * 1024 * 1024) {
@@ -91,7 +245,8 @@ export class ProjetoService {
           tipo: tipo,
           url: publicUrl,
           data_upload: new Date().toISOString(),
-          obra_id: obraId
+          obra_id: obraId,
+          pasta_id: pastaId || null
         })
         .select()
         .single();

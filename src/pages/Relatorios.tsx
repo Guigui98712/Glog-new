@@ -21,6 +21,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import html2pdf from "html2pdf.js";
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
+import { Capacitor } from '@capacitor/core';
 import {
   Dialog,
   DialogContent,
@@ -77,10 +80,10 @@ const Relatorios = () => {
   const [diariosCompletos, setDiariosCompletos] = useState<any[]>([]);
 
   // Estado para controlar se as pendências devem ser incluídas no relatório
-  const [incluirPendencias, setIncluirPendencias] = useState(true);
+  const [incluirPendencias, setIncluirPendencias] = useState(false);
 
   // Estado para controlar se a tabela de presença deve ser incluída no relatório
-  const [incluirPresenca, setIncluirPresenca] = useState(true);
+  const [incluirPresenca, setIncluirPresenca] = useState(false);
 
   // Estado para armazenar as etapas do fluxograma
   const [etapasFluxograma, setEtapasFluxograma] = useState<{ id: string; nome: string }[]>([]);
@@ -601,154 +604,84 @@ const Relatorios = () => {
 
   const handleDownloadPDF = async (relatorio: RelatorioSemanal) => {
     try {
-      console.log('[DEBUG] Iniciando download do PDF:', relatorio);
-      
       toast({
         title: "Processando",
         description: "Preparando o PDF, por favor aguarde...",
       });
       
-      // Criar uma nova janela para renderizar o conteúdo
-      const printWindow = window.open('', '_blank');
-      
-      if (!printWindow) {
-        throw new Error('Não foi possível abrir uma nova janela. Verifique se o bloqueador de pop-ups está desativado.');
-      }
-      
-      // Escrever o conteúdo HTML na nova janela
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Relatório ${format(parseISO(relatorio.data_inicio), 'dd-MM-yyyy')} a ${format(parseISO(relatorio.data_fim), 'dd-MM-yyyy')}</title>
-          <meta charset="UTF-8">
-          <script src="https://cdn.tailwindcss.com"></script>
-          <style>
-            body { 
-              font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
-              margin: 0;
-              padding: 0;
-              -webkit-print-color-adjust: exact !important; 
-              print-color-adjust: exact !important;
-            }
-            img { max-width: 100%; }
-            
-            @media print {
-              body {
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-              }
-              
-              @page {
-                size: A4;
-                margin: 10mm;
-              }
-              .no-print { display: none; }
-              .print-avoid-break {
-                 page-break-inside: avoid !important;
-                 break-inside: avoid !important;
-               }
-            }
-            
-            .print-button {
-              position: fixed;
-              top: 20px;
-              right: 20px;
-              padding: 10px 20px;
-              background-color: #0369a1;
-              color: white;
-              border: none;
-              border-radius: 4px;
-              cursor: pointer;
-              font-size: 16px;
-              z-index: 9999;
-              box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            }
-            
-            .print-button:hover {
-              background-color: #0284c7;
-            }
-            
-            @media print {
-              .print-button {
-                display: none;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          <button class="print-button no-print" onclick="prepararImpressao()">Salvar como PDF</button>
-          ${relatorio.conteudo}
-          <script>
-            function carregarImagens() {
-              const imagens = document.querySelectorAll('img');
-              let imagensCarregadas = 0;
-              const totalImagens = imagens.length;
-              
-              console.log('Total de imagens:', totalImagens);
-              
-              if (totalImagens === 0) {
-                resolve();
-                return;
-              }
-              
-              imagens.forEach(img => {
-                img.crossOrigin = 'Anonymous';
-                
-                if (img.complete) {
-                  console.log('Imagem já carregada:', img.src);
-                  imagensCarregadas++;
-                  if (imagensCarregadas === totalImagens) {
-                    resolve();
-                  }
-                } else {
-                  img.onload = () => {
-                    console.log('Imagem carregada:', img.src);
-                    imagensCarregadas++;
-                    if (imagensCarregadas === totalImagens) {
-                      resolve();
-                    }
-                  };
-                  img.onerror = () => {
-                    console.error('Erro ao carregar imagem:', img.src);
-                    img.style.display = 'none';
-                    imagensCarregadas++;
-                    if (imagensCarregadas === totalImagens) {
-                      resolve();
-                    }
-                  };
-                }
-              });
-            }
-            
-            async function prepararImpressao() {
-              await carregarImagens();
-              console.log('Todas as imagens carregadas, pronto para imprimir');
-              document.title = "Relatório_${format(parseISO(relatorio.data_inicio), 'dd-MM-yyyy')}_a_${format(parseISO(relatorio.data_fim), 'dd-MM-yyyy')}";
-              window.print();
-            }
-            
-            window.onload = async function() {
-              await carregarImagens();
-              console.log('Todas as imagens carregadas.');
-            };
-          </script>
-        </body>
-        </html>
-      `);
-      
-      // Fechar o documento para finalizar o carregamento
-      printWindow.document.close();
-      
-      toast({
-        title: "Sucesso",
-        description: "Relatório aberto em nova janela. Clique no botão 'Salvar como PDF' para baixar o arquivo.",
+      // Cria um container temporário para renderizar o conteúdo do relatório
+      const tempDiv = document.createElement('div');
+      tempDiv.style.width = '900px';
+      tempDiv.style.margin = '0 auto';
+      tempDiv.style.background = '#fff';
+      tempDiv.style.padding = '24px';
+      tempDiv.innerHTML = relatorio.conteudo;
+      document.body.appendChild(tempDiv);
+
+      // Aguarda renderização
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Captura o conteúdo como imagem
+      const canvas = await html2canvas(tempDiv, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#fff',
+        allowTaint: true,
+        foreignObjectRendering: false,
       });
+
+      const imgData = canvas.toDataURL('image/jpeg', 1.0);
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+      const imgWidth = 210; // A4 width in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+      heightLeft -= 297;
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+        heightLeft -= 297;
+      }
+
+      // Remove o container temporário
+      document.body.removeChild(tempDiv);
+
+      const fileName = `relatorio_${format(parseISO(relatorio.data_inicio), 'dd-MM-yyyy')}_a_${format(parseISO(relatorio.data_fim), 'dd-MM-yyyy')}.pdf`;
+
+      if (Capacitor.isNativePlatform && Capacitor.isNativePlatform()) {
+        // Ambiente nativo: salvar ou compartilhar usando Capacitor
+        const pdfBlob = pdf.output('blob');
+        const arrayBuffer = await pdfBlob.arrayBuffer();
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+        const { Filesystem, Directory } = await import('@capacitor/filesystem');
+        const { Share } = await import('@capacitor/share');
+        const filePath = `relatorios/${fileName}`;
+        await Filesystem.writeFile({
+          path: filePath,
+          data: base64,
+          directory: Directory.Documents,
+          recursive: true,
+        });
+        await Share.share({
+          title: fileName,
+          text: 'Relatório Semanal',
+          url: `file://${filePath}`,
+          dialogTitle: 'Compartilhar PDF',
+        });
+        toast({ title: 'Sucesso', description: 'PDF gerado e pronto para compartilhar!' });
+      } else {
+        // Web: download normal
+        pdf.save(fileName);
+        toast({ title: 'Sucesso', description: 'PDF gerado com sucesso!' });
+      }
     } catch (error) {
       console.error('[DEBUG] Erro ao gerar PDF:', error);
       toast({
         title: "Erro",
-        description: "Não foi possível gerar o PDF. Tente novamente ou use a opção de visualização e imprima como PDF.",
+        description: "Não foi possível gerar o PDF. Tente novamente.",
         variant: "destructive"
       });
     }

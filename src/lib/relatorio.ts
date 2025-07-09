@@ -181,6 +181,7 @@ export const gerarRelatorioSemanalV2 = async (
               page-break-inside: avoid;
             }
           }
+          .foto-container img, .break-inside-avoid, .print-avoid-break { page-break-inside: avoid; break-inside: avoid; }
         </style>
       </head>
       <body class="bg-gray-100 p-2 md:p-4">
@@ -231,7 +232,7 @@ export const gerarRelatorioSemanalV2 = async (
                     ${registro.fotos?.length ? `
                       <div class="foto-container mt-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 print-avoid-break">
                         ${registro.fotos.map(foto =>
-                          `<img src="${foto}" alt="Foto da atividade" class="w-full h-auto rounded-md object-cover border" onerror="this.style.display='none'">`
+                          `<img src="${foto}" alt="Foto da atividade" class="w-full h-auto rounded-md object-cover border break-inside-avoid print-avoid-break" onerror="this.style.display='none'">`
                         ).join('')}
                       </div>
                     ` : ''}

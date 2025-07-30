@@ -104,7 +104,7 @@ const ObraDetalhes = () => {
   const [etapasStatus, setEtapasStatus] = useState<{[key: string]: 'pendente' | 'em_andamento' | 'concluida'}>({});
   const [numeroPendencias, setNumeroPendencias] = useState(0);
   const [showEditarEtapas, setShowEditarEtapas] = useState(false);
-  const [etapasFluxograma, setEtapasFluxograma] = useState<string[]>([]);
+  const [etapasFluxograma, setEtapasFluxograma] = useState<{ id: string; nome: string }[]>([]);
   const [etapasConfig, setEtapasConfig] = useState<{ id: string; nome: string; position: { x: number; y: number } }[]>([]);
   const [definicoesQuadro, setDefinicoesQuadro] = useState<DefinicaoQuadro | null>(null);
   const [numeroDefinicoes, setNumeroDefinicoes] = useState({ definir: 0, definido: 0 });
@@ -125,7 +125,7 @@ const ObraDetalhes = () => {
     try {
       // Usar as etapas do fluxograma carregadas do banco
       const todasEtapas = etapasFluxograma.length > 0 
-        ? etapasFluxograma 
+        ? etapasFluxograma.map(etapa => etapa.nome)
         : [
             'Serviços Preliminares', 'Terraplenagem', 'Fundação', 'Alvenaria', 'Estrutura',
             'Passagens Elétricas', 'Passagens Hidráulicas', 'Laje', 'Cobertura',
@@ -233,9 +233,12 @@ const ObraDetalhes = () => {
 
       // Se houver etapas cadastradas na tabela etapas_fluxograma, usar essas etapas
       if (etapasFluxogramaDatas && etapasFluxogramaDatas.length > 0) {
-        // Extrair apenas os nomes das etapas para o estado etapasFluxograma
-        const etapasNomes = etapasFluxogramaDatas.map(etapa => etapa.nome);
-        setEtapasFluxograma(etapasNomes);
+        // Criar objetos com id e nome para o estado etapasFluxograma
+        const etapasCompletas = etapasFluxogramaDatas.map(etapa => ({
+          id: etapa.id.toString(),
+          nome: etapa.nome
+        }));
+        setEtapasFluxograma(etapasCompletas);
         
         // Criar configurações completas das etapas para o componente FluxogramaObra
         const etapasConfigCompleto = etapasFluxogramaDatas.map(etapa => ({
@@ -245,7 +248,7 @@ const ObraDetalhes = () => {
         }));
         setEtapasConfig(etapasConfigCompleto);
         
-        console.log('[DEBUG] Etapas carregadas da tabela etapas_fluxograma:', etapasNomes);
+        console.log('[DEBUG] Etapas carregadas da tabela etapas_fluxograma:', etapasCompletas);
         console.log('[DEBUG] Configurações completas das etapas:', etapasConfigCompleto);
         return;
       }
@@ -263,9 +266,12 @@ const ObraDetalhes = () => {
 
       // Se houver etapas cadastradas na tabela etapas_datas, usar essas etapas
       if (etapasDatas && etapasDatas.length > 0) {
-        const etapasNomes = etapasDatas.map(etapa => etapa.etapa_nome);
-        setEtapasFluxograma(etapasNomes);
-        console.log('[DEBUG] Etapas carregadas da tabela etapas_datas:', etapasNomes);
+        const etapasCompletas = etapasDatas.map((etapa, index) => ({
+          id: (index + 1).toString(),
+          nome: etapa.etapa_nome
+        }));
+        setEtapasFluxograma(etapasCompletas);
+        console.log('[DEBUG] Etapas carregadas da tabela etapas_datas:', etapasCompletas);
         
         // Neste caso, não temos as posições, então usamos o padrão
         setEtapasConfig([]);
@@ -278,8 +284,12 @@ const ObraDetalhes = () => {
           'Revestimento', 'Gesso', 'Marmoraria', 'Pintura', 'Esquadrias', 'Limpeza Bruta',
           'Marcenaria', 'Metais', 'Limpeza Final'
         ];
-        setEtapasFluxograma(etapasPadrao);
-        console.log('[DEBUG] Usando etapas padrão:', etapasPadrao);
+        const etapasCompletas = etapasPadrao.map((etapa, index) => ({
+          id: (index + 1).toString(),
+          nome: etapa
+        }));
+        setEtapasFluxograma(etapasCompletas);
+        console.log('[DEBUG] Usando etapas padrão:', etapasCompletas);
         
         // Neste caso, não temos as posições, então usamos o padrão
         setEtapasConfig([]);
@@ -294,7 +304,11 @@ const ObraDetalhes = () => {
         'Revestimento', 'Gesso', 'Marmoraria', 'Pintura', 'Esquadrias', 'Limpeza Bruta',
         'Marcenaria', 'Metais', 'Limpeza Final'
       ];
-      setEtapasFluxograma(etapasPadrao);
+      const etapasCompletas = etapasPadrao.map((etapa, index) => ({
+        id: (index + 1).toString(),
+        nome: etapa
+      }));
+      setEtapasFluxograma(etapasCompletas);
       
       // Neste caso, não temos as posições, então usamos o padrão
       setEtapasConfig([]);
@@ -323,7 +337,7 @@ const ObraDetalhes = () => {
 
           // Garantir que todas as etapas do fluxograma tenham um status
           const todasEtapas = etapasFluxograma.length > 0 
-            ? etapasFluxograma 
+            ? etapasFluxograma.map(etapa => etapa.nome)
             : [
                 'Serviços Preliminares', 'Terraplenagem', 'Fundação', 'Alvenaria', 'Estrutura',
                 'Passagens Elétricas', 'Passagens Hidráulicas', 'Laje', 'Cobertura',
@@ -848,7 +862,7 @@ const ObraDetalhes = () => {
                 </div>
               </div>
               <div className="overflow-x-auto">
-                <GraficoEtapas registros={registrosDiario} />
+                <GraficoEtapas registros={registrosDiario} etapasFluxograma={etapasFluxograma} />
               </div>
             </div>
           </Card>

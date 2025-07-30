@@ -100,8 +100,20 @@ export default function GraficoEtapas({ registros, etapasFluxograma = ETAPAS_FLU
     };
   });
 
-  // Ordena por duração decrescente
-  dadosGrafico.sort((a, b) => b.duracao - a.duracao);
+  // Ordena as etapas conforme a ordem do fluxograma (mais recentes em cima)
+  const ordemEtapas = etapasFluxograma.map(etapa => etapa.nome);
+  dadosGrafico.sort((a, b) => {
+    const indexA = ordemEtapas.indexOf(a.etapa_nome);
+    const indexB = ordemEtapas.indexOf(b.etapa_nome);
+    
+    // Se a etapa não está na lista de etapasFluxograma, coloca no final
+    if (indexA === -1 && indexB === -1) return 0;
+    if (indexA === -1) return 1;
+    if (indexB === -1) return -1;
+    
+    // Inverte a ordem: mais recentes (maior índice) ficam em cima
+    return indexB - indexA;
+  });
 
   // Calcula o tamanho e espaçamento das barras baseado no número de etapas
   const numEtapas = dadosGrafico.length;

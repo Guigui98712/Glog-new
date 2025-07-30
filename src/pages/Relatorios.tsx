@@ -33,6 +33,7 @@ import {
 import { ETAPAS_FLUXOGRAMA } from "@/constants/etapas";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ImageViewerDialog } from "@/components/dialogs/ImageViewerDialog";
 
 // Interface para o funcionário
 interface Funcionario {
@@ -87,6 +88,10 @@ const Relatorios = () => {
 
   // Estado para armazenar as etapas do fluxograma
   const [etapasFluxograma, setEtapasFluxograma] = useState<{ id: string; nome: string }[]>([]);
+  
+  // Estado para o visualizador de imagens
+  const [showImageViewer, setShowImageViewer] = useState(false);
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
 
   // Função para obter os dias úteis da semana (segunda a sexta)
   const getDiasUteis = (dataInicio: Date) => {
@@ -781,6 +786,20 @@ const Relatorios = () => {
     }
   };
 
+  const handleVisualizarImagens = (fotos: string[]) => {
+    if (!fotos || fotos.length === 0) {
+      toast({
+        title: "Nenhuma foto",
+        description: "Este registro não possui fotos para visualizar.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    setSelectedImages(fotos);
+    setShowImageViewer(true);
+  };
+
   return (
     <div className="container mx-auto p-4 space-y-8">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
@@ -1124,8 +1143,12 @@ const Relatorios = () => {
                         key={index}
                         src={foto}
                         alt={`Foto ${index + 1}`}
-                        className="w-full h-24 object-cover rounded-lg cursor-pointer"
-                        onClick={() => window.open(foto, '_blank')}
+                        className="w-full h-24 object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
+                        onClick={() => handleVisualizarImagens(diarioSelecionado.fotos)}
+                        onError={(e) => {
+                          console.error('[DEBUG] Erro ao carregar imagem:', foto);
+                          (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150x100?text=Erro+ao+carregar+imagem';
+                        }}
                       />
                     ))}
                   </div>
@@ -1135,6 +1158,14 @@ const Relatorios = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Visualizador de Imagens */}
+      <ImageViewerDialog
+        images={selectedImages}
+        open={showImageViewer}
+        onOpenChange={setShowImageViewer}
+        title="Fotos do Registro"
+      />
     </div>
   );
 };

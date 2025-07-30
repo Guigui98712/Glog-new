@@ -38,6 +38,7 @@ import { ETAPAS_FLUXOGRAMA } from "../constants/etapas";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Camera as CapacitorCamera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { Capacitor } from '@capacitor/core';
+import { ImageViewerDialog } from '@/components/dialogs/ImageViewerDialog';
 
 interface Etapa {
   id: number;
@@ -107,6 +108,8 @@ const DiarioObra = () => {
   const [etapasEmAndamento, setEtapasEmAndamento] = useState<string[]>([]);
   const [etapasFluxograma, setEtapasFluxograma] = useState<{ id: string; nome: string }[]>([]);
   const [platform, setPlatform] = useState<string>('web');
+  const [showImageViewer, setShowImageViewer] = useState(false);
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
 
   useEffect(() => {
     const checkPlatform = async () => {
@@ -341,6 +344,8 @@ const DiarioObra = () => {
     if (!registroEmEdicao || !obraId) return;
 
     try {
+      console.log('[DEBUG] Iniciando atualização do registro:', registroEmEdicao.id);
+      
       // Converter IDs para nomes de etapas se necessário
       let etapasIniciadas = registroEmEdicao.etapas_iniciadas;
       
@@ -352,11 +357,19 @@ const DiarioObra = () => {
         });
       }
       
-      await atualizarRegistroDiario(registroEmEdicao.id, {
-        ...registroEmEdicao,
-        obra_id: Number(obraId),
-        etapas_iniciadas: etapasIniciadas
-      });
+      // Preparar dados para atualização
+      const dadosAtualizacao = {
+        descricao: registroEmEdicao.descricao,
+        observacoes: registroEmEdicao.observacoes,
+        fotos: registroEmEdicao.fotos || [],
+        etapas_iniciadas: etapasIniciadas || [],
+        etapas_concluidas: registroEmEdicao.etapas_concluidas || [],
+        obra_id: Number(obraId)
+      };
+      
+      console.log('[DEBUG] Dados para atualização:', dadosAtualizacao);
+      
+      await atualizarRegistroDiario(registroEmEdicao.id, dadosAtualizacao);
       await carregarDados();
       setShowEditDialog(false);
       setRegistroEmEdicao(null);
@@ -366,6 +379,7 @@ const DiarioObra = () => {
         description: "As informações do registro foram atualizadas com sucesso.",
       });
     } catch (error) {
+      console.error('[DEBUG] Erro na atualização:', error);
       toast({
         title: "Erro na atualização",
         description: "Não foi possível atualizar o registro. Tente novamente mais tarde.",
@@ -392,6 +406,20 @@ const DiarioObra = () => {
         variant: "destructive"
       });
     }
+  };
+
+  const handleVisualizarImagens = (fotos: string[]) => {
+    if (!fotos || fotos.length === 0) {
+      toast({
+        title: "Nenhuma foto",
+        description: "Este registro não possui fotos para visualizar.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    setSelectedImages(fotos);
+    setShowImageViewer(true);
   };
 
   const handleDiaClick = (date: Date | undefined) => {
@@ -983,8 +1011,12 @@ const DiarioObra = () => {
                                 key={index}
                                 src={foto}
                                 alt={`Foto ${index + 1}`}
-                                className="w-full h-24 object-cover rounded-lg cursor-pointer"
-                                onClick={() => window.open(foto, '_blank')}
+                                className="w-full h-24 object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
+                                onClick={() => handleVisualizarImagens(registro.fotos)}
+                                onError={(e) => {
+                                  console.error('[DEBUG] Erro ao carregar imagem:', foto);
+                                  (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150x100?text=Erro+ao+carregar+imagem';
+                                }}
                               />
                             ))}
                           </div>
@@ -1163,6 +1195,7 @@ const DiarioObra = () => {
                               console.log('[DEBUG] Iniciando upload de nova foto na edição:', foto.name);
                               const resultado = await uploadFoto(foto);
                               novasUrls.push(resultado);
+                              console.log('[DEBUG] Foto enviada com sucesso:', resultado);
                             } catch (error) {
                               console.error('[DEBUG] Erro ao fazer upload da foto na edição:', error);
                               toast({
@@ -1174,14 +1207,62 @@ const DiarioObra = () => {
                           }
                           
                           if (novasUrls.length > 0) {
-                            setRegistroEmEdicao({
-                              ...registroEmEdicao,
-                              fotos: [...(registroEmEdicao.fotos || []), ...novasUrls]
+                            console.log('[DEBUG] Atualizando registro com novas fotos:', novasUrls);
+                            setRegistroEmEdicao(prev => {
+                              if (!prev) return null;
+                              const fotosAtuais = prev.fotos || [];
+                              const novasFotos = [...fotosAtuais, ...novasUrls];
+                              console.log('[DEBUG] Fotos atualizadas:', novasFotos);
+                              return {
+                                ...prev,
+                                fotos: novasFotos
+                              };
+                            });
+                            
+                            toast({
+                              title: "Fotos adicionadas",
+                              description: `${novasUrls.length} foto(s) adicionada(s) com sucesso!`
                             });
                           }
                         }
                       }}
                     />
+                    
+                    {/* Preview das fotos atuais */}
+                    {registroEmEdicao.fotos && registroEmEdicao.fotos.length > 0 && (
+                      <div className="mt-4">
+                        <Label>Fotos atuais ({registroEmEdicao.fotos.length})</Label>
+                        <div className="grid grid-cols-3 gap-2 mt-2">
+                          {registroEmEdicao.fotos.map((foto, index) => (
+                            <div key={index} className="relative group">
+                              <img
+                                src={foto}
+                                alt={`Foto ${index + 1}`}
+                                className="w-full h-24 object-cover rounded-lg"
+                                onError={(e) => {
+                                  console.error('[DEBUG] Erro ao carregar preview da imagem:', foto);
+                                  (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150x100?text=Erro+ao+carregar+imagem';
+                                }}
+                              />
+                              <Button
+                                variant="destructive"
+                                size="icon"
+                                className="absolute top-1 right-1 h-6 w-6 opacity-75 group-hover:opacity-100"
+                                onClick={() => {
+                                  setRegistroEmEdicao(prev => {
+                                    if (!prev) return null;
+                                    const novasFotos = prev.fotos.filter((_, i) => i !== index);
+                                    return { ...prev, fotos: novasFotos };
+                                  });
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1225,7 +1306,7 @@ const DiarioObra = () => {
                             src={foto}
                             alt={`Foto ${index + 1}`}
                             className="w-full h-full object-cover rounded-lg cursor-pointer transition-transform hover:scale-105"
-                            onClick={() => window.open(foto, '_blank')}
+                            onClick={() => handleVisualizarImagens(registroSelecionado.fotos)}
                             onError={(e) => {
                               console.error('[DEBUG] Erro ao carregar imagem:', foto);
                               (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x400?text=Erro+ao+carregar+imagem';
@@ -1238,7 +1319,7 @@ const DiarioObra = () => {
                               className="opacity-0 group-hover:opacity-100 transition-opacity"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                window.open(foto, '_blank');
+                                handleVisualizarImagens(registroSelecionado.fotos);
                               }}
                             >
                               Ver Ampliado
@@ -1272,6 +1353,14 @@ const DiarioObra = () => {
             )}
           </DialogContent>
         </Dialog>
+
+        {/* Visualizador de Imagens */}
+        <ImageViewerDialog
+          images={selectedImages}
+          open={showImageViewer}
+          onOpenChange={setShowImageViewer}
+          title="Fotos do Registro"
+        />
       </div>
     </div>
   );

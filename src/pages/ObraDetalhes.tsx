@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { ArrowLeft, Building2, Calendar as CalendarIcon, DollarSign, FileText, Plus, Pencil, CalendarDays, AlertCircle, FileUp, ListTodo, ShoppingCart, FolderKanban } from 'lucide-react';
+import { ArrowLeft, Building2, Calendar as CalendarIcon, DollarSign, FileText, Plus, Pencil, CalendarDays, AlertCircle, FileUp, ListTodo, ShoppingCart, FolderKanban, Bus } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis } from 'recharts';
 import Calendar from 'react-calendar';
@@ -50,6 +50,7 @@ interface Obra {
   trello_board_id?: string;
   definicoes_board_id?: string;
   numero_demandas: number;
+  viagem_fora_cidade?: boolean;
 }
 
 interface EtapaComDatas {
@@ -817,6 +818,17 @@ const ObraDetalhes = () => {
                   DWG, REVIT e PDF
                 </p>
               </div>
+              {obra?.viagem_fora_cidade && (
+                <div className="col-span-1">
+                  <Card className="p-4 flex flex-col items-start justify-between h-full cursor-pointer hover:bg-blue-50 transition" onClick={() => navigate(`/obras/${obra.id}/viagens`)}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Bus className="w-5 h-5 text-blue-600" />
+                      <span className="font-semibold text-base">Viagens</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">Controle de viagens e deslocamentos</span>
+                  </Card>
+                </div>
+              )}
             </div>
           </div>
 

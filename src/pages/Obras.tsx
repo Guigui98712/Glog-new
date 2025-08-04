@@ -68,6 +68,7 @@ const Obras = () => {
   const [novaObraCliente, setNovaObraCliente] = useState("");
   const [novaObraResponsavel, setNovaObraResponsavel] = useState("");
   const [novaObraDataPrevisaoFim, setNovaObraDataPrevisaoFim] = useState("");
+  const [novaObraViagem, setNovaObraViagem] = useState(false);
 
   const [obraEmEdicao, setObraEmEdicao] = useState<Obra | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
@@ -169,10 +170,10 @@ const Obras = () => {
   };
 
   const handleNovaObra = async () => {
-    if (!novaObraNome || !novaObraEndereco || !novaObraCustoPrevisto) {
+    if (!novaObraNome || !novaObraEndereco) {
       toast({
         title: "Campos obrigatórios",
-        description: "Por favor, preencha todos os campos obrigatórios: nome, endereço e custo previsto.",
+        description: "Por favor, preencha todos os campos obrigatórios: nome e endereço.",
         variant: "destructive"
       });
       return;
@@ -182,7 +183,7 @@ const Obras = () => {
       const novaObraData: ObraParaEnvio = {
         nome: novaObraNome,
         endereco: novaObraEndereco,
-        custo_previsto: novaObraCustoPrevisto,
+        viagem_fora_cidade: novaObraViagem,
         custo_real: 0,
         progresso: 0,
         status: 'em_andamento' as const,
@@ -211,6 +212,7 @@ const Obras = () => {
       setNovaObraCliente("");
       setNovaObraResponsavel("");
       setNovaObraDataPrevisaoFim("");
+      setNovaObraViagem(false);
       setShowDialog(false);
       
       toast({
@@ -645,47 +647,19 @@ const Obras = () => {
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Custo Previsto*</label>
-              <Input
-                type="number"
-                value={novaObraCustoPrevisto}
-                onChange={(e) => setNovaObraCustoPrevisto(parseFloat(e.target.value) || 0)}
-                placeholder="Digite o custo previsto"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Cliente</label>
-              <Input
-                value={novaObraCliente}
-                onChange={(e) => setNovaObraCliente(e.target.value)}
-                 onBlur={(e) => setNovaObraCliente(capitalizarPrimeiraLetra(e.target.value))}
-                placeholder="Digite o nome do cliente (opcional)"
-                spellCheck="true"
-                autoCorrect="on"
-                autoCapitalize="sentences"
-                lang="pt-BR"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Responsável</label>
-              <Input
-                value={novaObraResponsavel}
-                onChange={(e) => setNovaObraResponsavel(e.target.value)}
-                onBlur={(e) => setNovaObraResponsavel(capitalizarPrimeiraLetra(e.target.value))}
-                placeholder="Digite o nome do responsável (opcional)"
-                spellCheck="true"
-                autoCorrect="on"
-                autoCapitalize="sentences"
-                lang="pt-BR"
-              />
-            </div>
-             <div>
-              <label className="text-sm font-medium">Previsão de Término (AAAA-MM)</label>
-              <Input
-                type="month"
-                value={novaObraDataPrevisaoFim}
-                onChange={(e) => setNovaObraDataPrevisaoFim(e.target.value)}
-              />
+              <label className="text-sm font-medium">Viagens</label>
+              <div className="flex items-center gap-4 mt-1">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={novaObraViagem}
+                    onChange={e => setNovaObraViagem(e.target.checked)}
+                    className="accent-primary"
+                  />
+                  Fora da cidade
+                </label>
+                <span className="text-xs text-muted-foreground">Marque se a obra for fora da cidade</span>
+              </div>
             </div>
           </div>
           <DialogFooter>

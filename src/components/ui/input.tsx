@@ -6,16 +6,19 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
   enableSpellCheck?: boolean;
 }
 
+/**
+ * Input padrão do app GLog.
+ * Sempre usa autocorreção, capitalização de frases, corretor e idioma pt-BR para melhor experiência mobile e web.
+ */
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, enableSpellCheck = true, ...props }, ref) => {
-    // Aplica autocorreção e capitalização em todos os campos, exceto se enableSpellCheck for false
-    const inputProps = enableSpellCheck ? {
+  ({ className, ...props }, ref) => {
+    const inputProps = {
       autoCapitalize: "sentences",
       autoCorrect: "on",
-      spellCheck: "true",
+      spellCheck: true,
       lang: "pt-BR",
       ...props
-    } : props;
+    };
 
     return (
       <input

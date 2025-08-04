@@ -32,6 +32,7 @@ import TestNativeSpellCheck from "./pages/TestNativeSpellCheck";
 import TestSmartSpellChecker from "./pages/TestSmartSpellChecker";
 import Debug from "./pages/Debug";
 import Compartilhadas from "./pages/Compartilhadas";
+import ViagensObra from './pages/ViagensObra';
 
 // Componente para capturar erros
 class ErrorBoundary extends React.Component {
@@ -263,6 +264,7 @@ function App() {
             <Route path=":id/demanda" element={<DemandaObra />} />
             <Route path=":id/demanda/relatorios" element={<DemandaRelatorios />} />
             <Route path=":id/projetos" element={<Projetos />} />
+            <Route path=":id/viagens" element={<ViagensObra />} />
           </Route>
           
           <Route 

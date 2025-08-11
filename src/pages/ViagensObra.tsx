@@ -158,26 +158,31 @@ export default function ViagensObra() {
   // Função para abrir o dialog ao clicar no dia
   const handleDayClick = async (date: Date) => {
     setSelectedDate(date);
-    const dataStr = format(date, 'yyyy-MM-dd');
-    const temViagem = diasComViagem.includes(dataStr);
-    setIsViagem(temViagem);
-    
-    // Se já tem viagem, buscar os detalhes (pessoas)
-    if (temViagem && obraId) {
-      try {
-        const detalhes = await viagensService.buscarDetalhesViagem(obraId, dataStr);
-        setPessoas(detalhes?.pessoas || '');
-        setPessoasLista((detalhes?.pessoas || '').split(',').map(p => p.trim()).filter(Boolean));
-      } catch (error) {
-        console.error('Erro ao buscar detalhes da viagem:', error);
+    const dateString = format(date, 'yyyy-MM-dd');
+
+    if (!obraId) return;
+
+    try {
+      const detalhesViagem = await viagensService.buscarDetalhesViagem(obraId, dateString);
+
+      if (detalhesViagem) {
+        setIsViagem(true);
+        setPessoas(detalhesViagem.pessoas || '');
+        setCarrosSelecionados(detalhesViagem.carros_ids || []);
+      } else {
+        setIsViagem(false);
         setPessoas('');
-        setPessoasLista([]);
+        setCarrosSelecionados([]);
       }
-    } else {
+    } catch (error) {
+      console.error('Erro ao buscar detalhes da viagem:', error);
+      toast.error('Erro ao carregar dados da viagem.');
+      // Reseta para um estado seguro em caso de erro
+      setIsViagem(false);
       setPessoas('');
-      setPessoasLista([]);
+      setCarrosSelecionados([]);
     }
-    
+
     setShowDialog(true);
   };
 
@@ -187,20 +192,20 @@ export default function ViagensObra() {
 
     setLoading(true);
     try {
-      const dataStr = format(selectedDate, 'yyyy-MM-dd');
+      const dateString = format(selectedDate, 'yyyy-MM-dd');
       const pessoasTexto = pessoas.trim();
       
-      if (isViagem && !diasComViagem.includes(dataStr)) {
+      if (isViagem && !diasComViagem.includes(dateString)) {
         // Marcar nova viagem com carros
-        await viagensService.marcarViagemComCarros(obraId, dataStr, pessoasTexto, carrosSelecionados);
+        await viagensService.marcarViagemComCarros(obraId, dateString, pessoasTexto, carrosSelecionados);
         toast.success('Viagem marcada com sucesso!');
-      } else if (isViagem && diasComViagem.includes(dataStr)) {
+      } else if (isViagem && diasComViagem.includes(dateString)) {
         // Atualizar viagem existente com carros
-        await viagensService.atualizarViagemComCarros(obraId, dataStr, pessoasTexto, carrosSelecionados);
+        await viagensService.atualizarViagemComCarros(obraId, dateString, pessoasTexto, carrosSelecionados);
         toast.success('Viagem atualizada com sucesso!');
-      } else if (!isViagem && diasComViagem.includes(dataStr)) {
+      } else if (!isViagem && diasComViagem.includes(dateString)) {
         // Desmarcar viagem
-        await viagensService.desmarcarViagem(obraId, dataStr);
+        await viagensService.desmarcarViagem(obraId, dateString);
         toast.success('Viagem desmarcada com sucesso!');
       }
       
@@ -231,8 +236,8 @@ export default function ViagensObra() {
 
   // Customização visual dos dias
   const tileClassName = ({ date }: { date: Date }) => {
-    const dataStr = format(date, 'yyyy-MM-dd');
-    return diasComViagem.includes(dataStr) ? 'bg-blue-200 text-blue-900 font-bold rounded-full' : '';
+    const dateString = format(date, 'yyyy-MM-dd');
+    return diasComViagem.includes(dateString) ? 'bg-blue-200 text-blue-900 font-bold rounded-full' : '';
   };
 
   if (loadingInitial) {
@@ -296,7 +301,7 @@ export default function ViagensObra() {
 
       {/* Contagem de viagens por carro por mês */}
       {carros.length > 0 && (
-        <Card className="p-4 mt-6 max-w-4xl mx-auto">
+        <Card className="p-4 mt-6 max-w-xl mx-auto">
           <CardHeader>
             <CardTitle>Carros</CardTitle>
           </CardHeader>

@@ -13,6 +13,7 @@ export interface ViagemObra {
 export interface ViagemDetalhes {
   data_viagem: string;
   pessoas?: string;
+  carros_ids?: number[];
 }
 
 export interface ContagemMensal {
@@ -21,6 +22,7 @@ export interface ContagemMensal {
   ano: number;
   total: number;
 }
+
 
 export interface Carro {
   id: number;
@@ -207,21 +209,30 @@ export class ViagensService {
   async buscarDetalhesViagem(obraId: string, dataViagem: string): Promise<ViagemDetalhes | null> {
     try {
       const { data, error } = await supabase
-        .from('viagens_obra')
-        .select('data_viagem, pessoas')
+        .from('viagens') // CORREÇÃO: Usar a tabela 'viagens' em vez de 'viagens_obra'
+        .select('data, pessoas, carros_ids')
         .eq('obra_id', parseInt(obraId))
-        .eq('data_viagem', dataViagem)
-        .single();
+        .eq('data', dataViagem)
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') { // PGRST116 = não encontrado
+      if (error) {
         console.error('[VIAGENS] Erro ao buscar detalhes da viagem:', error);
         throw new Error(`Erro ao buscar detalhes da viagem: ${error.message}`);
       }
 
-      return data || null;
+      // Mapeia o resultado para a interface ViagemDetalhes
+      if (data) {
+        return {
+          data_viagem: data.data,
+          pessoas: data.pessoas,
+          carros_ids: data.carros_ids,
+        };
+      }
+
+      return null;
     } catch (error) {
       console.error('[VIAGENS] Erro completo ao buscar detalhes da viagem:', error);
-      return null;
+      throw error;
     }
   }
 
@@ -233,12 +244,12 @@ export class ViagensService {
       console.log(`[VIAGENS] Atualizando viagem - Obra: ${obraId}, Data: ${dataViagem}, Pessoas: ${pessoas}`);
       
       const { error } = await supabase
-        .from('viagens_obra')
+        .from('viagens')
         .update({
           pessoas: pessoas || null
         })
         .eq('obra_id', parseInt(obraId))
-        .eq('data_viagem', dataViagem);
+        .eq('data', dataViagem);
 
       if (error) {
         console.error('[VIAGENS] Erro ao atualizar viagem:', error);

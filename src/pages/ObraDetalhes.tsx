@@ -9,7 +9,6 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Ba
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { supabase } from '@/lib/supabase';
-import FluxogramaObra from '@/components/FluxogramaObra';
 import EditarEtapasObra from '@/components/EditarEtapasObra';
 import { format, addDays, startOfWeek, endOfWeek, addWeeks, subWeeks, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -106,7 +105,6 @@ const ObraDetalhes = () => {
   const [numeroPendencias, setNumeroPendencias] = useState(0);
   const [showEditarEtapas, setShowEditarEtapas] = useState(false);
   const [etapasFluxograma, setEtapasFluxograma] = useState<{ id: string; nome: string }[]>([]);
-  const [etapasConfig, setEtapasConfig] = useState<{ id: string; nome: string; position: { x: number; y: number } }[]>([]);
   const [definicoesQuadro, setDefinicoesQuadro] = useState<DefinicaoQuadro | null>(null);
   const [numeroDefinicoes, setNumeroDefinicoes] = useState({ definir: 0, definido: 0 });
   
@@ -234,23 +232,12 @@ const ObraDetalhes = () => {
 
       // Se houver etapas cadastradas na tabela etapas_fluxograma, usar essas etapas
       if (etapasFluxogramaDatas && etapasFluxogramaDatas.length > 0) {
-        // Criar objetos com id e nome para o estado etapasFluxograma
         const etapasCompletas = etapasFluxogramaDatas.map(etapa => ({
           id: etapa.id.toString(),
           nome: etapa.nome
         }));
         setEtapasFluxograma(etapasCompletas);
-        
-        // Criar configurações completas das etapas para o componente FluxogramaObra
-        const etapasConfigCompleto = etapasFluxogramaDatas.map(etapa => ({
-          id: etapa.id.toString(),
-          nome: etapa.nome,
-          position: etapa.position || { x: 0, y: 0 }
-        }));
-        setEtapasConfig(etapasConfigCompleto);
-        
         console.log('[DEBUG] Etapas carregadas da tabela etapas_fluxograma:', etapasCompletas);
-        console.log('[DEBUG] Configurações completas das etapas:', etapasConfigCompleto);
         return;
       }
       
@@ -273,9 +260,6 @@ const ObraDetalhes = () => {
         }));
         setEtapasFluxograma(etapasCompletas);
         console.log('[DEBUG] Etapas carregadas da tabela etapas_datas:', etapasCompletas);
-        
-        // Neste caso, não temos as posições, então usamos o padrão
-        setEtapasConfig([]);
       } else {
         // Se não houver etapas cadastradas em nenhuma tabela, usar as etapas padrão
         const etapasPadrao = [
@@ -291,9 +275,6 @@ const ObraDetalhes = () => {
         }));
         setEtapasFluxograma(etapasCompletas);
         console.log('[DEBUG] Usando etapas padrão:', etapasCompletas);
-        
-        // Neste caso, não temos as posições, então usamos o padrão
-        setEtapasConfig([]);
       }
     } catch (error) {
       console.error('[DEBUG] Erro ao carregar etapas do fluxograma:', error);
@@ -310,9 +291,6 @@ const ObraDetalhes = () => {
         nome: etapa
       }));
       setEtapasFluxograma(etapasCompletas);
-      
-      // Neste caso, não temos as posições, então usamos o padrão
-      setEtapasConfig([]);
     }
   };
 
@@ -679,6 +657,17 @@ const ObraDetalhes = () => {
     console.log('[DEBUG] definicaoDisplay foi atualizado para:', definicaoDisplay);
   }, [definicaoDisplay]);
 
+  const getEtapaStatusInfo = (nome: string) => {
+    const status = etapasStatus[nome] || 'pendente';
+    if (status === 'concluida') {
+      return { label: 'Concluída', dotClass: 'bg-[#22c55e]' };
+    }
+    if (status === 'em_andamento') {
+      return { label: 'Em andamento', dotClass: 'bg-[#eab308]' };
+    }
+    return { label: 'Pendente', dotClass: 'bg-[#f97373]' };
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
@@ -834,7 +823,7 @@ const ObraDetalhes = () => {
 
           <div className="bg-white rounded-lg shadow-sm p-4 md:p-6 overflow-x-auto">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-base md:text-lg font-semibold">Fluxograma da Obra</h3>
+              <h3 className="text-base md:text-lg font-semibold">Etapas da Obra</h3>
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -842,14 +831,28 @@ const ObraDetalhes = () => {
                 className="flex items-center gap-2"
               >
                 <Pencil className="h-4 w-4" />
-                Editar Etapas
+                Editar etapas
               </Button>
             </div>
-            <div className="relative min-w-[600px]">
-              <FluxogramaObra 
-                registros={registrosDiario} 
-                etapasConfig={etapasConfig.length > 0 ? etapasConfig : undefined}
-              />
+            <div className="space-y-3 min-w-[300px]">
+              {etapasFluxograma.length === 0 ? (
+                <p className="text-sm text-gray-500">
+                  Nenhuma etapa cadastrada. Clique em &quot;Editar etapas&quot; para adicionar as etapas da obra.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {etapasFluxograma.map((etapa) => (
+                    <div
+                      key={etapa.id}
+                      className="border rounded-md px-3 py-2 bg-white"
+                    >
+                      <span className="text-sm md:text-base truncate pr-2">
+                        {etapa.nome}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -35,6 +35,7 @@ import Compartilhadas from "./pages/Compartilhadas";
 import ViagensObra from './pages/ViagensObra';
 import CronogramasObra from './pages/CronogramasObra';
 import CronogramaEditor from './pages/CronogramaEditor';
+import Almoxarifado from './pages/Almoxarifado';
 
 // Componente para capturar erros
 class ErrorBoundary extends React.Component {
@@ -262,6 +263,7 @@ function App() {
             <Route path=":id/diario" element={<DiarioObra />} />
             <Route path=":id/cronogramas" element={<CronogramasObra />} />
             <Route path=":id/cronogramas/:cronogramaId" element={<CronogramaEditor />} />
+            <Route path=":id/almoxarifado" element={<Almoxarifado />} />
             <Route path=":id/relatorios" element={<Relatorios />} />
             <Route path=":id/relatorios/:relatorioId/view" element={<RelatorioViewer />} />
             <Route path=":id/definicoes" element={<DefinicoesObra />} />

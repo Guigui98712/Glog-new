@@ -1650,3 +1650,145 @@ export const listarEtapasFluxograma = async (obraId: number) => {
     throw error;
   }
 };
+
+// ===== Almoxarifado (itens e movimentos) =====
+export const listarItens = async (obraId: number) => {
+  if (DISABLE_GOOGLE_APIS) return [];
+  try {
+    const { data, error } = await supabase
+      .from('almox_items')
+      .select('*')
+      .eq('obra_id', obraId)
+      .order('nome', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.error('Erro listarItens', err);
+    throw err;
+  }
+};
+
+export const searchItems = async (obraId: number, q: string) => {
+  if (DISABLE_GOOGLE_APIS) return [];
+  try {
+    const term = q.trim();
+    const { data, error } = await supabase
+      .from('almox_items')
+      .select('*')
+      .ilike('nome', `${term}%`)
+      .eq('obra_id', obraId)
+      .order('nome', { ascending: true })
+      .limit(20);
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.error('Erro searchItems', err);
+    throw err;
+  }
+};
+
+export const getItemById = async (obraId: number, id: number) => {
+  if (DISABLE_GOOGLE_APIS) return null;
+  try {
+    const { data, error } = await supabase
+      .from('almox_items')
+      .select('*')
+      .eq('obra_id', obraId)
+      .eq('id', id)
+      .single();
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      throw error;
+    }
+    return data || null;
+  } catch (err) {
+    console.error('Erro getItemById', err);
+    throw err;
+  }
+};
+
+export const createItem = async (item: { nome: string; unidade?: string | null; categoria?: string | null; quantidade?: number | null; obra_id?: number | null }) => {
+  if (DISABLE_GOOGLE_APIS) return null;
+  try {
+    const payload = { ...item };
+    const { data, error } = await supabase
+      .from('almox_items')
+      .insert([payload])
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Erro createItem', err);
+    throw err;
+  }
+};
+
+export const registerMovement = async (obraId: number, itemId: number, type: 'entrada' | 'saida', quantidade: number) => {
+  if (DISABLE_GOOGLE_APIS) return null;
+  try {
+    // inserir movimento
+    const movimento = {
+      obra_id: obraId,
+      item_id: itemId,
+      tipo: type,
+      quantidade: quantidade,
+      criado_em: new Date().toISOString()
+    } as any;
+
+    const { data: mov, error: movErr } = await supabase
+      .from('almox_movements')
+      .insert([movimento])
+      .select()
+      .single();
+    if (movErr) throw movErr;
+
+    // atualizar quantidade no item com operação atômica
+    const delta = type === 'entrada' ? quantidade : -quantidade;
+    const { data: updated, error: updErr } = await supabase.rpc('almox_adjust_item_quantity', { p_item_id: itemId, p_delta: delta });
+    if (updErr) {
+      // fallback: tentar update simples
+      const { data: getItem } = await supabase.from('almox_items').select('quantidade').eq('id', itemId).single();
+      const nova = (getItem?.quantidade || 0) + delta;
+      const { error: e2 } = await supabase.from('almox_items').update({ quantidade: nova }).eq('id', itemId);
+      if (e2) throw e2;
+    }
+
+    return mov;
+  } catch (err) {
+    console.error('Erro registerMovement', err);
+    throw err;
+  }
+};
+
+export const getAlmoxarifadoHistorico = async (obraId: number) => {
+  if (DISABLE_GOOGLE_APIS) return [];
+  try {
+    const { data, error } = await supabase
+      .from('almox_movements')
+      .select(`
+        id,
+        tipo,
+        quantidade,
+        criado_em,
+        item_id,
+        almox_items(nome)
+      `)
+      .eq('obra_id', obraId)
+      .order('criado_em', { ascending: false });
+    
+    if (error) throw error;
+    
+    // Mapear resultado para formato esperado
+    return (data || []).map((mov: any) => ({
+      id: mov.id,
+      tipo: mov.tipo,
+      quantidade: mov.quantidade,
+      data: mov.criado_em,
+      item_nome: mov.almox_items?.nome || 'Item deletado'
+    }));
+  } catch (err) {
+    console.error('Erro getAlmoxarifadoHistorico', err);
+    throw err;
+  }
+};

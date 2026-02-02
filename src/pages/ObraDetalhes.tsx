@@ -846,6 +846,21 @@ const ObraDetalhes = () => {
                   DWG, REVIT e PDF
                 </p>
               </div>
+
+              <div 
+                className="p-3 md:p-4 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors" 
+                onClick={() => navigate(`/obras/${id}/almoxarifado`)}
+              >
+                <h3 className="text-xs md:text-sm font-medium text-gray-500">Almoxarifado</h3>
+                <div className="mt-1 flex items-center justify-between">
+                  <p className="text-base md:text-lg font-semibold">Materiais</p>
+                  <ShoppingCart className="w-4 h-4 md:w-5 md:h-5 text-green-500" />
+                </div>
+                <p className="text-xs md:text-sm text-gray-500 mt-1">
+                  Controle de entrada e saída
+                </p>
+              </div>
+
               {obra?.viagem_fora_cidade && (
                 <div className="col-span-1">
                   <Card className="p-4 flex flex-col items-start justify-between h-full cursor-pointer hover:bg-blue-50 transition" onClick={() => navigate(`/obras/${obra.id}/viagens`)}>

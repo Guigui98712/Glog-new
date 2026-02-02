@@ -243,13 +243,17 @@ const EditarEtapasObra: React.FC<EditarEtapasObraProps> = ({ obraId, onClose, on
   return (
     <Card className="w-full max-w-3xl mx-auto">
       <CardHeader>
-        <CardTitle className="flex justify-between items-center">
-          <span>Etapas da Obra</span>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose}>
+        <CardTitle className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <span className="text-base sm:text-lg">Etapas da Obra</span>
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <Button variant="outline" onClick={onClose} className="w-full sm:w-auto">
               Cancelar
             </Button>
-            <Button onClick={handleSaveEtapas} disabled={salvando || etapas.length === 0}>
+            <Button
+              onClick={handleSaveEtapas}
+              disabled={salvando || etapas.length === 0}
+              className="w-full sm:w-auto"
+            >
               {salvando ? 'Salvando...' : 'Salvar Etapas'}
             </Button>
           </div>
@@ -267,9 +271,9 @@ const EditarEtapasObra: React.FC<EditarEtapasObraProps> = ({ obraId, onClose, on
               return (
                 <div
                   key={etapa.id}
-                  className="flex items-center gap-2 border rounded-md px-3 py-2 bg-white"
+                  className="flex flex-col gap-2 border rounded-md px-3 py-2 bg-white sm:flex-row sm:items-center"
                 >
-                  <span className="w-6 text-xs text-gray-400">{index + 1}.</span>
+                  <span className="text-xs text-gray-400 sm:w-6">{index + 1}.</span>
                   {isEditing ? (
                     <Input
                       value={editingNome}
@@ -280,54 +284,60 @@ const EditarEtapasObra: React.FC<EditarEtapasObraProps> = ({ obraId, onClose, on
                   ) : (
                     <span className="flex-1 text-sm truncate">{etapa.nome}</span>
                   )}
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => handleReorder(index, 'up')}
-                      disabled={index === 0}
-                    >
-                      ↑
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => handleReorder(index, 'down')}
-                      disabled={index === etapas.length - 1}
-                    >
-                      ↓
-                    </Button>
-                  </div>
-                  {isEditing ? (
-                    <>
+                  <div className="flex flex-wrap gap-2 sm:justify-end">
+                    <div className="flex gap-1">
                       <Button
                         variant="outline"
-                        size="sm"
-                        onClick={handleConfirmEdit}
-                        disabled={!editingNome.trim()}
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => handleReorder(index, 'up')}
+                        disabled={index === 0}
                       >
-                        Salvar
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={handleCancelEdit}>
-                        Cancelar
-                      </Button>
-                    </>
-                  ) : (
-                    <>
-                      <Button variant="outline" size="sm" onClick={() => handleStartEdit(etapa)}>
-                        Editar
+                        ↑
                       </Button>
                       <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleDeleteLocal(etapa.id)}
+                        variant="outline"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => handleReorder(index, 'down')}
+                        disabled={index === etapas.length - 1}
                       >
-                        Excluir
+                        ↓
                       </Button>
-                    </>
-                  )}
+                    </div>
+                    {isEditing ? (
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleConfirmEdit}
+                          disabled={!editingNome.trim()}
+                        >
+                          Salvar
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={handleCancelEdit}>
+                          Cancelar
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleStartEdit(etapa)}
+                        >
+                          Editar
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDeleteLocal(etapa.id)}
+                        >
+                          Excluir
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}

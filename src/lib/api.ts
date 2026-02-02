@@ -1458,3 +1458,195 @@ export const excluirCompartilhamento = async (compartilhamentoId: number) => {
     throw error;
   }
 };
+
+// -----------------------------
+// Funções para Cronogramas
+// -----------------------------
+export const listarCronogramasObra = async (obraId: number) => {
+  try {
+    const { data, error } = await supabase
+      .from('cronogramas')
+      .select('*')
+      .eq('obra_id', obraId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    console.log('[API] listarCronogramasObra', obraId, 'count=', (data||[]).length);
+    return data;
+  } catch (error) {
+    console.error('Erro ao listar cronogramas:', error);
+    throw error;
+  }
+};
+
+export const criarCronograma = async (obraId: number, nome: string, data: any, tipo: 'weeks'|'months' = 'weeks') => {
+  try {
+    console.log('[API] criarCronograma start', { obraId, nome, tipo });
+
+    // Prevent accidental duplicate creations: check for same name+tipo created very recently (last 60s)
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
+
+    // Try to check using the 'tipo' column (migration may not have run yet). If the typed query errors, fall back to name-only check.
+    let existing: any[] | null = null;
+    let errCheck: any = null;
+    try {
+      const q = supabase
+        .from('cronogramas')
+        .select('*')
+        .eq('obra_id', obraId)
+        .eq('nome', nome)
+        .eq('tipo', tipo)
+        .gte('created_at', oneMinuteAgo)
+        .order('created_at', { ascending: false });
+      const resp = await q;
+      existing = resp.data as any[] | null;
+      errCheck = resp.error;
+    } catch (err) {
+      // fallback: try without tipo filter (legacy schema)
+      console.warn('[API] criarCronograma: tipo filter failed, retrying without tipo', err);
+      const resp2 = await supabase
+        .from('cronogramas')
+        .select('*')
+        .eq('obra_id', obraId)
+        .eq('nome', nome)
+        .gte('created_at', oneMinuteAgo)
+        .order('created_at', { ascending: false });
+      existing = resp2.data as any[] | null;
+      errCheck = resp2.error;
+    }
+
+    if (errCheck) {
+      console.warn('[API] criarCronograma: erro ao checar duplicatas', errCheck);
+    } else if (existing && existing.length > 0) {
+      console.warn('[API] criarCronograma: duplicate prevented - returning existing', { existingId: existing[0].id, tipo });
+      return existing[0];
+    }
+
+    const record: any = {
+      obra_id: obraId,
+      nome,
+      data,
+      tipo
+    };
+
+    const { data: res, error } = await supabase
+      .from('cronogramas')
+      .insert(record)
+      .select()
+      .single();
+
+    if (error) throw error;
+    console.log('[API] criarCronograma inserted', res?.id, 'tipo=', res?.tipo);
+    return res;
+  } catch (error) {
+    console.error('Erro ao criar cronograma:', error);
+    throw error;
+  }
+};
+
+export const buscarCronograma = async (id: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('cronogramas')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Erro ao buscar cronograma:', error);
+    throw error;
+  }
+};
+
+export const atualizarCronograma = async (id: string, dataObj: any) => {
+  try {
+    if (!id) throw new Error('Invalid id for atualizarCronograma');
+    console.debug('[API] atualizarCronograma', id);
+    const { data, error } = await supabase
+      .from('cronogramas')
+      .update({ data: dataObj })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Erro ao atualizar cronograma:', error);
+    throw error;
+  }
+};
+
+export const atualizarCronogramaFull = async (id: string, dataObj: any, nome?: string) => {
+  try {
+    if (!id) throw new Error('Invalid id for atualizarCronogramaFull');
+    console.debug('[API] atualizarCronogramaFull', id, nome);
+    const payload: any = { data: dataObj };
+    if (nome !== undefined) payload.nome = nome;
+    const { data, error } = await supabase
+      .from('cronogramas')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Erro ao atualizar cronograma (full):', error);
+    throw error;
+  }
+};
+
+export const atualizarCronogramaNome = async (id: string, nome: string) => {
+  try {
+    if (!id) throw new Error('Invalid id for atualizarCronogramaNome');
+    console.debug('[API] atualizarCronogramaNome', id, nome);
+    const { data, error } = await supabase
+      .from('cronogramas')
+      .update({ nome })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Erro ao atualizar nome do cronograma:', error);
+    throw error;
+  }
+};
+
+export const excluirCronograma = async (id: string) => {
+  try {
+    if (!id) throw new Error('Invalid id for excluirCronograma');
+    console.log('[API] excluirCronograma', id);
+    const { data, error } = await supabase
+      .from('cronogramas')
+      .delete()
+      .eq('id', id)
+      .select();
+    if (error) throw error;
+    console.debug('[API] excluirCronograma deleted', data);
+    return data;
+  } catch (error) {
+    console.error('Erro ao excluir cronograma:', error);
+    throw error;
+  }
+};
+
+export const listarEtapasFluxograma = async (obraId: number) => {
+  try {
+    const { data, error } = await supabase
+      .from('etapas_fluxograma')
+      .select('nome')
+      .eq('obra_id', obraId);
+    if (error) throw error;
+    return (data || []).map((d: any) => d.nome);
+  } catch (error) {
+    console.error('Erro ao listar etapas do fluxograma:', error);
+    throw error;
+  }
+};

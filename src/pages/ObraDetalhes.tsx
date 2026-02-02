@@ -107,6 +107,7 @@ const ObraDetalhes = () => {
   const [etapasFluxograma, setEtapasFluxograma] = useState<{ id: string; nome: string }[]>([]);
   const [definicoesQuadro, setDefinicoesQuadro] = useState<DefinicaoQuadro | null>(null);
   const [numeroDefinicoes, setNumeroDefinicoes] = useState({ definir: 0, definido: 0 });
+  const [cronogramasCount, setCronogramasCount] = useState<number>(0);
   
   console.log('[DEBUG-INIT] Estado inicial do componente ObraDetalhes');
   console.log('[DEBUG-INIT] numeroDefinicoes inicial:', numeroDefinicoes);
@@ -192,10 +193,12 @@ const ObraDetalhes = () => {
       const datas = registros.map(reg => parseISO(reg.data));
       setDatasComRegistro(datas);
 
-      // Carregar pendências e definições explicitamente após ter os dados da obra
-      console.log('[DEBUG] Obra carregada no carregarDados, chamando carregarPendencias e carregarDefinicoes');
+      // Carregar pendências, definições e cronogramas após ter os dados da obra
+      console.log('[DEBUG] Obra carregada no carregarDados, chamando carregarPendencias, carregarDefinicoes e contando cronogramas');
       await carregarPendencias();
       await carregarDefinicoes();
+      await carregarCronogramasCount();
+
 
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
@@ -415,6 +418,7 @@ const ObraDetalhes = () => {
         return;
       }
 
+      // A contagem de cronogramas foi movida para a função `carregarCronogramasCount` no escopo do componente
       console.log('[DEBUG] Carregando definições para obra ID:', obra.id);
       
       // Buscar ou criar o quadro de definições
@@ -541,6 +545,29 @@ const ObraDetalhes = () => {
       
     } catch (error) {
       console.error('[DEBUG] Erro ao carregar definições:', error);
+    }
+  };
+
+  // Função para contar cronogramas da obra (escopo superior para ser reutilizável)
+  const carregarCronogramasCount = async () => {
+    try {
+      if (!obra?.id) {
+        console.log('[DEBUG] Obra ID não disponível para contar cronogramas');
+        return;
+      }
+
+      const { count, error } = await supabase
+        .from('cronogramas')
+        .select('id', { count: 'exact', head: false })
+        .eq('obra_id', obra.id);
+
+      if (error) {
+        console.error('[DEBUG] Erro ao contar cronogramas:', error);
+      } else {
+        setCronogramasCount(count || 0);
+      }
+    } catch (e) {
+      console.error('[DEBUG] Exceção ao contar cronogramas:', e);
     }
   };
 
@@ -796,6 +823,18 @@ const ObraDetalhes = () => {
 
               <div 
                 className="p-3 md:p-4 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors" 
+                onClick={() => navigate(`/obras/${id}/cronogramas`)}
+              >
+                <h3 className="text-xs md:text-sm font-medium text-gray-500">Cronogramas</h3>
+                <div className="mt-1 flex items-center justify-between">
+                  <p className="text-base md:text-lg font-semibold">{cronogramasCount || 0}</p>
+                  <CalendarIcon className="w-4 h-4 md:w-5 md:h-5 text-blue-500" />
+                </div>
+                <p className="text-xs md:text-sm text-gray-500 mt-1">Gerenciar cronogramas da obra</p>
+              </div>
+
+              <div 
+                className="p-3 md:p-4 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors" 
                 onClick={handleProjetosClick}
               >
                 <h3 className="text-xs md:text-sm font-medium text-gray-500">Projetos</h3>
@@ -821,20 +860,20 @@ const ObraDetalhes = () => {
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm p-4 md:p-6 overflow-x-auto">
-            <div className="flex justify-between items-center mb-4">
+          <div className="bg-white rounded-lg shadow-sm p-4 md:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
               <h3 className="text-base md:text-lg font-semibold">Etapas da Obra</h3>
               <Button 
                 variant="outline" 
                 size="sm" 
                 onClick={() => setShowEditarEtapas(true)}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 w-full sm:w-auto justify-center"
               >
                 <Pencil className="h-4 w-4" />
                 Editar etapas
               </Button>
             </div>
-            <div className="space-y-3 min-w-[300px]">
+            <div className="space-y-3">
               {etapasFluxograma.length === 0 ? (
                 <p className="text-sm text-gray-500">
                   Nenhuma etapa cadastrada. Clique em &quot;Editar etapas&quot; para adicionar as etapas da obra.

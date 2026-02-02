@@ -187,9 +187,17 @@ const Layout = () => {
   }
 
   // Verificar se estamos em uma rota de detalhes para mostrar botão de voltar em dispositivos móveis
-  const isDetailRoute = location.pathname.includes('/obra/') || 
-                        location.pathname.includes('/orcamento/') ||
-                        location.pathname.includes('/relatorio/');
+  const isDetailRoute = (
+    location.pathname !== '/obras' && location.pathname.startsWith('/obras/')
+  ) || (
+    location.pathname !== '/orcamentos' && location.pathname.startsWith('/orcamentos/')
+  ) || (
+    location.pathname !== '/diario' && location.pathname.startsWith('/diario/')
+  ) || (
+    location.pathname !== '/relatorios' && location.pathname.startsWith('/relatorios/')
+  ) || (
+    location.pathname !== '/projetos' && location.pathname.startsWith('/projetos/')
+  ) || location.pathname.includes('/obra/') || location.pathname.includes('/orcamento/') || location.pathname.includes('/relatorio/');
 
   return (
     <div className="min-h-screen bg-gray-50 overflow-x-hidden">

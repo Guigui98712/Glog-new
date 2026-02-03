@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useToast } from '@/components/ui/use-toast';
 import CadastroItemDialog from '@/components/CadastroItemDialog';
 import { listarItens, searchItems, getItemById, registerMovement, getAlmoxarifadoHistorico, criarCodigoAlmoxarife, listarDispositivosAlmoxarife, revogarDispositivoAlmoxarife } from '@/lib/api';
-import { MoreVertical, Trash2 } from 'lucide-react';
+import { Copy, MoreVertical, Trash2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,6 +58,7 @@ const Almoxarifado: React.FC = () => {
 
   const accessBaseUrl = import.meta.env.VITE_ALMOX_PUBLIC_URL || (typeof window !== 'undefined' ? window.location.origin : '');
   const accessUrl = `${accessBaseUrl}/almoxarifado/acesso`;
+  const almoxPublicUrl = 'https://almoxarifado-glog.netlify.app';
 
   // Search detail modal
   const [showSearchDetail, setShowSearchDetail] = useState(false);
@@ -284,6 +285,33 @@ const Almoxarifado: React.FC = () => {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="font-semibold">Acesso do Almoxarife</h2>
+            <div className="mt-2 flex items-center gap-2 text-sm">
+              <a
+                href={almoxPublicUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-blue-600 hover:underline break-all"
+              >
+                {almoxPublicUrl}
+              </a>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(almoxPublicUrl);
+                    toast({ title: 'Copiado', description: 'Link copiado para a área de transferência' });
+                  } catch (e) {
+                    console.error(e);
+                    toast({ title: 'Erro', description: 'Não foi possível copiar o link', variant: 'destructive' });
+                  }
+                }}
+                className="h-8 w-8 p-0"
+                aria-label="Copiar link do almoxarife"
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           <Button onClick={gerarCodigoAcesso} disabled={accessCodesLoading}>Gerar código</Button>
         </div>

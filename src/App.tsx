@@ -36,6 +36,7 @@ import ViagensObra from './pages/ViagensObra';
 import CronogramasObra from './pages/CronogramasObra';
 import CronogramaEditor from './pages/CronogramaEditor';
 import Almoxarifado from './pages/Almoxarifado';
+import AlmoxarifadoAcesso from './pages/AlmoxarifadoAcesso';
 
 // Componente para capturar erros
 class ErrorBoundary extends React.Component {
@@ -230,6 +231,20 @@ function App() {
     );
   }
 
+  const isAlmoxOnly = import.meta.env.VITE_ALMOX_ONLY === 'true';
+  if (isAlmoxOnly) {
+    return (
+      <ErrorBoundary>
+        <>
+          <Routes>
+            <Route path="*" element={<AlmoxarifadoAcesso />} />
+          </Routes>
+          <Toaster />
+        </>
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <>
@@ -242,6 +257,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/debug" element={<Debug />} />
+          <Route path="/almoxarifado/acesso" element={<AlmoxarifadoAcesso />} />
           
           {/* Páginas de teste do corretor ortográfico */}
           <Route path="/test-spellchecker" element={<TestSpellChecker />} />

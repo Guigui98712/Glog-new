@@ -8,8 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import CadastroItemDialog from '@/components/CadastroItemDialog';
-import { listarItens, searchItems, getItemById, registerMovement, getAlmoxarifadoHistorico } from '@/lib/api';
-import { X, MoreVertical, Trash2 } from 'lucide-react';
+import { listarItens, searchItems, getItemById, registerMovement, getAlmoxarifadoHistorico, criarCodigoAlmoxarife, listarDispositivosAlmoxarife, revogarDispositivoAlmoxarife } from '@/lib/api';
+import { MoreVertical, Trash2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,14 +46,25 @@ const Almoxarifado: React.FC = () => {
 
   // Items editor modal
   const [showItemsEditor, setShowItemsEditor] = useState(false);
-  const [editingItem, setEditingItem] = useState<any>(null);
   const [itemsEditorQuery, setItemsEditorQuery] = useState('');
+
+  // Almoxarife access codes
+  const [accessCodesLoading, setAccessCodesLoading] = useState(false);
+  const [showCodeModal, setShowCodeModal] = useState(false);
+  const [generatedCode, setGeneratedCode] = useState<string>('');
+  const [generatedExpiresAt, setGeneratedExpiresAt] = useState<string>('');
+  const [devices, setDevices] = useState<any[]>([]);
+  const [devicesLoading, setDevicesLoading] = useState(false);
+
+  const accessBaseUrl = import.meta.env.VITE_ALMOX_PUBLIC_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+  const accessUrl = `${accessBaseUrl}/almoxarifado/acesso`;
 
   // Search detail modal
   const [showSearchDetail, setShowSearchDetail] = useState(false);
   const [selectedSearchItem, setSelectedSearchItem] = useState<any>(null);
 
   useEffect(() => { carregar(); }, [obraId]);
+  useEffect(() => { carregarDispositivos(); }, [obraId]);
 
   const carregar = async () => {
     if (!obraId) return;
@@ -66,6 +77,20 @@ const Almoxarifado: React.FC = () => {
       toast({ title: 'Erro', description: 'Não foi possível carregar itens', variant: 'destructive' });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const carregarDispositivos = async () => {
+    if (!obraId) return;
+    setDevicesLoading(true);
+    try {
+      const data = await listarDispositivosAlmoxarife(obraId);
+      setDevices(data || []);
+    } catch (err) {
+      console.error(err);
+      toast({ title: 'Erro', description: 'Não foi possível carregar dispositivos', variant: 'destructive' });
+    } finally {
+      setDevicesLoading(false);
     }
   };
 
@@ -159,6 +184,37 @@ const Almoxarifado: React.FC = () => {
     } finally { setLoading(false); }
   };
 
+  const gerarCodigoAcesso = async () => {
+    if (!obraId) return;
+    setAccessCodesLoading(true);
+    try {
+      const data = await criarCodigoAlmoxarife(obraId, 30);
+      if (data?.code) {
+        setGeneratedCode(data.code);
+        setGeneratedExpiresAt(data.expires_at);
+        setShowCodeModal(true);
+      }
+    } catch (e) {
+      console.error(e);
+      toast({ title: 'Erro', description: 'Falha ao gerar código', variant: 'destructive' });
+    } finally {
+      setAccessCodesLoading(false);
+    }
+  };
+
+  const revogarDispositivo = async (id: number) => {
+    setDevicesLoading(true);
+    try {
+      await revogarDispositivoAlmoxarife(id);
+      await carregarDispositivos();
+    } catch (e) {
+      console.error(e);
+      toast({ title: 'Erro', description: 'Falha ao revogar dispositivo', variant: 'destructive' });
+    } finally {
+      setDevicesLoading(false);
+    }
+  };
+
   const abrirHistorico = async () => {
     setShowHistory(true);
     setHistoryLoading(true);
@@ -223,6 +279,51 @@ const Almoxarifado: React.FC = () => {
         <Button onClick={() => abrirMovimento('saida')} className="bg-yellow-500 hover:bg-yellow-600 text-white w-32">Saída</Button>
         <Button onClick={() => abrirMovimento('entrada')} className="bg-green-500 hover:bg-green-600 text-white w-32">Entrada</Button>
       </div>
+
+      <Card className="p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="font-semibold">Acesso do Almoxarife</h2>
+          </div>
+          <Button onClick={gerarCodigoAcesso} disabled={accessCodesLoading}>Gerar código</Button>
+        </div>
+
+        <div className="mt-6">
+          <h3 className="text-sm font-semibold mb-2">Dispositivos autorizados</h3>
+          {devicesLoading ? (
+            <div className="text-sm text-gray-500">Carregando dispositivos...</div>
+          ) : devices.length === 0 ? (
+            <div className="text-sm text-gray-500">Nenhum dispositivo cadastrado.</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Criado em</TableHead>
+                  <TableHead>Último acesso</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Ação</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {devices.map((d) => (
+                  <TableRow key={d.id}>
+                    <TableCell>{d.device_name}</TableCell>
+                    <TableCell>{new Date(d.created_at).toLocaleString('pt-BR')}</TableCell>
+                    <TableCell>{d.last_seen ? new Date(d.last_seen).toLocaleString('pt-BR') : '-'}</TableCell>
+                    <TableCell className={d.active ? 'text-green-600 font-semibold' : 'text-gray-500'}>
+                      {d.active ? 'Ativo' : 'Revogado'}
+                    </TableCell>
+                    <TableCell>
+                      <Button variant="outline" size="sm" onClick={() => revogarDispositivo(d.id)} disabled={!d.active}>Revogar</Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </div>
+      </Card>
 
       <Card className="p-4">
         <div className="flex gap-2 items-center">
@@ -297,6 +398,27 @@ const Almoxarifado: React.FC = () => {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showCodeModal} onOpenChange={setShowCodeModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Código de acesso</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium text-gray-500">Código</label>
+              <p className="text-2xl font-mono font-semibold tracking-widest">{generatedCode}</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-500">Expira em</label>
+              <p className="text-sm">{generatedExpiresAt ? new Date(generatedExpiresAt).toLocaleString('pt-BR') : '-'}</p>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button onClick={() => setShowCodeModal(false)}>Fechar</Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

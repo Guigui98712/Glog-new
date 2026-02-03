@@ -1792,3 +1792,162 @@ export const getAlmoxarifadoHistorico = async (obraId: number) => {
     throw err;
   }
 };
+
+const gerarCodigoAlmox = () => {
+  return String(Math.floor(100000 + Math.random() * 900000));
+};
+
+export const criarCodigoAlmoxarife = async (obraId: number, expiresMinutes = 30) => {
+  if (DISABLE_GOOGLE_APIS) return null;
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const createdBy = sessionData?.session?.user?.id ?? null;
+
+    const expiresAt = new Date(Date.now() + expiresMinutes * 60 * 1000).toISOString();
+
+    let lastError: any = null;
+    for (let i = 0; i < 5; i += 1) {
+      const code = gerarCodigoAlmox();
+      const { data, error } = await supabase
+        .from('almox_access_codes')
+        .insert([
+          {
+            obra_id: obraId,
+            code,
+            expires_at: expiresAt,
+            active: true,
+            created_by: createdBy
+          }
+        ])
+        .select()
+        .single();
+      if (!error) return data;
+      lastError = error;
+    }
+
+    throw lastError;
+  } catch (err) {
+    console.error('Erro criarCodigoAlmoxarife', err);
+    throw err;
+  }
+};
+
+export const listarCodigosAlmoxarife = async (obraId: number) => {
+  if (DISABLE_GOOGLE_APIS) return [];
+  try {
+    const { data, error } = await supabase
+      .from('almox_access_codes')
+      .select('*')
+      .eq('obra_id', obraId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.error('Erro listarCodigosAlmoxarife', err);
+    throw err;
+  }
+};
+
+export const revogarCodigoAlmoxarife = async (id: number) => {
+  if (DISABLE_GOOGLE_APIS) return null;
+  try {
+    const { data, error } = await supabase
+      .from('almox_access_codes')
+      .update({ active: false })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Erro revogarCodigoAlmoxarife', err);
+    throw err;
+  }
+};
+
+export const validarCodigoAlmoxarife = async (code: string) => {
+  if (DISABLE_GOOGLE_APIS) return null;
+  try {
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
+      .from('almox_access_codes')
+      .select('*')
+      .eq('code', code)
+      .eq('active', true)
+      .gt('expires_at', now)
+      .single();
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      throw error;
+    }
+    return data || null;
+  } catch (err) {
+    console.error('Erro validarCodigoAlmoxarife', err);
+    throw err;
+  }
+};
+
+export const registrarDispositivoAlmoxarife = async (code: string, deviceName: string, password: string) => {
+  if (DISABLE_GOOGLE_APIS) return null;
+  try {
+    const { data, error } = await supabase.rpc('register_almox_device', {
+      p_code: code,
+      p_device_name: deviceName,
+      p_password: password
+    });
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Erro registrarDispositivoAlmoxarife', err);
+    throw err;
+  }
+};
+
+export const verificarDispositivoAlmoxarife = async (obraId: number, deviceName: string, password: string) => {
+  if (DISABLE_GOOGLE_APIS) return null;
+  try {
+    const { data, error } = await supabase.rpc('verify_almox_device', {
+      p_obra_id: obraId,
+      p_device_name: deviceName,
+      p_password: password
+    });
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Erro verificarDispositivoAlmoxarife', err);
+    throw err;
+  }
+};
+
+export const listarDispositivosAlmoxarife = async (obraId: number) => {
+  if (DISABLE_GOOGLE_APIS) return [];
+  try {
+    const { data, error } = await supabase
+      .from('almox_access_devices')
+      .select('*')
+      .eq('obra_id', obraId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.error('Erro listarDispositivosAlmoxarife', err);
+    throw err;
+  }
+};
+
+export const revogarDispositivoAlmoxarife = async (id: number) => {
+  if (DISABLE_GOOGLE_APIS) return null;
+  try {
+    const { data, error } = await supabase
+      .from('almox_access_devices')
+      .update({ active: false })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Erro revogarDispositivoAlmoxarife', err);
+    throw err;
+  }
+};

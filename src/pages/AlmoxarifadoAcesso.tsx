@@ -49,9 +49,28 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
   }, []);
 
   const handleRegistrar = async () => {
-    if (!code.trim() || !deviceName.trim() || !password) return;
+    if (!code.trim()) {
+      toast({ title: 'Erro', description: 'Por favor, informe o código de acesso', variant: 'destructive' });
+      return;
+    }
+    if (!deviceName.trim()) {
+      toast({ title: 'Erro', description: 'Por favor, informe o nome do dispositivo', variant: 'destructive' });
+      return;
+    }
+    if (!password) {
+      toast({ title: 'Erro', description: 'Por favor, crie uma senha', variant: 'destructive' });
+      return;
+    }
+    if (!passwordConfirm) {
+      toast({ title: 'Erro', description: 'Por favor, confirme a senha', variant: 'destructive' });
+      return;
+    }
     if (password !== passwordConfirm) {
       toast({ title: 'Erro', description: 'As senhas não conferem', variant: 'destructive' });
+      return;
+    }
+    if (password.length < 4) {
+      toast({ title: 'Erro', description: 'A senha deve ter pelo menos 4 caracteres', variant: 'destructive' });
       return;
     }
     setLoading(true);
@@ -79,7 +98,14 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
   };
 
   const handleLogin = async () => {
-    if (!deviceInfo || !password) return;
+    if (!deviceInfo) {
+      toast({ title: 'Erro', description: 'Dispositivo não encontrado', variant: 'destructive' });
+      return;
+    }
+    if (!password) {
+      toast({ title: 'Erro', description: 'Por favor, informe a senha', variant: 'destructive' });
+      return;
+    }
     setLoading(true);
     try {
       await verificarDispositivoAlmoxarife(deviceInfo.obraId, deviceInfo.deviceName, password);

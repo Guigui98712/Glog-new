@@ -58,7 +58,7 @@ const Almoxarifado: React.FC = () => {
 
   const accessBaseUrl = import.meta.env.VITE_ALMOX_PUBLIC_URL || (typeof window !== 'undefined' ? window.location.origin : '');
   const accessUrl = `${accessBaseUrl}/almoxarifado/acesso`;
-  const almoxPublicUrl = 'https://almoxarifado-glog.netlify.app/almox.html';
+  const almoxPublicUrl = 'https://almoxarifadoglog.netlify.app/almox.html';
 
   // Search detail modal
   const [showSearchDetail, setShowSearchDetail] = useState(false);

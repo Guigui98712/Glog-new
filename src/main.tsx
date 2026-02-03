@@ -1,6 +1,5 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import App from './App.tsx'
 import './index.css'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
@@ -30,12 +29,13 @@ async function renderApp() {
   const root = ReactDOM.createRoot(document.getElementById('root')!);
   
   if (isAlmoxOnly) {
+    const { default: AlmoxOnlyApp } = await import('./AlmoxOnlyApp');
     // Modo almoxarifado - sem Capacitor
     root.render(
       <React.StrictMode>
         <BrowserRouter>
           <QueryClientProvider client={queryClient}>
-            <App />
+            <AlmoxOnlyApp />
             <ReactQueryDevtools initialIsOpen={false} />
           </QueryClientProvider>
         </BrowserRouter>
@@ -43,6 +43,7 @@ async function renderApp() {
     );
   } else {
     // Modo completo - carregar providers que usam Capacitor
+    const { default: App } = await import('./App');
     const { AuthProvider } = await import('./contexts/AuthContext');
     const { NotificationProvider } = await import('./contexts/NotificationContext');
     

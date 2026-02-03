@@ -24,17 +24,27 @@ const queryClient = new QueryClient({
   }
 })
 
+// Verificar se está no modo almoxarifado only (sem Capacitor)
+const isAlmoxOnly = import.meta.env.VITE_ALMOX_ONLY === 'true';
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>
-      <AuthProvider>
-        <NotificationProvider>
-          <QueryClientProvider client={queryClient}>
-            <App />
-            <ReactQueryDevtools initialIsOpen={false} />
-          </QueryClientProvider>
-        </NotificationProvider>
-      </AuthProvider>
+      {isAlmoxOnly ? (
+        <QueryClientProvider client={queryClient}>
+          <App />
+          <ReactQueryDevtools initialIsOpen={false} />
+        </QueryClientProvider>
+      ) : (
+        <AuthProvider>
+          <NotificationProvider>
+            <QueryClientProvider client={queryClient}>
+              <App />
+              <ReactQueryDevtools initialIsOpen={false} />
+            </QueryClientProvider>
+          </NotificationProvider>
+        </AuthProvider>
+      )}
     </BrowserRouter>
   </React.StrictMode>,
 )

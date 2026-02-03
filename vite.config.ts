@@ -45,11 +45,29 @@ export default defineConfig({
         main: path.resolve(__dirname, 'index.html'),
         almox: path.resolve(__dirname, 'almox.html')
       },
-      external: ['batch', 'emitter']
+      external: ['batch', 'emitter'],
+      output: {
+        exports: 'named'
+      }
     },
     outDir: 'dist',
     sourcemap: true,
     minify: 'terser',
+    terserOptions: {
+      compress: {
+        passes: 2,
+        drop_console: false,
+        unsafe: false
+      },
+      mangle: {
+        reserved: ['buttonVariants', 'AlmoxarifadoAcesso', 'AlmoxOnlyApp', 'Button'],
+        keep_classnames: true,
+        keep_fnames: true
+      },
+      output: {
+        keep_quoted_strings: true
+      }
+    },
     chunkSizeWarningLimit: 1000,
     target: 'esnext',
     assetsDir: 'assets',

@@ -24,7 +24,7 @@ type AlmoxDeviceInfo = {
   deviceName: string;
 };
 
-const AlmoxarifadoAcesso: React.FC = () => {
+export default function AlmoxarifadoAcesso(): JSX.Element {
   const { toast } = useToast();
   const [mode, setMode] = useState<'register' | 'login'>('register');
   const [code, setCode] = useState('');
@@ -526,6 +526,4 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ 
       </Dialog>
     </div>
   );
-};
-
-export default AlmoxarifadoAcesso;
+}

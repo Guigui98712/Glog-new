@@ -1717,6 +1717,16 @@ export const createItem = async (item: { nome: string; unidade?: string | null; 
       .select()
       .single();
     if (error) throw error;
+    
+    // Se houver quantidade inicial, registrar como entrada no histórico
+    if (data && item.quantidade && item.quantidade > 0 && item.obra_id) {
+      try {
+        await registerMovement(item.obra_id, data.id, 'entrada', item.quantidade);
+      } catch (historyErr) {
+        console.warn('Aviso: Entrada inicial não foi registrada no histórico', historyErr);
+      }
+    }
+    
     return data;
   } catch (err) {
     console.error('Erro createItem', err);

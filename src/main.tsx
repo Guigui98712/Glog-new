@@ -24,26 +24,13 @@ const queryClient = new QueryClient({
 // Verificar se está no modo almoxarifado only (sem Capacitor)
 const isAlmoxOnly = import.meta.env.VITE_ALMOX_ONLY === 'true';
 
-// Preload dos módulos para garantir que sejam incluídos no bundle
-const preloadModules = async () => {
-  if (isAlmoxOnly) {
-    return await import('./AlmoxOnlyApp');
-  } else {
-    return Promise.all([
-      import('./App'),
-      import('./contexts/AuthContext'),
-      import('./contexts/NotificationContext')
-    ]);
-  }
-};
-
 // Renderizar de forma assíncrona para carregar providers dinamicamente
 async function renderApp() {
   const root = ReactDOM.createRoot(document.getElementById('root')!);
   
   if (isAlmoxOnly) {
-    const { default: AlmoxOnlyApp } = await import('./AlmoxOnlyApp');
     // Modo almoxarifado - sem Capacitor
+    const { default: AlmoxOnlyApp } = await import('./AlmoxOnlyApp');
     root.render(
       <React.StrictMode>
         <BrowserRouter>

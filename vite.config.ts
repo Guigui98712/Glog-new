@@ -63,9 +63,6 @@ export default defineConfig({
         reserved: ['buttonVariants', 'AlmoxarifadoAcesso', 'AlmoxOnlyApp', 'Button'],
         keep_classnames: true,
         keep_fnames: true
-      },
-      output: {
-        keep_quoted_strings: true
       }
     },
     chunkSizeWarningLimit: 1000,

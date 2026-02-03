@@ -5,7 +5,16 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/components/ui/use-toast';
-import { listarItens, searchItems, getItemById, registerMovement, registrarDispositivoAlmoxarife, verificarDispositivoAlmoxarife } from '@/lib/api';
+import { listarItens, searchItems, getItemById, registerMovement, registrarDispositivoAlmoxarife, verificarDispositivoAlmoxarife, getAlmoxarifadoHistorico } from '@/lib/api';
+import { supabase } from '@/lib/supabase';
+import CadastroItemDialog from '@/components/CadastroItemDialog';
+import { MoreVertical, Trash2 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 const DEVICE_KEY = 'almox_access_device';
 
@@ -178,9 +187,28 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ 
   const [movementQuery, setMovementQuery] = useState('');
   const [movementSuggestions, setMovementSuggestions] = useState<any[]>([]);
 
+  const [showCadastro, setShowCadastro] = useState(false);
+
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<any[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const [showItemsEditor, setShowItemsEditor] = useState(false);
+  const [itemsEditorQuery, setItemsEditorQuery] = useState('');
+
   const filteredItems = useMemo(() => {
     return items.filter((it) => Number(it?.quantidade ?? 0) > 0);
   }, [items]);
+
+  const itemsFiltradosEditor = useMemo(() => {
+    if (!itemsEditorQuery || !itemsEditorQuery.trim()) return items;
+    const q = itemsEditorQuery.trim().toLowerCase();
+    return items.filter((it) => {
+      const nome = String(it.nome || '').toLowerCase();
+      const categoria = String(it.categoria || '').toLowerCase();
+      return nome.includes(q) || categoria.includes(q);
+    });
+  }, [items, itemsEditorQuery]);
 
   useEffect(() => { carregar(); }, [obraId]);
 
@@ -285,11 +313,44 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ 
     } finally { setLoading(false); }
   };
 
+  const abrirHistorico = async () => {
+    setShowHistory(true);
+    setHistoryLoading(true);
+    try {
+      const data = await getAlmoxarifadoHistorico(obraId);
+      setHistory(data || []);
+    } catch (e) {
+      console.error('Erro ao carregar histórico:', e);
+      toast({ title: 'Erro', description: 'Não foi possível carregar histórico', variant: 'destructive' });
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const excluirItem = async (itemId: number) => {
+    if (!confirm('Tem certeza que deseja excluir este item?')) return;
+
+    try {
+      const { error } = await supabase.from('almox_items').delete().eq('id', itemId);
+      if (error) throw error;
+      toast({ title: 'Sucesso', description: 'Item excluído com sucesso' });
+      await carregar();
+    } catch (e) {
+      console.error(e);
+      toast({ title: 'Erro', description: 'Falha ao excluir item', variant: 'destructive' });
+    }
+  };
+
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <h1 className="text-xl font-bold">Almoxarifado</h1>
-        <Button variant="outline" onClick={onSair}>Sair</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={abrirHistorico}>Histórico</Button>
+          <Button variant="outline" onClick={() => setShowItemsEditor(true)}>Itens</Button>
+          <Button onClick={() => setShowCadastro(true)}>Cadastrar item</Button>
+          <Button variant="outline" onClick={onSair}>Sair</Button>
+        </div>
       </div>
 
       <div className="flex justify-center items-center gap-4">
@@ -335,6 +396,103 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ 
           </TableBody>
         </Table>
       </Card>
+
+      <CadastroItemDialog open={showCadastro} onOpenChange={setShowCadastro} onCreated={() => { setShowCadastro(false); carregar(); }} obraId={obraId} />
+
+      {/* History Modal */}
+      <Dialog open={showHistory} onOpenChange={setShowHistory}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Histórico de Movimentações</DialogTitle>
+          </DialogHeader>
+          {historyLoading ? (
+            <div className="flex items-center justify-center min-h-[200px]">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              <p className="ml-2 text-sm text-gray-600">Carregando...</p>
+            </div>
+          ) : history.length === 0 ? (
+            <div className="text-sm text-gray-500">Nenhuma movimentação registrada.</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Item</TableHead>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead>Quantidade</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {history.map((mov, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell>{new Date(mov.data).toLocaleDateString('pt-BR')}</TableCell>
+                    <TableCell>{mov.item_nome}</TableCell>
+                    <TableCell className={mov.tipo === 'entrada' ? 'text-green-600 font-semibold' : 'text-yellow-600 font-semibold'}>
+                      {mov.tipo === 'entrada' ? '↓ Entrada' : '↑ Saída'}
+                    </TableCell>
+                    <TableCell>{mov.quantidade}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Items Editor Modal */}
+      <Dialog open={showItemsEditor} onOpenChange={setShowItemsEditor}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Editor de Itens</DialogTitle>
+          </DialogHeader>
+          <div className="mb-4">
+            <Input
+              placeholder="Pesquisar itens..."
+              value={itemsEditorQuery}
+              onChange={(e) => setItemsEditorQuery(e.target.value)}
+              className="w-full"
+            />
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>ID</TableHead>
+                <TableHead>Nome</TableHead>
+                <TableHead>QTD</TableHead>
+                <TableHead>Unidade</TableHead>
+                <TableHead>Categoria</TableHead>
+                <TableHead>Ação</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {itemsFiltradosEditor.map((it) => (
+                <TableRow key={it.id}>
+                  <TableCell>{it.id}</TableCell>
+                  <TableCell>{it.nome}</TableCell>
+                  <TableCell>{it.quantidade}</TableCell>
+                  <TableCell>{it.unidade}</TableCell>
+                  <TableCell>{it.categoria}</TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => excluirItem(it.id)} className="text-red-600 cursor-pointer">
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Excluir
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={movementOpen} onOpenChange={setMovementOpen}>
         <DialogContent className="max-w-md">

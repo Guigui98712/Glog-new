@@ -4,6 +4,9 @@ import './index.css'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { BrowserRouter } from 'react-router-dom'
+import App from './App'
+import { AuthProvider } from './contexts/AuthContext'
+import { NotificationProvider } from './contexts/NotificationContext'
 
 // Polyfill para Buffer (necessário para nspell)
 import { Buffer } from 'buffer'
@@ -21,47 +24,18 @@ const queryClient = new QueryClient({
   }
 })
 
-// Verificar se está no modo almoxarifado only (sem Capacitor)
-const isAlmoxOnly = import.meta.env.VITE_ALMOX_ONLY === 'true';
-
-// Renderizar de forma assíncrona para carregar providers dinamicamente
-async function renderApp() {
-  const root = ReactDOM.createRoot(document.getElementById('root')!);
-  
-  if (isAlmoxOnly) {
-    // Modo almoxarifado - sem Capacitor
-    const { default: AlmoxOnlyApp } = await import('./AlmoxOnlyApp');
-    root.render(
-      <React.StrictMode>
-        <BrowserRouter>
+const root = ReactDOM.createRoot(document.getElementById('root')!);
+root.render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <AuthProvider>
+        <NotificationProvider>
           <QueryClientProvider client={queryClient}>
-            <AlmoxOnlyApp />
+            <App />
             <ReactQueryDevtools initialIsOpen={false} />
           </QueryClientProvider>
-        </BrowserRouter>
-      </React.StrictMode>
-    );
-  } else {
-    // Modo completo - carregar providers que usam Capacitor
-    const { default: App } = await import('./App');
-    const { AuthProvider } = await import('./contexts/AuthContext');
-    const { NotificationProvider } = await import('./contexts/NotificationContext');
-    
-    root.render(
-      <React.StrictMode>
-        <BrowserRouter>
-          <AuthProvider>
-            <NotificationProvider>
-              <QueryClientProvider client={queryClient}>
-                <App />
-                <ReactQueryDevtools initialIsOpen={false} />
-              </QueryClientProvider>
-            </NotificationProvider>
-          </AuthProvider>
-        </BrowserRouter>
-      </React.StrictMode>
-    );
-  }
-}
-
-renderApp();
+        </NotificationProvider>
+      </AuthProvider>
+    </BrowserRouter>
+  </React.StrictMode>
+);

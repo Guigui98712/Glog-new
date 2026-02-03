@@ -41,6 +41,10 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        almox: path.resolve(__dirname, 'almox.html')
+      },
       external: ['batch', 'emitter']
     },
     outDir: 'dist',

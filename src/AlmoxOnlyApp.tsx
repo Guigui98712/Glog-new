@@ -4,7 +4,7 @@ import AlmoxarifadoAcesso from './pages/AlmoxarifadoAcesso';
 import { Toaster } from './components/ui/toaster';
 
 // Versão para almoxarifado simplificado
-export const AlmoxOnlyApp: React.FC = () => (
+const AlmoxOnlyApp: React.FC = () => (
   <>
     <Routes>
       <Route path="*" element={<AlmoxarifadoAcesso />} />

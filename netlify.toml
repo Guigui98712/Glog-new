@@ -4,6 +4,16 @@
   environment = { NODE_VERSION = "18" }
 
 [[redirects]]
+  from = "/almox.html"
+  to = "/almox.html"
+  status = 200
+
+[[redirects]]
+  from = "/almox/*"
+  to = "/almox.html"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

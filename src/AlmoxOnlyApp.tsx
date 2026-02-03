@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router-dom';
 import AlmoxarifadoAcesso from './pages/AlmoxarifadoAcesso';
 import { Toaster } from './components/ui/toaster';
 
+// Versão para almoxarifado simplificado
 export const AlmoxOnlyApp: React.FC = () => (
   <>
     <Routes>

@@ -55,6 +55,6 @@ export default defineConfig({
     'process.env': process.env,
     global: 'globalThis',
   },
-  base: './',
+  base: '/',
   publicDir: 'public',
 });

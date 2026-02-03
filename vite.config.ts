@@ -52,19 +52,7 @@ export default defineConfig({
     },
     outDir: 'dist',
     sourcemap: true,
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        passes: 2,
-        drop_console: false,
-        unsafe: false
-      },
-      mangle: {
-        reserved: ['buttonVariants', 'AlmoxarifadoAcesso', 'AlmoxOnlyApp', 'Button'],
-        keep_classnames: true,
-        keep_fnames: true
-      }
-    },
+    minify: 'esbuild',
     chunkSizeWarningLimit: 1000,
     target: 'esnext',
     assetsDir: 'assets',

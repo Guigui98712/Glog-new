@@ -233,7 +233,16 @@ const Almoxarifado: React.FC = () => {
   };
 
   const itemsFiltrados = useMemo(() => {
-    return items.filter((it) => Number(it?.quantidade ?? 0) > 0);
+    const filtered = items.filter((it) => Number(it?.quantidade ?? 0) > 0);
+    // Ordenar por categoria, depois por nome
+    return filtered.sort((a, b) => {
+      const catA = (a.categoria || 'Sem categoria').toLowerCase();
+      const catB = (b.categoria || 'Sem categoria').toLowerCase();
+      if (catA !== catB) {
+        return catA.localeCompare(catB);
+      }
+      return (a.nome || '').localeCompare(b.nome || '');
+    });
   }, [items]);
 
   const onClickSuggestion = (it: any) => {

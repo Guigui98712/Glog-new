@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
+import { ArrowLeft } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +20,7 @@ import {
 
 const Almoxarifado: React.FC = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const obraId = Number(id);
   const { toast } = useToast();
 
@@ -268,7 +270,17 @@ const Almoxarifado: React.FC = () => {
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">Almoxarifado</h1>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => navigate(`/obras/${id}`)}
+            title="Voltar para detalhes da obra"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <h1 className="text-xl font-bold">Almoxarifado</h1>
+        </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={abrirHistorico}>Histórico</Button>
           <Button variant="outline" onClick={() => setShowItemsEditor(true)}>Itens</Button>

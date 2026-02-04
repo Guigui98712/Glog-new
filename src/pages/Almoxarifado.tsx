@@ -278,7 +278,7 @@ const Almoxarifado: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
@@ -290,23 +290,23 @@ const Almoxarifado: React.FC = () => {
           </Button>
           <h1 className="text-xl font-bold">Almoxarifado</h1>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={abrirHistorico}>Histórico</Button>
-          <Button variant="outline" onClick={() => setShowItemsEditor(true)}>Itens</Button>
-          <Button onClick={() => setShowCadastro(true)}>Cadastrar item</Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" onClick={abrirHistorico} className="text-sm">Histórico</Button>
+          <Button variant="outline" onClick={() => setShowItemsEditor(true)} className="text-sm">Itens</Button>
+          <Button onClick={() => setShowCadastro(true)} className="text-sm">Cadastrar</Button>
         </div>
       </div>
 
-      <div className="flex justify-center items-center gap-4">
-        <Button onClick={() => abrirMovimento('saida')} className="bg-yellow-500 hover:bg-yellow-600 text-white w-32">Saída</Button>
-        <Button onClick={() => abrirMovimento('entrada')} className="bg-green-500 hover:bg-green-600 text-white w-32">Entrada</Button>
+      <div className="flex justify-center items-center gap-4 flex-wrap">
+        <Button onClick={() => abrirMovimento('saida')} className="bg-yellow-500 hover:bg-yellow-600 text-white w-32 sm:w-40">Saída</Button>
+        <Button onClick={() => abrirMovimento('entrada')} className="bg-green-500 hover:bg-green-600 text-white w-32 sm:w-40">Entrada</Button>
       </div>
 
       <Card className="p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
+        <div className="flex flex-col sm:flex-row items-start sm:items-start justify-between gap-4">
+          <div className="w-full sm:w-auto">
             <h2 className="font-semibold">Acesso do Almoxarife</h2>
-            <div className="mt-2 flex items-center gap-2 text-sm">
+            <div className="mt-2 flex flex-col sm:flex-row items-start sm:items-center gap-2 text-sm">
               <a
                 href={almoxPublicUrl}
                 target="_blank"
@@ -327,17 +327,17 @@ const Almoxarifado: React.FC = () => {
                     toast({ title: 'Erro', description: 'Não foi possível copiar o link', variant: 'destructive' });
                   }
                 }}
-                className="h-8 w-8 p-0"
+                className="h-8 w-8 p-0 flex-shrink-0"
                 aria-label="Copiar link do almoxarife"
               >
                 <Copy className="h-4 w-4" />
               </Button>
             </div>
           </div>
-          <Button onClick={gerarCodigoAcesso} disabled={accessCodesLoading}>Gerar código</Button>
+          <Button onClick={gerarCodigoAcesso} disabled={accessCodesLoading} className="w-full sm:w-auto">Gerar código</Button>
         </div>
 
-        <div className="mt-6">
+        <div className="mt-6 overflow-x-auto">
           <h3 className="text-sm font-semibold mb-2">Dispositivos autorizados</h3>
           {devicesLoading ? (
             <div className="text-sm text-gray-500">Carregando dispositivos...</div>
@@ -392,28 +392,30 @@ const Almoxarifado: React.FC = () => {
 
       <Card className="p-4">
         <h2 className="font-semibold mb-3">Lista de materiais</h2>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>ID</TableHead>
-              <TableHead>Item</TableHead>
-              <TableHead>QTD</TableHead>
-              <TableHead>Unidade</TableHead>
-              <TableHead>Categoria</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {itemsFiltrados.map(it => (
-              <TableRow key={it.id}>
-                <TableCell>{it.id}</TableCell>
-                <TableCell>{it.nome}</TableCell>
-                <TableCell>{it.quantidade}</TableCell>
-                <TableCell>{it.unidade}</TableCell>
-                <TableCell>{it.categoria}</TableCell>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="min-w-[60px]">ID</TableHead>
+                <TableHead className="min-w-[150px]">Item</TableHead>
+                <TableHead className="min-w-[60px]">QTD</TableHead>
+                <TableHead className="min-w-[80px]">Unidade</TableHead>
+                <TableHead className="min-w-[100px]">Categoria</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {itemsFiltrados.map(it => (
+                <TableRow key={it.id}>
+                  <TableCell>{it.id}</TableCell>
+                  <TableCell>{it.nome}</TableCell>
+                  <TableCell>{it.quantidade}</TableCell>
+                  <TableCell>{it.unidade}</TableCell>
+                  <TableCell>{it.categoria}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </Card>
 
       <CadastroItemDialog open={showCadastro} onOpenChange={setShowCadastro} onCreated={() => { setShowCadastro(false); carregar(); }} obraId={obraId} />

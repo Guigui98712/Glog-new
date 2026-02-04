@@ -1810,9 +1810,6 @@ const gerarCodigoAlmox = () => {
 export const criarCodigoAlmoxarife = async (obraId: number, expiresMinutes = 30) => {
   if (DISABLE_GOOGLE_APIS) return null;
   try {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const createdBy = sessionData?.session?.user?.id ?? null;
-
     const expiresAt = new Date(Date.now() + expiresMinutes * 60 * 1000).toISOString();
 
     let lastError: any = null;
@@ -1825,8 +1822,7 @@ export const criarCodigoAlmoxarife = async (obraId: number, expiresMinutes = 30)
             obra_id: obraId,
             code,
             expires_at: expiresAt,
-            active: true,
-            created_by: createdBy
+            active: true
           }
         ])
         .select()

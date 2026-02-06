@@ -1321,6 +1321,12 @@ Enviado via GLog App`;
                     id="edit-titulo"
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     defaultValue={itemParaEditar.titulo}
+                    spellCheck={true}
+                    autoCorrect="on"
+                    autoCapitalize="sentences"
+                    autoComplete="on"
+                    inputMode="text"
+                    lang="pt-BR"
                   />
                 </div>
               )}
@@ -1334,6 +1340,12 @@ Enviado via GLog App`;
                   placeholder={itemParaEditar.titulo === 'Lista de Demanda' ? 'Digite os itens...' : 'Digite a descrição...'}
                   defaultValue={itemParaEditar.descricao || ''}
                   rows={itemParaEditar.titulo === 'Lista de Demanda' ? 5 : 3} 
+                  spellCheck={true}
+                  autoCorrect="on"
+                  autoCapitalize="sentences"
+                  autoComplete="on"
+                  inputMode="text"
+                  lang="pt-BR"
                 />
               </div>
               {(itemParaEditar.status === 'pedido' || itemParaEditar.status === 'entregue') && (

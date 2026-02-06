@@ -9,13 +9,19 @@ export interface TextareaProps
 
 const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
   ({ className, enableSpellCheck = true, ...props }, ref) => {
+    const resolvedInputMode = props.inputMode ?? "text";
     const textareaProps = enableSpellCheck ? {
       autoCapitalize: "sentences",
       autoCorrect: "on",
-      spellCheck: "true",
+      autoComplete: "on",
+      spellCheck: true,
       lang: "pt-BR",
+      inputMode: resolvedInputMode,
       ...props
-    } : props;
+    } : {
+      inputMode: resolvedInputMode,
+      ...props
+    };
 
     return (
       <textarea

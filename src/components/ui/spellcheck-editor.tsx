@@ -125,6 +125,10 @@ export function SpellcheckEditor({
           className
         )}
         spellCheck={useNativeSpellCheck}
+        autoCapitalize="sentences"
+        autoCorrect="on"
+        autoComplete="on"
+        inputMode="text"
         lang="pt-BR"
       />
       

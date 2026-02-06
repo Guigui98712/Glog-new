@@ -147,7 +147,9 @@ export function SmartTextEditor({
         )}
         spellCheck={true}
         autoCapitalize="sentences"
-        autoCorrect="on" 
+        autoCorrect="on"
+        autoComplete="on"
+        inputMode="text"
         lang={lang}
       />
       

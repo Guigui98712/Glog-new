@@ -4,7 +4,7 @@ echo Iniciando geração do APK G-Log...
 :: Verificar e configurar o ambiente
 echo 1. Configurando ambiente...
 set JAVA_HOME=
-set ANDROID_HOME=C:\Users\guica\AppData\Local\Android\Sdk
+set "ANDROID_HOME=%LOCALAPPDATA%\Android\Sdk"
 
 :: Limpar diretórios de build
 echo 2. Limpando diretórios de build anteriores...
@@ -19,7 +19,8 @@ if not exist android\app mkdir android\app
 echo 3. Configurando arquivos de propriedades...
 
 :: Criar local.properties
-echo sdk.dir=%ANDROID_HOME%> android\local.properties
+set "ANDROID_HOME_SLASH=%ANDROID_HOME:\=/%"
+echo sdk.dir=%ANDROID_HOME_SLASH%> android\local.properties
 
 :: Verificar se capacitor.build.gradle existe e corrigir as versões do Java
 echo 4. Corrigindo versões do Java nos arquivos de configuração...

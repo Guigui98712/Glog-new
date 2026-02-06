@@ -12,11 +12,16 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
  */
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, ...props }, ref) => {
+    const resolvedType = props.type ?? "text";
+    const resolvedInputMode = props.inputMode ?? (resolvedType === "text" ? "text" : undefined);
     const inputProps = {
       autoCapitalize: "sentences",
       autoCorrect: "on",
+      autoComplete: "on",
       spellCheck: true,
       lang: "pt-BR",
+      type: resolvedType,
+      inputMode: resolvedInputMode,
       ...props
     };
 

@@ -280,6 +280,12 @@ Enviado via GLog App`;
                 value={itens}
                 onChange={(e) => setItens(e.target.value)}
                 placeholder="Digite os itens da lista, um em cada linha"
+                spellCheck={true}
+                autoCorrect="on"
+                autoCapitalize="sentences"
+                autoComplete="on"
+                inputMode="text"
+                lang="pt-BR"
                 className="w-full min-h-[200px] rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
               />
             ) : (

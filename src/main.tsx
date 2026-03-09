@@ -7,10 +7,13 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { AuthProvider } from './contexts/AuthContext'
 import { NotificationProvider } from './contexts/NotificationContext'
+import { setupMobileInputExperience } from './lib/mobileInputExperience'
 
 // Polyfill para Buffer (necessário para nspell)
 import { Buffer } from 'buffer'
 window.Buffer = Buffer;
+
+void setupMobileInputExperience();
 
 // Criar instância do QueryClient com configurações
 const queryClient = new QueryClient({

@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/components/ui/use-toast';
-import { listarItens, searchItems, getItemById, registerMovement, registrarDispositivoAlmoxarife, verificarDispositivoAlmoxarife, getAlmoxarifadoHistorico } from '@/lib/api';
+import { listarItens, searchItems, getItemById, registerMovement, registrarDispositivoAlmoxarife, verificarDispositivoAlmoxarife, getAlmoxarifadoHistorico, getAlmoxarifadoHistoricoAnos } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 import CadastroItemDialog from '@/components/CadastroItemDialog';
 import { MoreVertical, Trash2 } from 'lucide-react';
@@ -22,6 +22,19 @@ type AlmoxDeviceInfo = {
   obraId: number;
   deviceId: number;
   deviceName: string;
+  sessionExpiresAt?: string | null;
+};
+
+const getNextDailyExpiration = (hour = 20) => {
+  const now = new Date();
+  const expiration = new Date(now);
+  expiration.setHours(hour, 0, 0, 0);
+
+  if (now >= expiration) {
+    expiration.setDate(expiration.getDate() + 1);
+  }
+
+  return expiration.toISOString();
 };
 
 export default function AlmoxarifadoAcesso(): JSX.Element {
@@ -34,19 +47,44 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
   const [loading, setLoading] = useState(false);
   const [deviceInfo, setDeviceInfo] = useState<AlmoxDeviceInfo | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
+  const [targetObraId, setTargetObraId] = useState<number | null>(null);
+
+  const deviceStorageKey = targetObraId ? `${DEVICE_KEY}_${targetObraId}` : DEVICE_KEY;
+
+  const persistDeviceInfo = (info: AlmoxDeviceInfo) => {
+    localStorage.setItem(deviceStorageKey, JSON.stringify(info));
+  };
 
   useEffect(() => {
-    const raw = localStorage.getItem(DEVICE_KEY);
+    const params = new URLSearchParams(window.location.search);
+    const obraIdParam = params.get('obraId') || params.get('obra');
+    const parsed = obraIdParam ? Number(obraIdParam) : NaN;
+    setTargetObraId(Number.isFinite(parsed) && parsed > 0 ? parsed : null);
+  }, []);
+
+  useEffect(() => {
+    const raw = localStorage.getItem(deviceStorageKey);
     if (!raw) return;
     try {
       const parsed: AlmoxDeviceInfo = JSON.parse(raw);
+      if (targetObraId && Number(parsed.obraId) !== targetObraId) {
+        return;
+      }
+
+      const hasValidSession =
+        !!parsed.sessionExpiresAt && new Date(parsed.sessionExpiresAt).getTime() > Date.now();
+
       setDeviceInfo(parsed);
       setDeviceName(parsed.deviceName);
       setMode('login');
+
+      if (hasValidSession) {
+        setAuthenticated(true);
+      }
     } catch {
-      localStorage.removeItem(DEVICE_KEY);
+      localStorage.removeItem(deviceStorageKey);
     }
-  }, []);
+  }, [deviceStorageKey, targetObraId]);
 
   const handleRegistrar = async () => {
     if (!code.trim()) {
@@ -76,12 +114,18 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
     setLoading(true);
     try {
       const data: any = await registrarDispositivoAlmoxarife(code.trim(), deviceName.trim(), password);
+
+      if (targetObraId && Number(data.obra_id) !== targetObraId) {
+        throw new Error('Este código não pertence à obra deste link');
+      }
+
       const info: AlmoxDeviceInfo = {
         obraId: data.obra_id,
         deviceId: data.id,
-        deviceName: data.device_name
+        deviceName: data.device_name,
+        sessionExpiresAt: getNextDailyExpiration(20)
       };
-      localStorage.setItem(DEVICE_KEY, JSON.stringify(info));
+      persistDeviceInfo(info);
       setDeviceInfo(info);
       setAuthenticated(true);
       setMode('login');
@@ -91,7 +135,11 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
       toast({ title: 'Dispositivo registrado', description: 'Acesso liberado' });
     } catch (e) {
       console.error(e);
-      toast({ title: 'Erro', description: 'Não foi possível registrar o dispositivo', variant: 'destructive' });
+      toast({
+        title: 'Erro',
+        description: e instanceof Error ? e.message : 'Não foi possível registrar o dispositivo',
+        variant: 'destructive'
+      });
     } finally {
       setLoading(false);
     }
@@ -109,6 +157,14 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
     setLoading(true);
     try {
       await verificarDispositivoAlmoxarife(deviceInfo.obraId, deviceInfo.deviceName, password);
+
+      const infoWithSession: AlmoxDeviceInfo = {
+        ...deviceInfo,
+        sessionExpiresAt: getNextDailyExpiration(20)
+      };
+
+      persistDeviceInfo(infoWithSession);
+      setDeviceInfo(infoWithSession);
       setAuthenticated(true);
       setPassword('');
       toast({ title: 'Acesso liberado', description: 'Senha correta' });
@@ -121,11 +177,19 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
   };
 
   const handleSair = () => {
+    if (deviceInfo) {
+      const infoWithoutSession: AlmoxDeviceInfo = {
+        ...deviceInfo,
+        sessionExpiresAt: null
+      };
+      persistDeviceInfo(infoWithoutSession);
+      setDeviceInfo(infoWithoutSession);
+    }
     setAuthenticated(false);
   };
 
   const handleRemoverDispositivo = () => {
-    localStorage.removeItem(DEVICE_KEY);
+    localStorage.removeItem(deviceStorageKey);
     setDeviceInfo(null);
     setMode('register');
     setDeviceName('');
@@ -206,18 +270,23 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ 
   const [suggestions, setSuggestions] = useState<any[]>([]);
 
   const [movementOpen, setMovementOpen] = useState(false);
-  const [movementType, setMovementType] = useState<'entrada' | 'saida'>('entrada');
+  const [movementType, setMovementType] = useState<'entrada' | 'saida' | 'devolucao'>('entrada');
   const [movementItemId, setMovementItemId] = useState<string>('');
   const [movementItem, setMovementItem] = useState<any>(null);
   const [movementQtd, setMovementQtd] = useState<number>(1);
   const [movementQuery, setMovementQuery] = useState('');
   const [movementSuggestions, setMovementSuggestions] = useState<any[]>([]);
+  const [movementNumeroPedido, setMovementNumeroPedido] = useState('');
+  const [movementEmpresaNome, setMovementEmpresaNome] = useState('');
+  const [movementRetiradoPor, setMovementRetiradoPor] = useState('');
 
   const [showCadastro, setShowCadastro] = useState(false);
 
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyYear, setHistoryYear] = useState<number>(new Date().getFullYear());
+  const [historyYears, setHistoryYears] = useState<number[]>([]);
 
   const [showItemsEditor, setShowItemsEditor] = useState(false);
   const [itemsEditorQuery, setItemsEditorQuery] = useState('');
@@ -282,13 +351,16 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ 
     return () => { mounted = false; };
   }, [movementQuery, obraId]);
 
-  const abrirMovimento = (type: 'entrada' | 'saida') => {
+  const abrirMovimento = (type: 'entrada' | 'saida' | 'devolucao') => {
     setMovementType(type);
     setMovementItemId('');
     setMovementItem(null);
     setMovementQtd(1);
     setMovementQuery('');
     setMovementSuggestions([]);
+    setMovementNumeroPedido('');
+    setMovementEmpresaNome('');
+    setMovementRetiradoPor('');
     setMovementOpen(true);
   };
 
@@ -327,9 +399,33 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ 
 
   const submitMovement = async () => {
     if (!movementItemId || !movementQtd || !obraId) return toast({ title: 'Erro', description: 'Informe item e quantidade', variant: 'destructive' });
+
+    if (movementType === 'entrada' && (!movementNumeroPedido.trim() || !movementEmpresaNome.trim())) {
+      return toast({
+        title: 'Erro',
+        description: 'Informe número do pedido e nome da empresa para registrar entrada',
+        variant: 'destructive'
+      });
+    }
+
+    if (movementType === 'saida' && !movementRetiradoPor.trim()) {
+      return toast({
+        title: 'Erro',
+        description: 'Informe o nome de quem retirou o item para registrar saída',
+        variant: 'destructive'
+      });
+    }
+
     setLoading(true);
     try {
-      await registerMovement(obraId, Number(movementItemId), movementType, movementQtd);
+      const movementApiType = movementType === 'devolucao' ? 'entrada' : movementType;
+
+      await registerMovement(obraId, Number(movementItemId), movementApiType, movementQtd, {
+        numero_pedido: movementType === 'entrada' ? movementNumeroPedido : null,
+        empresa_nome: movementType === 'entrada' ? movementEmpresaNome : null,
+        retirado_por: movementType === 'saida' ? movementRetiradoPor : null,
+        observacao: movementType === 'devolucao' ? 'devolucao' : null,
+      });
       toast({ title: 'Registrado', description: 'Movimento registrado com sucesso' });
       setMovementOpen(false);
       await carregar();
@@ -340,11 +436,13 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ 
   };
 
   const abrirHistorico = async () => {
+    const currentYear = new Date().getFullYear();
     setShowHistory(true);
+    setHistoryYear(currentYear);
     setHistoryLoading(true);
     try {
-      const data = await getAlmoxarifadoHistorico(obraId);
-      setHistory(data || []);
+      const anos = await getAlmoxarifadoHistoricoAnos(obraId);
+      setHistoryYears(anos || []);
     } catch (e) {
       console.error('Erro ao carregar histórico:', e);
       toast({ title: 'Erro', description: 'Não foi possível carregar histórico', variant: 'destructive' });
@@ -352,6 +450,31 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ 
       setHistoryLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!showHistory || !obraId) return;
+
+    let mounted = true;
+    const load = async () => {
+      setHistoryLoading(true);
+      try {
+        const data = await getAlmoxarifadoHistorico(obraId, historyYear);
+        if (mounted) setHistory(data || []);
+      } catch (e) {
+        console.error('Erro ao carregar histórico:', e);
+        if (mounted) {
+          toast({ title: 'Erro', description: 'Não foi possível carregar histórico', variant: 'destructive' });
+        }
+      } finally {
+        if (mounted) setHistoryLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, [showHistory, obraId, historyYear, toast]);
 
   const excluirItem = async (itemId: number) => {
     if (!confirm('Tem certeza que deseja excluir este item?')) return;
@@ -379,9 +502,15 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ 
         </div>
       </div>
 
-      <div className="flex justify-center items-center gap-4">
-        <Button onClick={() => abrirMovimento('saida')} className="bg-yellow-500 hover:bg-yellow-600 text-white w-32" disabled={loading}>Saída</Button>
-        <Button onClick={() => abrirMovimento('entrada')} className="bg-green-500 hover:bg-green-600 text-white w-32" disabled={loading}>Entrada</Button>
+      <div className="w-full flex justify-center">
+        <div className="grid grid-cols-[auto_auto_auto] items-center gap-3">
+          <Button onClick={() => abrirMovimento('devolucao')} variant="outline" className="w-24 h-9 text-xs" disabled={loading}>Devolução</Button>
+          <div className="flex items-center gap-4">
+            <Button onClick={() => abrirMovimento('saida')} className="bg-yellow-500 hover:bg-yellow-600 text-white w-32" disabled={loading}>Saída</Button>
+            <Button onClick={() => abrirMovimento('entrada')} className="bg-green-500 hover:bg-green-600 text-white w-32" disabled={loading}>Entrada</Button>
+          </div>
+          <div className="w-24 h-9" aria-hidden="true" />
+        </div>
       </div>
 
       <Card className="p-4">
@@ -431,6 +560,19 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ 
           <DialogHeader>
             <DialogTitle>Histórico de Movimentações</DialogTitle>
           </DialogHeader>
+          {historyYears.length > 0 && (
+            <div className="flex justify-end mb-3">
+              <select
+                value={historyYear}
+                onChange={(e) => setHistoryYear(Number(e.target.value))}
+                className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
+              >
+                {historyYears.map((year) => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            </div>
+          )}
           {historyLoading ? (
             <div className="flex items-center justify-center min-h-[200px]">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -446,6 +588,9 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ 
                   <TableHead>Item</TableHead>
                   <TableHead>Tipo</TableHead>
                   <TableHead>Quantidade</TableHead>
+                  <TableHead>Nº Pedido</TableHead>
+                  <TableHead>Empresa</TableHead>
+                  <TableHead>Retirado por</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -453,10 +598,13 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ 
                   <TableRow key={idx}>
                     <TableCell>{new Date(mov.data).toLocaleDateString('pt-BR')}</TableCell>
                     <TableCell>{mov.item_nome}</TableCell>
-                    <TableCell className={mov.tipo === 'entrada' ? 'text-green-600 font-semibold' : 'text-yellow-600 font-semibold'}>
-                      {mov.tipo === 'entrada' ? '↓ Entrada' : '↑ Saída'}
+                    <TableCell className={mov.observacao === 'devolucao' ? 'text-blue-600 font-semibold' : (mov.tipo === 'entrada' ? 'text-green-600 font-semibold' : 'text-yellow-600 font-semibold')}>
+                      {mov.observacao === 'devolucao' ? '↩ Devolução' : (mov.tipo === 'entrada' ? '↓ Entrada' : '↑ Saída')}
                     </TableCell>
                     <TableCell>{mov.quantidade}</TableCell>
+                    <TableCell>{mov.numero_pedido || '-'}</TableCell>
+                    <TableCell>{mov.empresa_nome || '-'}</TableCell>
+                    <TableCell>{mov.retirado_por || '-'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -523,7 +671,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ 
       <Dialog open={movementOpen} onOpenChange={setMovementOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{movementType === 'entrada' ? 'Registrar entrada' : 'Registrar saída'}</DialogTitle>
+            <DialogTitle>{movementType === 'entrada' ? 'Registrar entrada' : movementType === 'saida' ? 'Registrar saída' : 'Registrar devolução'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>
@@ -543,6 +691,39 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ 
               <label className="block text-sm font-medium mb-1">Quantidade</label>
               <Input type="number" value={movementQtd.toString()} onChange={(e) => setMovementQtd(Number(e.target.value || 0))} />
             </div>
+
+            {movementType === 'entrada' && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Número do pedido</label>
+                  <Input
+                    value={movementNumeroPedido}
+                    onChange={(e) => setMovementNumeroPedido(e.target.value)}
+                    placeholder="Ex.: PED-2026-001"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Nome da empresa</label>
+                  <Input
+                    value={movementEmpresaNome}
+                    onChange={(e) => setMovementEmpresaNome(e.target.value)}
+                    placeholder="Ex.: Fornecedora ABC"
+                  />
+                </div>
+              </>
+            )}
+
+            {movementType === 'saida' && (
+              <div>
+                <label className="block text-sm font-medium mb-1">Nome de quem retirou</label>
+                <Input
+                  value={movementRetiradoPor}
+                  onChange={(e) => setMovementRetiradoPor(e.target.value)}
+                  placeholder="Ex.: João Silva"
+                />
+              </div>
+            )}
+
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setMovementOpen(false)}>Cancelar</Button>
               <Button onClick={submitMovement}>Registrar</Button>

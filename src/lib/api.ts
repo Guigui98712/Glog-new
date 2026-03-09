@@ -1734,7 +1734,20 @@ export const createItem = async (item: { nome: string; unidade?: string | null; 
   }
 };
 
-export const registerMovement = async (obraId: number, itemId: number, type: 'entrada' | 'saida', quantidade: number) => {
+type AlmoxMovementMetadata = {
+  numero_pedido?: string | null;
+  empresa_nome?: string | null;
+  retirado_por?: string | null;
+  observacao?: string | null;
+};
+
+export const registerMovement = async (
+  obraId: number,
+  itemId: number,
+  type: 'entrada' | 'saida',
+  quantidade: number,
+  metadata?: AlmoxMovementMetadata
+) => {
   if (DISABLE_GOOGLE_APIS) return null;
   try {
     // inserir movimento
@@ -1743,6 +1756,10 @@ export const registerMovement = async (obraId: number, itemId: number, type: 'en
       item_id: itemId,
       tipo: type,
       quantidade: quantidade,
+      numero_pedido: metadata?.numero_pedido?.trim() || null,
+      empresa_nome: metadata?.empresa_nome?.trim() || null,
+      retirado_por: metadata?.retirado_por?.trim() || null,
+      observacao: metadata?.observacao?.trim() || null,
       criado_em: new Date().toISOString()
     } as any;
 
@@ -1771,21 +1788,33 @@ export const registerMovement = async (obraId: number, itemId: number, type: 'en
   }
 };
 
-export const getAlmoxarifadoHistorico = async (obraId: number) => {
+export const getAlmoxarifadoHistorico = async (obraId: number, year?: number) => {
   if (DISABLE_GOOGLE_APIS) return [];
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('almox_movements')
       .select(`
         id,
         tipo,
         quantidade,
+        observacao,
+        numero_pedido,
+        empresa_nome,
+        retirado_por,
         criado_em,
         item_id,
         almox_items(nome)
       `)
       .eq('obra_id', obraId)
       .order('criado_em', { ascending: false });
+
+    if (year) {
+      const start = new Date(Date.UTC(year, 0, 1)).toISOString();
+      const end = new Date(Date.UTC(year + 1, 0, 1)).toISOString();
+      query = query.gte('criado_em', start).lt('criado_em', end);
+    }
+
+    const { data, error } = await query;
     
     if (error) throw error;
     
@@ -1794,11 +1823,180 @@ export const getAlmoxarifadoHistorico = async (obraId: number) => {
       id: mov.id,
       tipo: mov.tipo,
       quantidade: mov.quantidade,
+      observacao: mov.observacao,
+      numero_pedido: mov.numero_pedido,
+      empresa_nome: mov.empresa_nome,
+      retirado_por: mov.retirado_por,
       data: mov.criado_em,
       item_nome: mov.almox_items?.nome || 'Item deletado'
     }));
   } catch (err) {
     console.error('Erro getAlmoxarifadoHistorico', err);
+    throw err;
+  }
+};
+
+export const getAlmoxarifadoHistoricoAnos = async (obraId: number) => {
+  if (DISABLE_GOOGLE_APIS) return [];
+
+  try {
+    const years = new Set<number>();
+    const pageSize = 1000;
+    let from = 0;
+
+    while (true) {
+      const to = from + pageSize - 1;
+      const { data, error } = await supabase
+        .from('almox_movements')
+        .select('criado_em')
+        .eq('obra_id', obraId)
+        .order('criado_em', { ascending: false })
+        .range(from, to);
+
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+
+      for (const row of data as Array<{ criado_em: string | null }>) {
+        if (!row?.criado_em) continue;
+        years.add(new Date(row.criado_em).getFullYear());
+      }
+
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
+
+    return Array.from(years).sort((a, b) => b - a);
+  } catch (err) {
+    console.error('Erro getAlmoxarifadoHistoricoAnos', err);
+    throw err;
+  }
+};
+
+// ===== Ferramentas do Almoxarifado =====
+export const listarFerramentasAlmox = async (obraId: number) => {
+  if (DISABLE_GOOGLE_APIS) return [];
+
+  try {
+    const { data, error } = await (supabase as any)
+      .from('almox_tools')
+      .select('*')
+      .eq('obra_id', obraId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.error('Erro listarFerramentasAlmox', err);
+    throw err;
+  }
+};
+
+export const uploadFotoFerramentaAlmox = async (obraId: number, file: File) => {
+  if (DISABLE_GOOGLE_APIS) return '';
+
+  try {
+    const timestamp = new Date().getTime();
+    const randomString = Math.random().toString(36).substring(2, 8);
+    const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+    const path = `ferramentas/obra-${obraId}/${timestamp}-${randomString}.${extension}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('fotos')
+      .upload(path, file, {
+        cacheControl: '3600',
+        upsert: false,
+      });
+
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage
+      .from('fotos')
+      .getPublicUrl(path);
+
+    return data.publicUrl;
+  } catch (err) {
+    console.error('Erro uploadFotoFerramentaAlmox', err);
+    throw err;
+  }
+};
+
+export const criarFerramentaAlmox = async (payload: {
+  obra_id: number;
+  nome: string;
+  descricao?: string | null;
+  foto?: File | null;
+}) => {
+  if (DISABLE_GOOGLE_APIS) return null;
+
+  try {
+    const fotoUrl = payload.foto
+      ? await uploadFotoFerramentaAlmox(payload.obra_id, payload.foto)
+      : null;
+
+    const insertPayload = {
+      obra_id: payload.obra_id,
+      nome: payload.nome,
+      descricao: payload.descricao || null,
+      foto_url: fotoUrl,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await (supabase as any)
+      .from('almox_tools')
+      .insert([insertPayload])
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Erro criarFerramentaAlmox', err);
+    throw err;
+  }
+};
+
+export const retirarFerramentaAlmox = async (toolId: number, pessoaNome: string) => {
+  if (DISABLE_GOOGLE_APIS) return null;
+
+  try {
+    const { data, error } = await (supabase as any)
+      .from('almox_tools')
+      .update({
+        com_pessoa_nome: pessoaNome,
+        retirado_em: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', toolId)
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Erro retirarFerramentaAlmox', err);
+    throw err;
+  }
+};
+
+export const devolverFerramentaAlmox = async (toolId: number) => {
+  if (DISABLE_GOOGLE_APIS) return null;
+
+  try {
+    const { data, error } = await (supabase as any)
+      .from('almox_tools')
+      .update({
+        com_pessoa_nome: null,
+        retirado_em: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', toolId)
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Erro devolverFerramentaAlmox', err);
     throw err;
   }
 };
@@ -1902,7 +2100,22 @@ export const registrarDispositivoAlmoxarife = async (code: string, deviceName: s
       p_password: password
     });
     if (error) throw error;
-    return data;
+
+    const row: any = Array.isArray(data) ? data[0] : data;
+    if (!row) {
+      throw new Error('Resposta inválida ao registrar dispositivo');
+    }
+
+    if (row.success === false) {
+      throw new Error(row.message || 'Não foi possível registrar o dispositivo');
+    }
+
+    return {
+      ...row,
+      id: row.id ?? row.device_id ?? null,
+      device_name: row.device_name ?? deviceName,
+      obra_id: Number(row.obra_id),
+    };
   } catch (err) {
     console.error('Erro registrarDispositivoAlmoxarife', err);
     throw err;
@@ -1918,7 +2131,17 @@ export const verificarDispositivoAlmoxarife = async (obraId: number, deviceName:
       p_password: password
     });
     if (error) throw error;
-    return data;
+
+    const row: any = Array.isArray(data) ? data[0] : data;
+    if (!row) {
+      throw new Error('Credenciais inválidas');
+    }
+
+    if (row.is_valid === false || row.success === false) {
+      throw new Error(row.message || 'Credenciais inválidas');
+    }
+
+    return row;
   } catch (err) {
     console.error('Erro verificarDispositivoAlmoxarife', err);
     throw err;

@@ -2,6 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+}
+
+html,
+body {
+  overflow-x: hidden;
+}
+
+:root {
+  --keyboard-height: 0px;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -97,7 +113,20 @@
 
   body {
     @apply bg-background text-foreground;
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
   }
+}
+
+body.keyboard-open {
+  padding-bottom: var(--keyboard-height);
+}
+
+input,
+textarea,
+[contenteditable='true'] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* Estilos para áreas seguras em dispositivos móveis */

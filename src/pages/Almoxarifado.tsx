@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import CadastroItemDialog from '@/components/CadastroItemDialog';
-import { listarItens, searchItems, getItemById, registerMovement, getAlmoxarifadoHistorico, criarCodigoAlmoxarife, listarDispositivosAlmoxarife, revogarDispositivoAlmoxarife } from '@/lib/api';
+import { listarItens, searchItems, getItemById, registerMovement, getAlmoxarifadoHistorico, getAlmoxarifadoHistoricoAnos, criarCodigoAlmoxarife, listarDispositivosAlmoxarife, revogarDispositivoAlmoxarife } from '@/lib/api';
 import { Copy, MoreVertical, Trash2 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -34,17 +34,23 @@ const Almoxarifado: React.FC = () => {
 
   // Entrada/Saida form
   const [movementOpen, setMovementOpen] = useState(false);
-  const [movementType, setMovementType] = useState<'entrada'|'saida'>('entrada');
+  const [movementType, setMovementType] = useState<'entrada'|'saida'|'devolucao'>('entrada');
   const [movementItemId, setMovementItemId] = useState<string>('');
   const [movementItem, setMovementItem] = useState<any>(null);
   const [movementQtd, setMovementQtd] = useState<number>(1);
   const [movementQuery, setMovementQuery] = useState('');
   const [movementSuggestions, setMovementSuggestions] = useState<any[]>([]);
+  const [movementNumeroPedido, setMovementNumeroPedido] = useState('');
+  const [movementEmpresaNome, setMovementEmpresaNome] = useState('');
+  const [movementRetiradoPor, setMovementRetiradoPor] = useState('');
 
   // History modal
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyQuery, setHistoryQuery] = useState('');
+  const [historyYear, setHistoryYear] = useState<number>(new Date().getFullYear());
+  const [historyYears, setHistoryYears] = useState<number[]>([]);
 
   // Items editor modal
   const [showItemsEditor, setShowItemsEditor] = useState(false);
@@ -59,8 +65,7 @@ const Almoxarifado: React.FC = () => {
   const [devicesLoading, setDevicesLoading] = useState(false);
 
   const accessBaseUrl = import.meta.env.VITE_ALMOX_PUBLIC_URL || (typeof window !== 'undefined' ? window.location.origin : '');
-  const accessUrl = `${accessBaseUrl}/almoxarifado/acesso`;
-  const almoxPublicUrl = 'https://almoxarifadoglog.netlify.app/almox.html';
+  const almoxPublicUrl = `${accessBaseUrl}/almoxarifado/acesso?obraId=${obraId}`;
 
   // Search detail modal
   const [showSearchDetail, setShowSearchDetail] = useState(false);
@@ -129,13 +134,16 @@ const Almoxarifado: React.FC = () => {
     return () => { mounted = false; };
   }, [movementQuery, obraId]);
 
-  const abrirMovimento = (type: 'entrada'|'saida') => {
+  const abrirMovimento = (type: 'entrada'|'saida'|'devolucao') => {
     setMovementType(type);
     setMovementItemId('');
     setMovementItem(null);
     setMovementQtd(1);
     setMovementQuery('');
     setMovementSuggestions([]);
+    setMovementNumeroPedido('');
+    setMovementEmpresaNome('');
+    setMovementRetiradoPor('');
     setMovementOpen(true);
   };
 
@@ -175,9 +183,33 @@ const Almoxarifado: React.FC = () => {
 
   const submitMovement = async () => {
     if (!movementItemId || !movementQtd || !obraId) return toast({ title: 'Erro', description: 'Informe item e quantidade', variant: 'destructive' });
+
+    if (movementType === 'entrada' && (!movementNumeroPedido.trim() || !movementEmpresaNome.trim())) {
+      return toast({
+        title: 'Erro',
+        description: 'Informe número do pedido e nome da empresa para registrar entrada',
+        variant: 'destructive'
+      });
+    }
+
+    if (movementType === 'saida' && !movementRetiradoPor.trim()) {
+      return toast({
+        title: 'Erro',
+        description: 'Informe o nome de quem retirou o item para registrar saída',
+        variant: 'destructive'
+      });
+    }
+
     setLoading(true);
     try {
-      await registerMovement(obraId, Number(movementItemId), movementType, movementQtd);
+      const movementApiType = movementType === 'devolucao' ? 'entrada' : movementType;
+
+      await registerMovement(obraId, Number(movementItemId), movementApiType, movementQtd, {
+        numero_pedido: movementType === 'entrada' ? movementNumeroPedido : null,
+        empresa_nome: movementType === 'entrada' ? movementEmpresaNome : null,
+        retirado_por: movementType === 'saida' ? movementRetiradoPor : null,
+        observacao: movementType === 'devolucao' ? 'devolucao' : null,
+      });
       toast({ title: 'Registrado', description: 'Movimento registrado com sucesso' });
       setMovementOpen(false);
       await carregar();
@@ -219,11 +251,14 @@ const Almoxarifado: React.FC = () => {
   };
 
   const abrirHistorico = async () => {
+    const currentYear = new Date().getFullYear();
     setShowHistory(true);
+    setHistoryQuery('');
+    setHistoryYear(currentYear);
     setHistoryLoading(true);
     try {
-      const data = await getAlmoxarifadoHistorico(obraId);
-      setHistory(data || []);
+      const anos = await getAlmoxarifadoHistoricoAnos(obraId);
+      setHistoryYears(anos || []);
     } catch (e) {
       console.error('Erro ao carregar histórico:', e);
       toast({ title: 'Erro', description: 'Não foi possível carregar histórico', variant: 'destructive' });
@@ -231,6 +266,31 @@ const Almoxarifado: React.FC = () => {
       setHistoryLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!showHistory || !obraId) return;
+
+    let mounted = true;
+    const load = async () => {
+      setHistoryLoading(true);
+      try {
+        const data = await getAlmoxarifadoHistorico(obraId, historyYear);
+        if (mounted) setHistory(data || []);
+      } catch (e) {
+        console.error('Erro ao carregar histórico:', e);
+        if (mounted) {
+          toast({ title: 'Erro', description: 'Não foi possível carregar histórico', variant: 'destructive' });
+        }
+      } finally {
+        if (mounted) setHistoryLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, [showHistory, obraId, historyYear, toast]);
 
   const itemsFiltrados = useMemo(() => {
     const filtered = items.filter((it) => Number(it?.quantidade ?? 0) > 0);
@@ -262,6 +322,37 @@ const Almoxarifado: React.FC = () => {
     });
   }, [items, itemsEditorQuery]);
 
+  const dispositivosAtivos = useMemo(() => {
+    return devices.filter((device) => device.active);
+  }, [devices]);
+
+  const historyFiltrado = useMemo(() => {
+    if (!historyQuery || !historyQuery.trim()) return history;
+    const q = historyQuery.trim().toLowerCase();
+
+    return history.filter((mov) => {
+      const itemNome = String(mov.item_nome || '').toLowerCase();
+      const tipo = String(mov.tipo || '').toLowerCase();
+      const data = mov.data ? new Date(mov.data).toLocaleDateString('pt-BR').toLowerCase() : '';
+      const quantidade = String(mov.quantidade ?? '').toLowerCase();
+      const numeroPedido = String(mov.numero_pedido || '').toLowerCase();
+      const empresaNome = String(mov.empresa_nome || '').toLowerCase();
+      const retiradoPor = String(mov.retirado_por || '').toLowerCase();
+      const observacao = String(mov.observacao || '').toLowerCase();
+
+      return (
+        itemNome.includes(q) ||
+        tipo.includes(q) ||
+        data.includes(q) ||
+        quantidade.includes(q) ||
+        numeroPedido.includes(q) ||
+        empresaNome.includes(q) ||
+        retiradoPor.includes(q) ||
+        observacao.includes(q)
+      );
+    });
+  }, [history, historyQuery]);
+
   const excluirItem = async (itemId: number) => {
     if (!confirm('Tem certeza que deseja excluir este item?')) return;
     
@@ -289,6 +380,13 @@ const Almoxarifado: React.FC = () => {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <h1 className="text-xl font-bold">Almoxarifado</h1>
+          <Button
+            variant="outline"
+            className="h-8"
+            onClick={() => navigate(`/obras/${id}/almoxarifado/ferramentas`)}
+          >
+            Ferramentas
+          </Button>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" onClick={abrirHistorico} className="text-sm">Histórico</Button>
@@ -297,9 +395,15 @@ const Almoxarifado: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex justify-center items-center gap-4 flex-wrap">
-        <Button onClick={() => abrirMovimento('saida')} className="bg-yellow-500 hover:bg-yellow-600 text-white w-32 sm:w-40">Saída</Button>
-        <Button onClick={() => abrirMovimento('entrada')} className="bg-green-500 hover:bg-green-600 text-white w-32 sm:w-40">Entrada</Button>
+      <div className="w-full flex justify-center">
+        <div className="grid grid-cols-[auto_auto_auto] items-center gap-3">
+          <Button onClick={() => abrirMovimento('devolucao')} variant="outline" className="w-24 sm:w-28 h-9 text-xs">Devolução</Button>
+          <div className="flex items-center gap-4">
+            <Button onClick={() => abrirMovimento('saida')} className="bg-yellow-500 hover:bg-yellow-600 text-white w-32 sm:w-40">Saída</Button>
+            <Button onClick={() => abrirMovimento('entrada')} className="bg-green-500 hover:bg-green-600 text-white w-32 sm:w-40">Entrada</Button>
+          </div>
+          <div className="w-24 sm:w-28 h-9" aria-hidden="true" />
+        </div>
       </div>
 
       <Card className="p-4">
@@ -341,7 +445,7 @@ const Almoxarifado: React.FC = () => {
           <h3 className="text-sm font-semibold mb-2">Dispositivos autorizados</h3>
           {devicesLoading ? (
             <div className="text-sm text-gray-500">Carregando dispositivos...</div>
-          ) : devices.length === 0 ? (
+          ) : dispositivosAtivos.length === 0 ? (
             <div className="text-sm text-gray-500">Nenhum dispositivo cadastrado.</div>
           ) : (
             <Table>
@@ -355,7 +459,7 @@ const Almoxarifado: React.FC = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {devices.map((d) => (
+                {dispositivosAtivos.map((d) => (
                   <TableRow key={d.id}>
                     <TableCell>{d.device_name}</TableCell>
                     <TableCell>{new Date(d.created_at).toLocaleString('pt-BR')}</TableCell>
@@ -479,6 +583,19 @@ const Almoxarifado: React.FC = () => {
           <DialogHeader>
             <DialogTitle>Histórico de Movimentações</DialogTitle>
           </DialogHeader>
+          {historyYears.length > 0 && (
+            <div className="flex justify-end mb-3">
+              <select
+                value={historyYear}
+                onChange={(e) => setHistoryYear(Number(e.target.value))}
+                className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
+              >
+                {historyYears.map((year) => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            </div>
+          )}
           {historyLoading ? (
             <div className="flex items-center justify-center min-h-[200px]">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -487,28 +604,48 @@ const Almoxarifado: React.FC = () => {
           ) : history.length === 0 ? (
             <div className="text-sm text-gray-500">Nenhuma movimentação registrada.</div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Item</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Quantidade</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {history.map((mov, idx) => (
-                  <TableRow key={idx}>
-                    <TableCell>{new Date(mov.data).toLocaleDateString('pt-BR')}</TableCell>
-                    <TableCell>{mov.item_nome}</TableCell>
-                    <TableCell className={mov.tipo === 'entrada' ? 'text-green-600 font-semibold' : 'text-yellow-600 font-semibold'}>
-                      {mov.tipo === 'entrada' ? '↓ Entrada' : '↑ Saída'}
-                    </TableCell>
-                    <TableCell>{mov.quantidade}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <>
+              <div className="mb-4">
+                <Input
+                  placeholder="Pesquisar histórico..."
+                  value={historyQuery}
+                  onChange={(e) => setHistoryQuery(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+              {historyFiltrado.length === 0 ? (
+                <div className="text-sm text-gray-500">Nenhum resultado encontrado para a pesquisa.</div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Data</TableHead>
+                      <TableHead>Item</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Quantidade</TableHead>
+                      <TableHead>Nº Pedido</TableHead>
+                      <TableHead>Empresa</TableHead>
+                      <TableHead>Retirado por</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {historyFiltrado.map((mov, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell>{new Date(mov.data).toLocaleDateString('pt-BR')}</TableCell>
+                        <TableCell>{mov.item_nome}</TableCell>
+                        <TableCell className={mov.observacao === 'devolucao' ? 'text-blue-600 font-semibold' : (mov.tipo === 'entrada' ? 'text-green-600 font-semibold' : 'text-yellow-600 font-semibold')}>
+                          {mov.observacao === 'devolucao' ? '↩ Devolução' : (mov.tipo === 'entrada' ? '↓ Entrada' : '↑ Saída')}
+                        </TableCell>
+                        <TableCell>{mov.quantidade}</TableCell>
+                        <TableCell>{mov.numero_pedido || '-'}</TableCell>
+                        <TableCell>{mov.empresa_nome || '-'}</TableCell>
+                        <TableCell>{mov.retirado_por || '-'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </>
           )}
         </DialogContent>
       </Dialog>
@@ -571,7 +708,7 @@ const Almoxarifado: React.FC = () => {
       <Dialog open={movementOpen} onOpenChange={setMovementOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{movementType === 'entrada' ? 'Registrar entrada' : 'Registrar saída'}</DialogTitle>
+            <DialogTitle>{movementType === 'entrada' ? 'Registrar entrada' : movementType === 'saida' ? 'Registrar saída' : 'Registrar devolução'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>
@@ -591,6 +728,39 @@ const Almoxarifado: React.FC = () => {
               <label className="block text-sm font-medium mb-1">Quantidade</label>
               <Input type="number" value={movementQtd.toString()} onChange={(e) => setMovementQtd(Number(e.target.value || 0))} />
             </div>
+
+            {movementType === 'entrada' && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Número do pedido</label>
+                  <Input
+                    value={movementNumeroPedido}
+                    onChange={(e) => setMovementNumeroPedido(e.target.value)}
+                    placeholder="Ex.: PED-2026-001"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Nome da empresa</label>
+                  <Input
+                    value={movementEmpresaNome}
+                    onChange={(e) => setMovementEmpresaNome(e.target.value)}
+                    placeholder="Ex.: Fornecedora ABC"
+                  />
+                </div>
+              </>
+            )}
+
+            {movementType === 'saida' && (
+              <div>
+                <label className="block text-sm font-medium mb-1">Nome de quem retirou</label>
+                <Input
+                  value={movementRetiradoPor}
+                  onChange={(e) => setMovementRetiradoPor(e.target.value)}
+                  placeholder="Ex.: João Silva"
+                />
+              </div>
+            )}
+
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setMovementOpen(false)}>Cancelar</Button>
               <Button onClick={submitMovement}>Registrar</Button>

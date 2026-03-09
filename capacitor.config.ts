@@ -10,6 +10,11 @@ const config: CapacitorConfig = {
     allowNavigation: ['*']
   },
   plugins: {
+    Keyboard: {
+      resize: 'body',
+      resizeOnFullScreen: true,
+      style: 'light'
+    },
     Filesystem: {
       androidPermissions: [
         'android.permission.READ_EXTERNAL_STORAGE',

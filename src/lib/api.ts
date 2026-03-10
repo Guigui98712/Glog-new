@@ -1658,6 +1658,7 @@ export const listarItens = async (obraId: number) => {
     const { data, error } = await supabase
       .from('almox_items')
       .select('*')
+      .eq('is_deleted', false)
       .eq('obra_id', obraId)
       .order('nome', { ascending: true });
     if (error) throw error;
@@ -1676,6 +1677,7 @@ export const searchItems = async (obraId: number, q: string) => {
       .from('almox_items')
       .select('*')
       .ilike('nome', `${term}%`)
+      .eq('is_deleted', false)
       .eq('obra_id', obraId)
       .order('nome', { ascending: true })
       .limit(20);
@@ -1694,6 +1696,7 @@ export const getItemById = async (obraId: number, id: number) => {
       .from('almox_items')
       .select('*')
       .eq('obra_id', obraId)
+      .eq('is_deleted', false)
       .eq('id', id)
       .single();
     if (error) {
@@ -1710,7 +1713,7 @@ export const getItemById = async (obraId: number, id: number) => {
 export const createItem = async (item: { nome: string; unidade?: string | null; categoria?: string | null; quantidade?: number | null; obra_id?: number | null }) => {
   if (DISABLE_GOOGLE_APIS) return null;
   try {
-    const payload = { ...item };
+    const payload = { ...item, is_deleted: false, deleted_at: null } as any;
     const { data, error } = await supabase
       .from('almox_items')
       .insert([payload])
@@ -1803,7 +1806,7 @@ export const getAlmoxarifadoHistorico = async (obraId: number, year?: number) =>
         retirado_por,
         criado_em,
         item_id,
-        almox_items(nome)
+        almox_items(nome, is_deleted, deleted_at)
       `)
       .eq('obra_id', obraId)
       .order('criado_em', { ascending: false });
@@ -1819,19 +1822,49 @@ export const getAlmoxarifadoHistorico = async (obraId: number, year?: number) =>
     if (error) throw error;
     
     // Mapear resultado para formato esperado
-    return (data || []).map((mov: any) => ({
-      id: mov.id,
-      tipo: mov.tipo,
-      quantidade: mov.quantidade,
-      observacao: mov.observacao,
-      numero_pedido: mov.numero_pedido,
-      empresa_nome: mov.empresa_nome,
-      retirado_por: mov.retirado_por,
-      data: mov.criado_em,
-      item_nome: mov.almox_items?.nome || 'Item deletado'
-    }));
+    return (data || []).map((mov: any) => {
+      const itemNomeBase = mov.almox_items?.nome || 'Item removido';
+      const itemExcluido = !!mov.almox_items?.is_deleted || !mov.almox_items;
+
+      return {
+        id: mov.id,
+        tipo: mov.tipo,
+        quantidade: mov.quantidade,
+        observacao: mov.observacao,
+        numero_pedido: mov.numero_pedido,
+        empresa_nome: mov.empresa_nome,
+        retirado_por: mov.retirado_por,
+        data: mov.criado_em,
+        item_nome: itemNomeBase,
+        item_excluido: itemExcluido
+      };
+    });
   } catch (err) {
     console.error('Erro getAlmoxarifadoHistorico', err);
+    throw err;
+  }
+};
+
+export const excluirItemAlmox = async (itemId: number) => {
+  if (DISABLE_GOOGLE_APIS) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('almox_items')
+      .update({
+        is_deleted: true,
+        deleted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        quantidade: 0,
+      })
+      .eq('id', itemId)
+      .select('id')
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Erro excluirItemAlmox', err);
     throw err;
   }
 };

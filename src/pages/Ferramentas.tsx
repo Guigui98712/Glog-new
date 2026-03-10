@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications, Weekday } from '@capacitor/local-notifications';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -13,6 +15,17 @@ import {
   retirarFerramentaAlmox,
   devolverFerramentaAlmox,
 } from '@/lib/api';
+
+const FERRAMENTAS_REMINDER_BASE_ID = 730000;
+const FERRAMENTAS_REMINDER_HOUR = 17;
+const FERRAMENTAS_REMINDER_MINUTE = 30;
+const FERRAMENTAS_REMINDER_WEEKDAYS = [
+  Weekday.Monday,
+  Weekday.Tuesday,
+  Weekday.Wednesday,
+  Weekday.Thursday,
+  Weekday.Friday,
+];
 
 const Ferramentas: React.FC = () => {
   const { id } = useParams();
@@ -34,6 +47,52 @@ const Ferramentas: React.FC = () => {
   const [nomeRetirada, setNomeRetirada] = useState('');
   const [savingAcao, setSavingAcao] = useState(false);
 
+  const reminderNotificationIds = useMemo(() => {
+    const obraOffset = (obraId || 0) * 10;
+    return FERRAMENTAS_REMINDER_WEEKDAYS.map((_, index) => FERRAMENTAS_REMINDER_BASE_ID + obraOffset + index);
+  }, [obraId]);
+
+  const syncFerramentasReminder = async (tools: any[]) => {
+    if (!Capacitor.isNativePlatform() || !obraId) return;
+
+    try {
+      const hasBorrowedTools = tools.some((tool) => !!tool.com_pessoa_nome);
+
+      await LocalNotifications.cancel({
+        notifications: reminderNotificationIds.map((id) => ({ id })),
+      });
+
+      if (!hasBorrowedTools) return;
+
+      const perm = await LocalNotifications.checkPermissions();
+      if (perm.display !== 'granted') {
+        const requested = await LocalNotifications.requestPermissions();
+        if (requested.display !== 'granted') return;
+      }
+
+      await LocalNotifications.schedule({
+        notifications: FERRAMENTAS_REMINDER_WEEKDAYS.map((weekday, index) => ({
+          id: reminderNotificationIds[index],
+          title: 'Ferramentas pendentes',
+          body: 'Nem todas as ferramentas foram entregues. Confira o almoxarifado.',
+          schedule: {
+            on: {
+              weekday,
+              hour: FERRAMENTAS_REMINDER_HOUR,
+              minute: FERRAMENTAS_REMINDER_MINUTE,
+            },
+            repeats: true,
+            allowWhileIdle: true,
+          },
+          smallIcon: 'ic_notification',
+          channelId: 'default',
+        })),
+      });
+    } catch (err) {
+      console.error('Erro ao sincronizar lembrete de ferramentas', err);
+    }
+  };
+
   const carregarFerramentas = async () => {
     if (!obraId) return;
     setLoading(true);
@@ -51,6 +110,10 @@ const Ferramentas: React.FC = () => {
   useEffect(() => {
     carregarFerramentas();
   }, [obraId]);
+
+  useEffect(() => {
+    syncFerramentasReminder(ferramentas);
+  }, [ferramentas, obraId]);
 
   const ferramentasOrdenadas = useMemo(() => {
     const copy = [...ferramentas];

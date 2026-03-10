@@ -2,11 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/components/ui/use-toast';
-import { listarItens, searchItems, getItemById, registerMovement, registrarDispositivoAlmoxarife, verificarDispositivoAlmoxarife, getAlmoxarifadoHistorico, getAlmoxarifadoHistoricoAnos } from '@/lib/api';
-import { supabase } from '@/lib/supabase';
+import { listarItens, searchItems, getItemById, registerMovement, registrarDispositivoAlmoxarife, verificarDispositivoAlmoxarife, getAlmoxarifadoHistorico, getAlmoxarifadoHistoricoAnos, excluirItemAlmox, listarFerramentasAlmox, criarFerramentaAlmox, retirarFerramentaAlmox, devolverFerramentaAlmox } from '@/lib/api';
 import CadastroItemDialog from '@/components/CadastroItemDialog';
 import { MoreVertical, Trash2 } from 'lucide-react';
 import {
@@ -48,6 +48,7 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
   const [deviceInfo, setDeviceInfo] = useState<AlmoxDeviceInfo | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
   const [targetObraId, setTargetObraId] = useState<number | null>(null);
+  const [activeView, setActiveView] = useState<'materiais' | 'ferramentas'>('materiais');
 
   const deviceStorageKey = targetObraId ? `${DEVICE_KEY}_${targetObraId}` : DEVICE_KEY;
 
@@ -58,8 +59,13 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const obraIdParam = params.get('obraId') || params.get('obra');
+    const viewParam = params.get('view');
     const parsed = obraIdParam ? Number(obraIdParam) : NaN;
     setTargetObraId(Number.isFinite(parsed) && parsed > 0 ? parsed : null);
+
+    if (viewParam === 'ferramentas') {
+      setActiveView('ferramentas');
+    }
   }, []);
 
   useEffect(() => {
@@ -259,10 +265,26 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
     );
   }
 
-  return <AlmoxarifadoPublic obraId={deviceInfo?.obraId || 0} onSair={handleSair} />;
+  if (activeView === 'ferramentas') {
+    return (
+      <AlmoxarifadoFerramentasPublic
+        obraId={deviceInfo?.obraId || 0}
+        onSair={handleSair}
+        onVoltarMateriais={() => setActiveView('materiais')}
+      />
+    );
+  }
+
+  return (
+    <AlmoxarifadoPublic
+      obraId={deviceInfo?.obraId || 0}
+      onSair={handleSair}
+      onAbrirFerramentas={() => setActiveView('ferramentas')}
+    />
+  );
 };
 
-const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ obraId, onSair }) => {
+const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void; onAbrirFerramentas: () => void }> = ({ obraId, onSair, onAbrirFerramentas }) => {
   const { toast } = useToast();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -480,8 +502,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ 
     if (!confirm('Tem certeza que deseja excluir este item?')) return;
 
     try {
-      const { error } = await supabase.from('almox_items').delete().eq('id', itemId);
-      if (error) throw error;
+      await excluirItemAlmox(itemId);
       toast({ title: 'Sucesso', description: 'Item excluído com sucesso' });
       await carregar();
     } catch (e) {
@@ -494,7 +515,8 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ 
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-4">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-xl font-bold">Almoxarifado</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <Button variant="outline" onClick={onAbrirFerramentas}>Ferramentas</Button>
           <Button variant="outline" onClick={abrirHistorico}>Histórico</Button>
           <Button variant="outline" onClick={() => setShowItemsEditor(true)}>Itens</Button>
           <Button onClick={() => setShowCadastro(true)}>Cadastrar item</Button>
@@ -503,13 +525,12 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ 
       </div>
 
       <div className="w-full flex justify-center">
-        <div className="grid grid-cols-[auto_auto_auto] items-center gap-3">
-          <Button onClick={() => abrirMovimento('devolucao')} variant="outline" className="w-24 h-9 text-xs" disabled={loading}>Devolução</Button>
-          <div className="flex items-center gap-4">
-            <Button onClick={() => abrirMovimento('saida')} className="bg-yellow-500 hover:bg-yellow-600 text-white w-32" disabled={loading}>Saída</Button>
-            <Button onClick={() => abrirMovimento('entrada')} className="bg-green-500 hover:bg-green-600 text-white w-32" disabled={loading}>Entrada</Button>
+        <div className="flex flex-col sm:flex-row items-center gap-3">
+          <Button onClick={() => abrirMovimento('devolucao')} variant="outline" className="w-full sm:w-28 h-9 text-xs" disabled={loading}>Devolução</Button>
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <Button onClick={() => abrirMovimento('saida')} className="bg-yellow-500 hover:bg-yellow-600 text-white flex-1 sm:w-32" disabled={loading}>Saída</Button>
+            <Button onClick={() => abrirMovimento('entrada')} className="bg-green-500 hover:bg-green-600 text-white flex-1 sm:w-32" disabled={loading}>Entrada</Button>
           </div>
-          <div className="w-24 h-9" aria-hidden="true" />
         </div>
       </div>
 
@@ -528,28 +549,30 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ 
 
       <Card className="p-4">
         <h2 className="font-semibold mb-3">Lista de materiais</h2>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>ID</TableHead>
-              <TableHead>Item</TableHead>
-              <TableHead>QTD</TableHead>
-              <TableHead>Unidade</TableHead>
-              <TableHead>Categoria</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredItems.map(it => (
-              <TableRow key={it.id}>
-                <TableCell>{it.id}</TableCell>
-                <TableCell>{it.nome}</TableCell>
-                <TableCell>{it.quantidade}</TableCell>
-                <TableCell>{it.unidade}</TableCell>
-                <TableCell>{it.categoria}</TableCell>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>ID</TableHead>
+                <TableHead>Item</TableHead>
+                <TableHead>QTD</TableHead>
+                <TableHead>Unidade</TableHead>
+                <TableHead>Categoria</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {filteredItems.map(it => (
+                <TableRow key={it.id}>
+                  <TableCell>{it.id}</TableCell>
+                  <TableCell>{it.nome}</TableCell>
+                  <TableCell>{it.quantidade}</TableCell>
+                  <TableCell>{it.unidade}</TableCell>
+                  <TableCell>{it.categoria}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </Card>
 
       <CadastroItemDialog open={showCadastro} onOpenChange={setShowCadastro} onCreated={() => { setShowCadastro(false); carregar(); }} obraId={obraId} />
@@ -581,34 +604,39 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ 
           ) : history.length === 0 ? (
             <div className="text-sm text-gray-500">Nenhuma movimentação registrada.</div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Item</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Quantidade</TableHead>
-                  <TableHead>Nº Pedido</TableHead>
-                  <TableHead>Empresa</TableHead>
-                  <TableHead>Retirado por</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {history.map((mov, idx) => (
-                  <TableRow key={idx}>
-                    <TableCell>{new Date(mov.data).toLocaleDateString('pt-BR')}</TableCell>
-                    <TableCell>{mov.item_nome}</TableCell>
-                    <TableCell className={mov.observacao === 'devolucao' ? 'text-blue-600 font-semibold' : (mov.tipo === 'entrada' ? 'text-green-600 font-semibold' : 'text-yellow-600 font-semibold')}>
-                      {mov.observacao === 'devolucao' ? '↩ Devolução' : (mov.tipo === 'entrada' ? '↓ Entrada' : '↑ Saída')}
-                    </TableCell>
-                    <TableCell>{mov.quantidade}</TableCell>
-                    <TableCell>{mov.numero_pedido || '-'}</TableCell>
-                    <TableCell>{mov.empresa_nome || '-'}</TableCell>
-                    <TableCell>{mov.retirado_por || '-'}</TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Item</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Quantidade</TableHead>
+                    <TableHead>Nº Pedido</TableHead>
+                    <TableHead>Empresa</TableHead>
+                    <TableHead>Retirado por</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {history.map((mov, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell>{new Date(mov.data).toLocaleDateString('pt-BR')}</TableCell>
+                      <TableCell>
+                        {mov.item_nome}
+                        {mov.item_excluido ? ' (item excluído)' : ''}
+                      </TableCell>
+                      <TableCell className={mov.observacao === 'devolucao' ? 'text-blue-600 font-semibold' : (mov.tipo === 'entrada' ? 'text-green-600 font-semibold' : 'text-yellow-600 font-semibold')}>
+                        {mov.observacao === 'devolucao' ? '↩ Devolução' : (mov.tipo === 'entrada' ? '↓ Entrada' : '↑ Saída')}
+                      </TableCell>
+                      <TableCell>{mov.quantidade}</TableCell>
+                      <TableCell>{mov.numero_pedido || '-'}</TableCell>
+                      <TableCell>{mov.empresa_nome || '-'}</TableCell>
+                      <TableCell>{mov.retirado_por || '-'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </DialogContent>
       </Dialog>
@@ -627,44 +655,46 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ 
               className="w-full"
             />
           </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Nome</TableHead>
-                <TableHead>QTD</TableHead>
-                <TableHead>Unidade</TableHead>
-                <TableHead>Categoria</TableHead>
-                <TableHead>Ação</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {itemsFiltradosEditor.map((it) => (
-                <TableRow key={it.id}>
-                  <TableCell>{it.id}</TableCell>
-                  <TableCell>{it.nome}</TableCell>
-                  <TableCell>{it.quantidade}</TableCell>
-                  <TableCell>{it.unidade}</TableCell>
-                  <TableCell>{it.categoria}</TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => excluirItem(it.id)} className="text-red-600 cursor-pointer">
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Excluir
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>QTD</TableHead>
+                  <TableHead>Unidade</TableHead>
+                  <TableHead>Categoria</TableHead>
+                  <TableHead>Ação</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {itemsFiltradosEditor.map((it) => (
+                  <TableRow key={it.id}>
+                    <TableCell>{it.id}</TableCell>
+                    <TableCell>{it.nome}</TableCell>
+                    <TableCell>{it.quantidade}</TableCell>
+                    <TableCell>{it.unidade}</TableCell>
+                    <TableCell>{it.categoria}</TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => excluirItem(it.id)} className="text-red-600 cursor-pointer">
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -734,3 +764,282 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void }> = ({ 
     </div>
   );
 }
+
+const AlmoxarifadoFerramentasPublic: React.FC<{ obraId: number; onSair: () => void; onVoltarMateriais: () => void }> = ({
+  obraId,
+  onSair,
+  onVoltarMateriais,
+}) => {
+  const { toast } = useToast();
+
+  const [loading, setLoading] = useState(false);
+  const [ferramentas, setFerramentas] = useState<any[]>([]);
+
+  const [showCadastro, setShowCadastro] = useState(false);
+  const [cadastroNome, setCadastroNome] = useState('');
+  const [cadastroDescricao, setCadastroDescricao] = useState('');
+  const [cadastroFoto, setCadastroFoto] = useState<File | null>(null);
+  const [cadastroFotoPreview, setCadastroFotoPreview] = useState<string | null>(null);
+
+  const [showAcao, setShowAcao] = useState(false);
+  const [ferramentaSelecionada, setFerramentaSelecionada] = useState<any | null>(null);
+  const [nomeRetirada, setNomeRetirada] = useState('');
+  const [savingAcao, setSavingAcao] = useState(false);
+
+  const carregarFerramentas = async () => {
+    if (!obraId) return;
+    setLoading(true);
+    try {
+      const data = await listarFerramentasAlmox(obraId);
+      setFerramentas(data || []);
+    } catch (err) {
+      console.error(err);
+      toast({ title: 'Erro', description: 'Não foi possível carregar ferramentas', variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    carregarFerramentas();
+  }, [obraId]);
+
+  const ferramentasOrdenadas = useMemo(() => {
+    const copy = [...ferramentas];
+    copy.sort((a, b) => {
+      const aPegada = !!a.com_pessoa_nome;
+      const bPegada = !!b.com_pessoa_nome;
+
+      if (aPegada !== bPegada) {
+        return aPegada ? -1 : 1;
+      }
+
+      return String(a.nome || '').localeCompare(String(b.nome || ''));
+    });
+
+    return copy;
+  }, [ferramentas]);
+
+  const abrirCadastro = () => {
+    setCadastroNome('');
+    setCadastroDescricao('');
+    setCadastroFoto(null);
+    setCadastroFotoPreview(null);
+    setShowCadastro(true);
+  };
+
+  const onSelecionarFoto = (file: File | null) => {
+    setCadastroFoto(file);
+    if (!file) {
+      setCadastroFotoPreview(null);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => setCadastroFotoPreview(String(reader.result));
+    reader.readAsDataURL(file);
+  };
+
+  const salvarCadastro = async () => {
+    if (!cadastroNome.trim()) {
+      toast({ title: 'Erro', description: 'Informe o nome da ferramenta', variant: 'destructive' });
+      return;
+    }
+
+    if (!cadastroFoto) {
+      toast({ title: 'Erro', description: 'Selecione uma foto da ferramenta', variant: 'destructive' });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await criarFerramentaAlmox({
+        obra_id: obraId,
+        nome: cadastroNome.trim(),
+        descricao: cadastroDescricao.trim() || null,
+        foto: cadastroFoto,
+      });
+
+      toast({ title: 'Sucesso', description: 'Ferramenta cadastrada com sucesso' });
+      setShowCadastro(false);
+      await carregarFerramentas();
+    } catch (err) {
+      console.error(err);
+      toast({ title: 'Erro', description: 'Não foi possível cadastrar a ferramenta', variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const abrirAcaoFerramenta = (ferramenta: any) => {
+    setFerramentaSelecionada(ferramenta);
+    setNomeRetirada('');
+    setShowAcao(true);
+  };
+
+  const confirmarAcaoFerramenta = async () => {
+    if (!ferramentaSelecionada) return;
+
+    const jaRetirada = !!ferramentaSelecionada.com_pessoa_nome;
+
+    if (!jaRetirada && !nomeRetirada.trim()) {
+      toast({ title: 'Erro', description: 'Informe o nome da pessoa que está pegando', variant: 'destructive' });
+      return;
+    }
+
+    setSavingAcao(true);
+    try {
+      if (jaRetirada) {
+        await devolverFerramentaAlmox(ferramentaSelecionada.id);
+        toast({ title: 'Sucesso', description: 'Ferramenta devolvida ao estoque' });
+      } else {
+        await retirarFerramentaAlmox(ferramentaSelecionada.id, nomeRetirada.trim());
+        toast({ title: 'Sucesso', description: 'Retirada registrada com sucesso' });
+      }
+
+      setShowAcao(false);
+      await carregarFerramentas();
+    } catch (err) {
+      console.error(err);
+      toast({ title: 'Erro', description: 'Não foi possível atualizar a ferramenta', variant: 'destructive' });
+    } finally {
+      setSavingAcao(false);
+    }
+  };
+
+  return (
+    <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-xl font-bold">Ferramentas</h1>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <Button variant="outline" onClick={onVoltarMateriais}>Materiais</Button>
+          <Button onClick={abrirCadastro}>Cadastrar ferramenta</Button>
+          <Button variant="outline" onClick={onSair}>Sair</Button>
+        </div>
+      </div>
+
+      {loading && ferramentas.length === 0 ? (
+        <Card className="p-6 text-sm text-gray-500">Carregando ferramentas...</Card>
+      ) : ferramentasOrdenadas.length === 0 ? (
+        <Card className="p-6 text-sm text-gray-500">Nenhuma ferramenta cadastrada.</Card>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {ferramentasOrdenadas.map((ferramenta) => {
+            const retirada = !!ferramenta.com_pessoa_nome;
+            const gradient = retirada
+              ? 'from-yellow-300 via-amber-400 to-yellow-500'
+              : 'from-emerald-300 via-green-400 to-emerald-500';
+
+            return (
+              <button
+                key={ferramenta.id}
+                onClick={() => abrirAcaoFerramenta(ferramenta)}
+                className={`text-left rounded-xl p-[2px] bg-gradient-to-r ${gradient} transition-transform hover:scale-[1.01]`}
+              >
+                <div className="bg-white rounded-[10px] p-3 h-full">
+                  <div className="w-full h-40 bg-gray-100 rounded-lg overflow-hidden mb-3">
+                    {ferramenta.foto_url ? (
+                      <img src={ferramenta.foto_url} alt={ferramenta.nome} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-xs text-gray-500">Sem foto</div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="font-semibold text-sm line-clamp-1">{ferramenta.nome}</p>
+                    <p className="text-xs text-gray-600 line-clamp-2">{ferramenta.descricao || 'Sem descrição'}</p>
+                    <p className="text-xs font-medium text-gray-700">
+                      {retirada ? `Com: ${ferramenta.com_pessoa_nome}` : 'Em estoque'}
+                    </p>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <Dialog open={showCadastro} onOpenChange={setShowCadastro}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cadastrar ferramenta</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium mb-1">Nome</label>
+              <Input value={cadastroNome} onChange={(e) => setCadastroNome(e.target.value)} placeholder="Ex.: Furadeira" />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Descrição</label>
+              <Textarea
+                value={cadastroDescricao}
+                onChange={(e) => setCadastroDescricao(e.target.value)}
+                placeholder="Ex.: Furadeira de impacto 750W"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Foto</label>
+              <Input
+                type="file"
+                accept="image/*"
+                onChange={(e) => onSelecionarFoto(e.target.files?.[0] || null)}
+              />
+            </div>
+
+            {cadastroFotoPreview && (
+              <div className="w-full h-40 rounded-lg overflow-hidden bg-gray-100">
+                <img src={cadastroFotoPreview} alt="Preview" className="w-full h-full object-cover" />
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setShowCadastro(false)}>Cancelar</Button>
+              <Button onClick={salvarCadastro} disabled={loading}>Salvar</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showAcao} onOpenChange={setShowAcao}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{ferramentaSelecionada?.nome}</DialogTitle>
+          </DialogHeader>
+
+          {ferramentaSelecionada && (
+            <div className="space-y-3">
+              {ferramentaSelecionada.com_pessoa_nome ? (
+                <>
+                  <p className="text-sm text-gray-700">
+                    Atualmente com: <strong>{ferramentaSelecionada.com_pessoa_nome}</strong>
+                  </p>
+                  <Button onClick={confirmarAcaoFerramenta} disabled={savingAcao} className="w-full">
+                    {savingAcao ? 'Processando...' : 'Registrar devolução'}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-700">Ferramenta disponível em estoque.</p>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Nome de quem está pegando</label>
+                    <Input
+                      value={nomeRetirada}
+                      onChange={(e) => setNomeRetirada(e.target.value)}
+                      placeholder="Ex.: João Silva"
+                    />
+                  </div>
+                  <Button onClick={confirmarAcaoFerramenta} disabled={savingAcao} className="w-full">
+                    {savingAcao ? 'Processando...' : 'Registrar retirada'}
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};

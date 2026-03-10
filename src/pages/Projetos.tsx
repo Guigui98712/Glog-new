@@ -882,15 +882,15 @@ export default function Projetos() {
             <DialogTitle>Criar Nova Pasta</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="nomePasta" className="text-right">
+            <div className="grid grid-cols-1 sm:grid-cols-4 items-start sm:items-center gap-2 sm:gap-4">
+              <Label htmlFor="nomePasta" className="text-left sm:text-right">
                 Nome da Pasta:
               </Label>
               <Input
                 id="nomePasta"
                 value={novaPastaNome}
                 onChange={(e) => setNovaPastaNome(e.target.value)}
-                className="col-span-3"
+                className="sm:col-span-3"
               />
             </div>
           </div>
@@ -910,15 +910,15 @@ export default function Projetos() {
             <DialogTitle>Renomear Pasta</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="renomearPasta" className="text-right">
+            <div className="grid grid-cols-1 sm:grid-cols-4 items-start sm:items-center gap-2 sm:gap-4">
+              <Label htmlFor="renomearPasta" className="text-left sm:text-right">
                 Novo Nome:
               </Label>
               <Input
                 id="renomearPasta"
                 value={novoNomePasta}
                 onChange={(e) => setNovoNomePasta(e.target.value)}
-                className="col-span-3"
+                className="sm:col-span-3"
               />
             </div>
           </div>

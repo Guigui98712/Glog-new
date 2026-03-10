@@ -175,8 +175,8 @@ export function DemandaRelatorios() {
   };
 
   return (
-    <div className="container mx-auto py-6">
-      <div className="flex items-center gap-2 mb-6">
+    <div className="container mx-auto py-6 px-3 sm:px-0">
+      <div className="flex items-start sm:items-center gap-2 mb-6">
         <Button 
           variant="ghost" 
           size="icon" 
@@ -184,7 +184,7 @@ export function DemandaRelatorios() {
         >
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <h1 className="text-2xl font-bold">Relatórios de Demanda: {obraNome}</h1>
+        <h1 className="text-xl sm:text-2xl font-bold break-words">Relatórios de Demanda: {obraNome}</h1>
       </div>
 
       {loading ? (
@@ -198,7 +198,7 @@ export function DemandaRelatorios() {
               relatorios.map((relatorio) => (
                 <div
                   key={relatorio.id}
-                  className="flex items-center justify-between p-4 border rounded-lg"
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 border rounded-lg"
                 >
                   <div>
                     <p className="font-medium">
@@ -208,10 +208,11 @@ export function DemandaRelatorios() {
                       Gerado em: {format(parseISO(relatorio.created_at), 'dd/MM/yyyy', { locale: ptBR })}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
                     <Button
                       variant="outline"
                       size="sm"
+                      className="flex-1 sm:flex-none"
                       onClick={() => handleVisualizarRelatorio(relatorio)}
                     >
                       <FileText className="h-4 w-4 mr-2" />
@@ -220,6 +221,7 @@ export function DemandaRelatorios() {
                     <Button
                       variant="outline"
                       size="sm"
+                      className="flex-1 sm:flex-none"
                       onClick={() => handleDownloadPDF(relatorio)}
                     >
                       <Download className="h-4 w-4 mr-2" />
@@ -229,7 +231,7 @@ export function DemandaRelatorios() {
                       variant="outline"
                       size="sm"
                       onClick={() => handleExcluirRelatorio(relatorio.id)}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50 sm:flex-none"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>

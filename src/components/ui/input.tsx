@@ -14,11 +14,13 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, ...props }, ref) => {
     const resolvedType = props.type ?? "text";
     const resolvedInputMode = props.inputMode ?? (resolvedType === "text" ? "text" : undefined);
+    const isCorrectableTextType = resolvedType === "text" || resolvedType === "search";
+
     const inputProps = {
-      autoCapitalize: "sentences",
-      autoCorrect: "on",
+      autoCapitalize: isCorrectableTextType ? "sentences" : "none",
+      autoCorrect: isCorrectableTextType ? "on" : "off",
       autoComplete: "on",
-      spellCheck: true,
+      spellCheck: isCorrectableTextType,
       lang: "pt-BR",
       type: resolvedType,
       inputMode: resolvedInputMode,

@@ -1068,7 +1068,7 @@ Enviado via GLog App`;
                       </div>
                       {(status === 'entregue' || status === 'pago') && item.nota_fiscal && item.nota_fiscal.length > 0 && (
                         <div className="mt-2">
-                          <div className="grid grid-cols-3 gap-2">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                             {item.nota_fiscal.map((imagem: string, index: number) => (
                               <div key={`${item.id}-${status}-img-${index}`} className="relative group aspect-square">
                                 <div className="relative w-full h-full rounded-lg border border-input overflow-hidden bg-gray-50">
@@ -1372,7 +1372,7 @@ Enviado via GLog App`;
                       Notas Fiscais / Comprovantes
                     </label>
                     {itemParaEditar.nota_fiscal && itemParaEditar.nota_fiscal.length > 0 ? (
-                      <div className="grid grid-cols-3 gap-2 mb-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
                         {itemParaEditar.nota_fiscal.map((imagem: string, index: number) => (
                           <div key={`${itemParaEditar.id}-edit-img-${index}`} className="relative group aspect-square">
                             <div className="relative w-full h-full rounded-lg border border-input overflow-hidden bg-gray-50">

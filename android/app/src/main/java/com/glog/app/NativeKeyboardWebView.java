@@ -19,9 +19,21 @@ public class NativeKeyboardWebView extends CapacitorWebView {
         if (outAttrs != null) {
             int inputType = outAttrs.inputType;
             if ((inputType & InputType.TYPE_CLASS_TEXT) != 0) {
-                inputType &= ~InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
-                inputType |= InputType.TYPE_TEXT_FLAG_AUTO_CORRECT;
-                inputType |= InputType.TYPE_TEXT_FLAG_CAP_SENTENCES;
+                int variation = inputType & InputType.TYPE_MASK_VARIATION;
+
+                boolean isEmail = variation == InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+                        || variation == InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS;
+
+                boolean isPassword = variation == InputType.TYPE_TEXT_VARIATION_PASSWORD
+                        || variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
+                        || variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD;
+
+                if (!isEmail && !isPassword) {
+                    inputType &= ~InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
+                    inputType |= InputType.TYPE_TEXT_FLAG_AUTO_CORRECT;
+                    inputType |= InputType.TYPE_TEXT_FLAG_CAP_SENTENCES;
+                }
+
                 outAttrs.inputType = inputType;
             }
         }

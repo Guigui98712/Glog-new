@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '@/lib/supabase';
 import { ArrowLeft } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import CadastroItemDialog from '@/components/CadastroItemDialog';
-import { listarItens, searchItems, getItemById, registerMovement, getAlmoxarifadoHistorico, getAlmoxarifadoHistoricoAnos, criarCodigoAlmoxarife, listarDispositivosAlmoxarife, revogarDispositivoAlmoxarife } from '@/lib/api';
+import { listarItens, searchItems, getItemById, registerMovement, getAlmoxarifadoHistorico, getAlmoxarifadoHistoricoAnos, criarCodigoAlmoxarife, listarDispositivosAlmoxarife, revogarDispositivoAlmoxarife, excluirItemAlmox } from '@/lib/api';
 import { Copy, MoreVertical, Trash2 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -357,8 +356,7 @@ const Almoxarifado: React.FC = () => {
     if (!confirm('Tem certeza que deseja excluir este item?')) return;
     
     try {
-      const { error } = await supabase.from('almox_items').delete().eq('id', itemId);
-      if (error) throw error;
+      await excluirItemAlmox(itemId);
       toast({ title: 'Sucesso', description: 'Item excluído com sucesso' });
       await carregar();
     } catch (e) {
@@ -396,13 +394,12 @@ const Almoxarifado: React.FC = () => {
       </div>
 
       <div className="w-full flex justify-center">
-        <div className="grid grid-cols-[auto_auto_auto] items-center gap-3">
-          <Button onClick={() => abrirMovimento('devolucao')} variant="outline" className="w-24 sm:w-28 h-9 text-xs">Devolução</Button>
-          <div className="flex items-center gap-4">
-            <Button onClick={() => abrirMovimento('saida')} className="bg-yellow-500 hover:bg-yellow-600 text-white w-32 sm:w-40">Saída</Button>
-            <Button onClick={() => abrirMovimento('entrada')} className="bg-green-500 hover:bg-green-600 text-white w-32 sm:w-40">Entrada</Button>
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+          <Button onClick={() => abrirMovimento('devolucao')} variant="outline" className="w-full sm:w-28 h-9 text-xs">Devolução</Button>
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <Button onClick={() => abrirMovimento('saida')} className="bg-yellow-500 hover:bg-yellow-600 text-white flex-1 sm:w-40">Saída</Button>
+            <Button onClick={() => abrirMovimento('entrada')} className="bg-green-500 hover:bg-green-600 text-white flex-1 sm:w-40">Entrada</Button>
           </div>
-          <div className="w-24 sm:w-28 h-9" aria-hidden="true" />
         </div>
       </div>
 
@@ -616,34 +613,39 @@ const Almoxarifado: React.FC = () => {
               {historyFiltrado.length === 0 ? (
                 <div className="text-sm text-gray-500">Nenhum resultado encontrado para a pesquisa.</div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Data</TableHead>
-                      <TableHead>Item</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Quantidade</TableHead>
-                      <TableHead>Nº Pedido</TableHead>
-                      <TableHead>Empresa</TableHead>
-                      <TableHead>Retirado por</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {historyFiltrado.map((mov, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell>{new Date(mov.data).toLocaleDateString('pt-BR')}</TableCell>
-                        <TableCell>{mov.item_nome}</TableCell>
-                        <TableCell className={mov.observacao === 'devolucao' ? 'text-blue-600 font-semibold' : (mov.tipo === 'entrada' ? 'text-green-600 font-semibold' : 'text-yellow-600 font-semibold')}>
-                          {mov.observacao === 'devolucao' ? '↩ Devolução' : (mov.tipo === 'entrada' ? '↓ Entrada' : '↑ Saída')}
-                        </TableCell>
-                        <TableCell>{mov.quantidade}</TableCell>
-                        <TableCell>{mov.numero_pedido || '-'}</TableCell>
-                        <TableCell>{mov.empresa_nome || '-'}</TableCell>
-                        <TableCell>{mov.retirado_por || '-'}</TableCell>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Item</TableHead>
+                        <TableHead>Tipo</TableHead>
+                        <TableHead>Quantidade</TableHead>
+                        <TableHead>Nº Pedido</TableHead>
+                        <TableHead>Empresa</TableHead>
+                        <TableHead>Retirado por</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {historyFiltrado.map((mov, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell>{new Date(mov.data).toLocaleDateString('pt-BR')}</TableCell>
+                          <TableCell>
+                            {mov.item_nome}
+                            {mov.item_excluido ? ' (item excluído)' : ''}
+                          </TableCell>
+                          <TableCell className={mov.observacao === 'devolucao' ? 'text-blue-600 font-semibold' : (mov.tipo === 'entrada' ? 'text-green-600 font-semibold' : 'text-yellow-600 font-semibold')}>
+                            {mov.observacao === 'devolucao' ? '↩ Devolução' : (mov.tipo === 'entrada' ? '↓ Entrada' : '↑ Saída')}
+                          </TableCell>
+                          <TableCell>{mov.quantidade}</TableCell>
+                          <TableCell>{mov.numero_pedido || '-'}</TableCell>
+                          <TableCell>{mov.empresa_nome || '-'}</TableCell>
+                          <TableCell>{mov.retirado_por || '-'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </>
           )}
@@ -664,44 +666,46 @@ const Almoxarifado: React.FC = () => {
               className="w-full"
             />
           </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Nome</TableHead>
-                <TableHead>QTD</TableHead>
-                <TableHead>Unidade</TableHead>
-                <TableHead>Categoria</TableHead>
-                <TableHead>Ação</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {itemsFiltradosEditor.map((it) => (
-                <TableRow key={it.id}>
-                  <TableCell>{it.id}</TableCell>
-                  <TableCell>{it.nome}</TableCell>
-                  <TableCell>{it.quantidade}</TableCell>
-                  <TableCell>{it.unidade}</TableCell>
-                  <TableCell>{it.categoria}</TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => excluirItem(it.id)} className="text-red-600 cursor-pointer">
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Excluir
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>QTD</TableHead>
+                  <TableHead>Unidade</TableHead>
+                  <TableHead>Categoria</TableHead>
+                  <TableHead>Ação</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {itemsFiltradosEditor.map((it) => (
+                  <TableRow key={it.id}>
+                    <TableCell>{it.id}</TableCell>
+                    <TableCell>{it.nome}</TableCell>
+                    <TableCell>{it.quantidade}</TableCell>
+                    <TableCell>{it.unidade}</TableCell>
+                    <TableCell>{it.categoria}</TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => excluirItem(it.id)} className="text-red-600 cursor-pointer">
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </DialogContent>
       </Dialog>
 

@@ -912,7 +912,7 @@ const DiarioObra = () => {
               </div>
               {/* Preview das fotos (Comum) */}
               {fotos.length > 0 && (
-                <div className="mt-4 grid grid-cols-3 gap-4">
+                <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-4">
                   {fotos.map((foto, index) => (
                     <div key={index} className="relative group">
                       <img
@@ -1232,7 +1232,7 @@ const DiarioObra = () => {
                     {registroEmEdicao.fotos && registroEmEdicao.fotos.length > 0 && (
                       <div className="mt-4">
                         <Label>Fotos atuais ({registroEmEdicao.fotos.length})</Label>
-                        <div className="grid grid-cols-3 gap-2 mt-2">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
                           {registroEmEdicao.fotos.map((foto, index) => (
                             <div key={index} className="relative group">
                               <img

@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Trash2 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications, Weekday } from '@capacitor/local-notifications';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
 import {
@@ -14,6 +15,9 @@ import {
   criarFerramentaAlmox,
   retirarFerramentaAlmox,
   devolverFerramentaAlmox,
+  excluirFerramentaAlmox,
+  getFerramentasHistorico,
+  getFerramentasHistoricoAnos,
 } from '@/lib/api';
 
 const FERRAMENTAS_REMINDER_BASE_ID = 730000;
@@ -46,6 +50,13 @@ const Ferramentas: React.FC = () => {
   const [ferramentaSelecionada, setFerramentaSelecionada] = useState<any | null>(null);
   const [nomeRetirada, setNomeRetirada] = useState('');
   const [savingAcao, setSavingAcao] = useState(false);
+
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<any[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyYears, setHistoryYears] = useState<number[]>([]);
+  const [historyYear, setHistoryYear] = useState<number>(new Date().getFullYear());
+  const [historyQuery, setHistoryQuery] = useState('');
 
   const reminderNotificationIds = useMemo(() => {
     const obraOffset = (obraId || 0) * 10;
@@ -115,6 +126,31 @@ const Ferramentas: React.FC = () => {
     syncFerramentasReminder(ferramentas);
   }, [ferramentas, obraId]);
 
+  useEffect(() => {
+    if (!showHistory || !obraId) return;
+
+    let mounted = true;
+    const run = async () => {
+      setHistoryLoading(true);
+      try {
+        const data = await getFerramentasHistorico(obraId, historyYear);
+        if (mounted) setHistory(data || []);
+      } catch (err) {
+        console.error(err);
+        if (mounted) {
+          toast({ title: 'Erro', description: 'Não foi possível carregar histórico de ferramentas', variant: 'destructive' });
+        }
+      } finally {
+        if (mounted) setHistoryLoading(false);
+      }
+    };
+
+    run();
+    return () => {
+      mounted = false;
+    };
+  }, [showHistory, historyYear, obraId, toast]);
+
   const ferramentasOrdenadas = useMemo(() => {
     const copy = [...ferramentas];
     copy.sort((a, b) => {
@@ -137,6 +173,25 @@ const Ferramentas: React.FC = () => {
     setCadastroFoto(null);
     setCadastroFotoPreview(null);
     setShowCadastro(true);
+  };
+
+  const abrirHistorico = async () => {
+    if (!obraId) return;
+    setShowHistory(true);
+    setHistoryLoading(true);
+    try {
+      const [data, anos] = await Promise.all([
+        getFerramentasHistorico(obraId, historyYear),
+        getFerramentasHistoricoAnos(obraId),
+      ]);
+      setHistory(data || []);
+      setHistoryYears(anos || []);
+    } catch (err) {
+      console.error(err);
+      toast({ title: 'Erro', description: 'Não foi possível carregar histórico de ferramentas', variant: 'destructive' });
+    } finally {
+      setHistoryLoading(false);
+    }
   };
 
   const onSelecionarFoto = (file: File | null) => {
@@ -218,6 +273,39 @@ const Ferramentas: React.FC = () => {
     }
   };
 
+  const excluirFerramenta = async () => {
+    if (!ferramentaSelecionada) return;
+
+    const confirmed = confirm(`Deseja realmente excluir a ferramenta "${ferramentaSelecionada.nome}"?`);
+    if (!confirmed) return;
+
+    setSavingAcao(true);
+    try {
+      await excluirFerramentaAlmox(ferramentaSelecionada.id);
+      toast({ title: 'Sucesso', description: 'Ferramenta excluída com sucesso' });
+      setShowAcao(false);
+      await carregarFerramentas();
+    } catch (err) {
+      console.error(err);
+      toast({ title: 'Erro', description: 'Não foi possível excluir a ferramenta', variant: 'destructive' });
+    } finally {
+      setSavingAcao(false);
+    }
+  };
+
+  const historyFiltrado = useMemo(() => {
+    const q = historyQuery.trim().toLowerCase();
+    if (!q) return history;
+
+    return history.filter((h) => {
+      const toolNome = String(h.tool_nome || '').toLowerCase();
+      const acao = String(h.acao || '').toLowerCase();
+      const pessoa = String(h.pessoa_nome || '').toLowerCase();
+      const observacao = String(h.observacao || '').toLowerCase();
+      return toolNome.includes(q) || acao.includes(q) || pessoa.includes(q) || observacao.includes(q);
+    });
+  }, [history, historyQuery]);
+
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -232,7 +320,10 @@ const Ferramentas: React.FC = () => {
           </Button>
           <h1 className="text-xl font-bold">Ferramentas</h1>
         </div>
-        <Button onClick={abrirCadastro}>Cadastrar ferramenta</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={abrirHistorico}>Histórico</Button>
+          <Button onClick={abrirCadastro}>Cadastrar ferramenta</Button>
+        </div>
       </div>
 
       {loading && ferramentas.length === 0 ? (
@@ -353,7 +444,88 @@ const Ferramentas: React.FC = () => {
                   </Button>
                 </>
               )}
+
+              <div className="pt-2 border-t">
+                <button
+                  type="button"
+                  onClick={excluirFerramenta}
+                  disabled={savingAcao}
+                  className="w-full text-xs text-red-600 hover:text-red-700 disabled:opacity-50 flex items-center justify-center gap-1"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Excluir ferramenta
+                </button>
+              </div>
             </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showHistory} onOpenChange={setShowHistory}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Histórico de Ferramentas</DialogTitle>
+          </DialogHeader>
+
+          {historyYears.length > 0 && (
+            <div className="flex justify-end mb-3">
+              <select
+                value={historyYear}
+                onChange={(e) => setHistoryYear(Number(e.target.value))}
+                className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
+              >
+                {historyYears.map((year) => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {historyLoading ? (
+            <div className="text-sm text-gray-500">Carregando histórico...</div>
+          ) : history.length === 0 ? (
+            <div className="text-sm text-gray-500">Nenhuma movimentação registrada.</div>
+          ) : (
+            <>
+              <Input
+                placeholder="Pesquisar histórico..."
+                value={historyQuery}
+                onChange={(e) => setHistoryQuery(e.target.value)}
+                className="w-full"
+              />
+
+              {historyFiltrado.length === 0 ? (
+                <div className="text-sm text-gray-500">Nenhum resultado encontrado para a pesquisa.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Ferramenta</TableHead>
+                        <TableHead>Ação</TableHead>
+                        <TableHead>Pessoa</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {historyFiltrado.map((h) => (
+                        <TableRow key={h.id}>
+                          <TableCell>{h.criado_em ? new Date(h.criado_em).toLocaleString('pt-BR') : '-'}</TableCell>
+                          <TableCell>{h.tool_nome || '-'}</TableCell>
+                          <TableCell>
+                            {h.acao === 'cadastro' && 'Cadastro'}
+                            {h.acao === 'retirada' && 'Retirada'}
+                            {h.acao === 'devolucao' && 'Devolução'}
+                            {h.acao === 'exclusao' && 'Exclusão'}
+                          </TableCell>
+                          <TableCell>{h.pessoa_nome || '-'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </>
           )}
         </DialogContent>
       </Dialog>

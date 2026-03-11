@@ -1981,6 +1981,20 @@ export const criarFerramentaAlmox = async (payload: {
       .single();
 
     if (error) throw error;
+
+    await (supabase as any)
+      .from('almox_tools_history')
+      .insert([
+        {
+          obra_id: payload.obra_id,
+          tool_id: data.id,
+          tool_nome: data.nome,
+          acao: 'cadastro',
+          pessoa_nome: null,
+          observacao: null,
+        },
+      ]);
+
     return data;
   } catch (err) {
     console.error('Erro criarFerramentaAlmox', err);
@@ -2004,6 +2018,20 @@ export const retirarFerramentaAlmox = async (toolId: number, pessoaNome: string)
       .single();
 
     if (error) throw error;
+
+    await (supabase as any)
+      .from('almox_tools_history')
+      .insert([
+        {
+          obra_id: data.obra_id,
+          tool_id: data.id,
+          tool_nome: data.nome,
+          acao: 'retirada',
+          pessoa_nome: pessoaNome,
+          observacao: null,
+        },
+      ]);
+
     return data;
   } catch (err) {
     console.error('Erro retirarFerramentaAlmox', err);
@@ -2015,6 +2043,14 @@ export const devolverFerramentaAlmox = async (toolId: number) => {
   if (DISABLE_GOOGLE_APIS) return null;
 
   try {
+    const { data: toolAtual, error: toolAtualError } = await (supabase as any)
+      .from('almox_tools')
+      .select('*')
+      .eq('id', toolId)
+      .single();
+
+    if (toolAtualError) throw toolAtualError;
+
     const { data, error } = await (supabase as any)
       .from('almox_tools')
       .update({
@@ -2027,9 +2063,122 @@ export const devolverFerramentaAlmox = async (toolId: number) => {
       .single();
 
     if (error) throw error;
+
+    await (supabase as any)
+      .from('almox_tools_history')
+      .insert([
+        {
+          obra_id: data.obra_id,
+          tool_id: data.id,
+          tool_nome: data.nome,
+          acao: 'devolucao',
+          pessoa_nome: toolAtual?.com_pessoa_nome || null,
+          observacao: null,
+        },
+      ]);
+
     return data;
   } catch (err) {
     console.error('Erro devolverFerramentaAlmox', err);
+    throw err;
+  }
+};
+
+export const excluirFerramentaAlmox = async (toolId: number) => {
+  if (DISABLE_GOOGLE_APIS) return null;
+
+  try {
+    const { data: toolAtual, error: toolAtualError } = await (supabase as any)
+      .from('almox_tools')
+      .select('*')
+      .eq('id', toolId)
+      .single();
+
+    if (toolAtualError) throw toolAtualError;
+
+    const { error } = await (supabase as any)
+      .from('almox_tools')
+      .delete()
+      .eq('id', toolId);
+
+    if (error) throw error;
+
+    await (supabase as any)
+      .from('almox_tools_history')
+      .insert([
+        {
+          obra_id: toolAtual.obra_id,
+          tool_id: null,
+          tool_nome: toolAtual.nome,
+          acao: 'exclusao',
+          pessoa_nome: toolAtual.com_pessoa_nome || null,
+          observacao: null,
+        },
+      ]);
+
+    return true;
+  } catch (err) {
+    console.error('Erro excluirFerramentaAlmox', err);
+    throw err;
+  }
+};
+
+export const getFerramentasHistorico = async (obraId: number, year?: number) => {
+  if (DISABLE_GOOGLE_APIS) return [];
+
+  try {
+    let query = (supabase as any)
+      .from('almox_tools_history')
+      .select('*')
+      .eq('obra_id', obraId)
+      .order('criado_em', { ascending: false });
+
+    if (year) {
+      const start = `${year}-01-01T00:00:00.000Z`;
+      const end = `${year + 1}-01-01T00:00:00.000Z`;
+      query = query.gte('criado_em', start).lt('criado_em', end);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.error('Erro getFerramentasHistorico', err);
+    throw err;
+  }
+};
+
+export const getFerramentasHistoricoAnos = async (obraId: number) => {
+  if (DISABLE_GOOGLE_APIS) return [];
+
+  try {
+    const pageSize = 1000;
+    let from = 0;
+    const years = new Set<number>();
+
+    while (true) {
+      const { data, error } = await (supabase as any)
+        .from('almox_tools_history')
+        .select('criado_em')
+        .eq('obra_id', obraId)
+        .order('criado_em', { ascending: false })
+        .range(from, from + pageSize - 1);
+
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+
+      for (const row of data as Array<{ criado_em: string | null }>) {
+        if (!row?.criado_em) continue;
+        years.add(new Date(row.criado_em).getFullYear());
+      }
+
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
+
+    return Array.from(years).sort((a, b) => b - a);
+  } catch (err) {
+    console.error('Erro getFerramentasHistoricoAnos', err);
     throw err;
   }
 };

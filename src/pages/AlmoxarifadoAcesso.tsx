@@ -174,26 +174,46 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
   };
 
   const handleLogin = async () => {
-    if (!deviceInfo) {
-      toast({ title: 'Erro', description: 'Dispositivo não encontrado', variant: 'destructive' });
+    const loginObraId = targetObraId ?? deviceInfo?.obraId ?? null;
+    const loginDeviceName = String(deviceInfo?.deviceName || deviceName || '').trim();
+
+    if (!loginObraId) {
+      toast({ title: 'Erro', description: 'Link sem obra válida', variant: 'destructive' });
       return;
     }
+
+    if (!loginDeviceName) {
+      toast({ title: 'Erro', description: 'Informe o nome do dispositivo', variant: 'destructive' });
+      return;
+    }
+
     if (!password) {
       toast({ title: 'Erro', description: 'Por favor, informe a senha', variant: 'destructive' });
       return;
     }
+
     setLoading(true);
     try {
-      await verificarDispositivoAlmoxarife(deviceInfo.obraId, deviceInfo.deviceName, password);
+      const verified: any = await verificarDispositivoAlmoxarife(loginObraId, loginDeviceName, password);
+
+      const resolvedDeviceId = Number(
+        deviceInfo?.deviceId ??
+        verified?.id ??
+        verified?.device_id ??
+        0
+      );
 
       const infoWithSession: AlmoxDeviceInfo = {
-        ...deviceInfo,
+        obraId: loginObraId,
+        deviceId: resolvedDeviceId,
+        deviceName: loginDeviceName,
         sessionExpiresAt: getNextDailyExpiration(20)
       };
 
       persistDeviceInfo(infoWithSession);
       setDeviceInfo(infoWithSession);
       setAuthenticated(true);
+      setMode('login');
       setPassword('');
       toast({ title: 'Acesso liberado', description: 'Senha correta' });
     } catch (e) {
@@ -258,15 +278,21 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
               <Button onClick={handleRegistrar} disabled={loading} className="w-full">
                 {loading ? 'Registrando...' : 'Registrar'}
               </Button>
-              {deviceInfo && (
-                <Button variant="ghost" onClick={() => setMode('login')} className="w-full">Já tenho dispositivo</Button>
-              )}
+              <Button variant="ghost" onClick={() => setMode('login')} className="w-full">Já tenho dispositivo</Button>
             </>
           )}
 
           {mode === 'login' && (
             <>
-              <p className="text-sm text-gray-600">Dispositivo: <strong>{deviceInfo?.deviceName}</strong></p>
+              {deviceInfo ? (
+                <p className="text-sm text-gray-600">Dispositivo: <strong>{deviceInfo.deviceName}</strong></p>
+              ) : (
+                <Input
+                  placeholder="Nome do dispositivo"
+                  value={deviceName}
+                  onChange={(e) => setDeviceName(e.target.value)}
+                />
+              )}
               <Input
                 type="password"
                 placeholder="Senha"

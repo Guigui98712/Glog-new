@@ -1713,7 +1713,13 @@ export const getItemById = async (obraId: number, id: number) => {
 export const createItem = async (item: { nome: string; unidade?: string | null; categoria?: string | null; quantidade?: number | null; obra_id?: number | null }) => {
   if (DISABLE_GOOGLE_APIS) return null;
   try {
-    const payload = { ...item, is_deleted: false, deleted_at: null } as any;
+    const initialQuantity = Number(item.quantidade || 0);
+    const payload = {
+      ...item,
+      quantidade: 0,
+      is_deleted: false,
+      deleted_at: null,
+    } as any;
     const { data, error } = await supabase
       .from('almox_items')
       .insert([payload])
@@ -1721,10 +1727,9 @@ export const createItem = async (item: { nome: string; unidade?: string | null; 
       .single();
     if (error) throw error;
     
-    // Se houver quantidade inicial, registrar como entrada no histórico
-    if (data && item.quantidade && item.quantidade > 0 && item.obra_id) {
+    if (data && initialQuantity > 0 && item.obra_id) {
       try {
-        await registerMovement(item.obra_id, data.id, 'entrada', item.quantidade);
+        await registerMovement(item.obra_id, data.id, 'entrada', initialQuantity);
       } catch (historyErr) {
         console.warn('Aviso: Entrada inicial não foi registrada no histórico', historyErr);
       }
@@ -1753,12 +1758,64 @@ export const registerMovement = async (
 ) => {
   if (DISABLE_GOOGLE_APIS) return null;
   try {
-    // inserir movimento
+    const normalizedQuantidade = Number(quantidade);
+    if (!Number.isFinite(normalizedQuantidade) || normalizedQuantidade <= 0) {
+      throw new Error('Informe uma quantidade valida maior que zero');
+    }
+
+    const { data: itemAtual, error: itemErr } = await supabase
+      .from('almox_items')
+      .select('id, quantidade')
+      .eq('id', itemId)
+      .eq('obra_id', obraId)
+      .eq('is_deleted', false)
+      .single();
+
+    if (itemErr) {
+      if (itemErr.code === 'PGRST116') {
+        throw new Error('Item nao encontrado');
+      }
+      throw itemErr;
+    }
+
+    const quantidadeAtual = Number(itemAtual?.quantidade || 0);
+    if (type === 'saida' && normalizedQuantidade > quantidadeAtual) {
+      throw new Error('Quantidade insuficiente em estoque');
+    }
+
+    const delta = type === 'entrada' ? normalizedQuantidade : -normalizedQuantidade;
+    let quantityUpdated = false;
+
+    const { data: updated, error: updErr } = await supabase.rpc('almox_adjust_item_quantity', { p_item_id: itemId, p_delta: delta });
+    if (updErr) {
+      const nova = quantidadeAtual + delta;
+      if (nova < 0) {
+        throw new Error('Quantidade insuficiente em estoque');
+      }
+
+      const { error: e2 } = await supabase
+        .from('almox_items')
+        .update({ quantidade: nova })
+        .eq('id', itemId)
+        .eq('obra_id', obraId)
+        .eq('is_deleted', false);
+      if (e2) throw e2;
+      quantityUpdated = true;
+    } else {
+      const rpcRow = Array.isArray(updated) ? updated[0] : updated;
+      if (rpcRow && typeof rpcRow === 'object' && 'success' in rpcRow) {
+        if (!rpcRow.success) {
+          throw new Error(rpcRow.message || 'Nao foi possivel atualizar o estoque');
+        }
+      }
+      quantityUpdated = true;
+    }
+
     const movimento = {
       obra_id: obraId,
       item_id: itemId,
       tipo: type,
-      quantidade: quantidade,
+      quantidade: normalizedQuantidade,
       numero_pedido: metadata?.numero_pedido?.trim() || null,
       empresa_nome: metadata?.empresa_nome?.trim() || null,
       retirado_por: metadata?.retirado_por?.trim() || null,
@@ -1771,17 +1828,23 @@ export const registerMovement = async (
       .insert([movimento])
       .select()
       .single();
-    if (movErr) throw movErr;
-
-    // atualizar quantidade no item com operação atômica
-    const delta = type === 'entrada' ? quantidade : -quantidade;
-    const { data: updated, error: updErr } = await supabase.rpc('almox_adjust_item_quantity', { p_item_id: itemId, p_delta: delta });
-    if (updErr) {
-      // fallback: tentar update simples
-      const { data: getItem } = await supabase.from('almox_items').select('quantidade').eq('id', itemId).single();
-      const nova = (getItem?.quantidade || 0) + delta;
-      const { error: e2 } = await supabase.from('almox_items').update({ quantidade: nova }).eq('id', itemId);
-      if (e2) throw e2;
+    if (movErr) {
+      if (quantityUpdated) {
+        const rollbackDelta = -delta;
+        const { error: rollbackErr } = await supabase.rpc('almox_adjust_item_quantity', { p_item_id: itemId, p_delta: rollbackDelta });
+        if (rollbackErr) {
+          const { error: fallbackRollbackErr } = await supabase
+            .from('almox_items')
+            .update({ quantidade: quantidadeAtual })
+            .eq('id', itemId)
+            .eq('obra_id', obraId)
+            .eq('is_deleted', false);
+          if (fallbackRollbackErr) {
+            console.error('Erro ao reverter estoque apos falha no movimento', fallbackRollbackErr);
+          }
+        }
+      }
+      throw movErr;
     }
 
     return mov;
@@ -1854,7 +1917,6 @@ export const excluirItemAlmox = async (itemId: number) => {
       .update({
         is_deleted: true,
         deleted_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
         quantidade: 0,
       })
       .eq('id', itemId)

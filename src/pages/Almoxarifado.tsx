@@ -63,8 +63,23 @@ const Almoxarifado: React.FC = () => {
   const [devices, setDevices] = useState<any[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(false);
 
-  const accessBaseUrl = import.meta.env.VITE_ALMOX_PUBLIC_URL || (typeof window !== 'undefined' ? window.location.origin : '');
-  const almoxPublicUrl = `${accessBaseUrl}/almoxarifado/acesso?obraId=${obraId}`;
+  const buildAlmoxPublicUrl = () => {
+    const baseOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+    const configuredUrl = import.meta.env.VITE_ALMOX_PUBLIC_URL?.trim();
+
+    try {
+      const url = new URL(configuredUrl || '/almox.html', baseOrigin || undefined);
+      if (!configuredUrl && (!url.pathname || url.pathname === '/')) {
+        url.pathname = '/almox.html';
+      }
+      url.searchParams.set('obraId', String(obraId));
+      return url.toString();
+    } catch {
+      return `${baseOrigin}/almox.html?obraId=${obraId}`;
+    }
+  };
+
+  const almoxPublicUrl = buildAlmoxPublicUrl();
 
   // Search detail modal
   const [showSearchDetail, setShowSearchDetail] = useState(false);
@@ -146,6 +161,15 @@ const Almoxarifado: React.FC = () => {
     setMovementOpen(true);
   };
 
+  const abrirEntradaPorSugestao = (it: any) => {
+    abrirMovimento('entrada');
+    setMovementItemId(String(it.id));
+    setMovementItem(it);
+    setMovementQuery(it.nome || '');
+    setSuggestions([]);
+    setQuery('');
+  };
+
   const onPickSuggestion = (it: any) => {
     setMovementItemId(String(it.id));
     setMovementItem(it);
@@ -183,6 +207,18 @@ const Almoxarifado: React.FC = () => {
   const submitMovement = async () => {
     if (!movementItemId || !movementQtd || !obraId) return toast({ title: 'Erro', description: 'Informe item e quantidade', variant: 'destructive' });
 
+    if (movementQtd <= 0) {
+      return toast({ title: 'Erro', description: 'Informe uma quantidade maior que zero', variant: 'destructive' });
+    }
+
+    if ((movementType === 'saida' || movementType === 'devolucao') && movementItem && movementQtd > Number(movementItem.quantidade || 0)) {
+      return toast({
+        title: 'Erro',
+        description: 'Quantidade insuficiente em estoque',
+        variant: 'destructive'
+      });
+    }
+
     if (movementType === 'entrada' && (!movementNumeroPedido.trim() || !movementEmpresaNome.trim())) {
       return toast({
         title: 'Erro',
@@ -214,7 +250,11 @@ const Almoxarifado: React.FC = () => {
       await carregar();
     } catch (e) {
       console.error(e);
-      toast({ title: 'Erro', description: 'Falha ao registrar movimento', variant: 'destructive' });
+      toast({
+        title: 'Erro',
+        description: e instanceof Error ? e.message : 'Falha ao registrar movimento',
+        variant: 'destructive'
+      });
     } finally { setLoading(false); }
   };
 
@@ -292,9 +332,7 @@ const Almoxarifado: React.FC = () => {
   }, [showHistory, obraId, historyYear, toast]);
 
   const itemsFiltrados = useMemo(() => {
-    const filtered = items.filter((it) => Number(it?.quantidade ?? 0) > 0);
-    // Ordenar por categoria, depois por nome
-    return filtered.sort((a, b) => {
+    return [...items].sort((a, b) => {
       const catA = (a.categoria || 'Sem categoria').toLowerCase();
       const catB = (b.categoria || 'Sem categoria').toLowerCase();
       if (catA !== catB) {
@@ -484,7 +522,7 @@ const Almoxarifado: React.FC = () => {
             {suggestions.map(s => (
               <div key={s.id} className="flex justify-between items-center p-2 hover:bg-gray-50 cursor-pointer border-b last:border-b-0">
                 <div onClick={() => onClickSuggestion(s)} className="flex-1">{s.nome}</div>
-                <button onClick={(e) => { e.stopPropagation(); onPickSuggestion(s); }} className="text-xs px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600">Entrada</button>
+                <button onClick={(e) => { e.stopPropagation(); abrirEntradaPorSugestao(s); }} className="text-xs px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600">Entrada</button>
               </div>
             ))}
           </div>
@@ -502,6 +540,7 @@ const Almoxarifado: React.FC = () => {
                 <TableHead className="min-w-[60px]">QTD</TableHead>
                 <TableHead className="min-w-[80px]">Unidade</TableHead>
                 <TableHead className="min-w-[100px]">Categoria</TableHead>
+                <TableHead className="min-w-[80px]">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -512,6 +551,9 @@ const Almoxarifado: React.FC = () => {
                   <TableCell>{it.quantidade}</TableCell>
                   <TableCell>{it.unidade}</TableCell>
                   <TableCell>{it.categoria}</TableCell>
+                  <TableCell className={Number(it.quantidade ?? 0) > 0 ? 'text-green-600' : 'text-amber-600'}>
+                    {Number(it.quantidade ?? 0) > 0 ? 'Em estoque' : 'Sem estoque'}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

@@ -37,7 +37,27 @@ const getNextDailyExpiration = (hour = 20) => {
   return expiration.toISOString();
 };
 
+const getInitialAccessContext = () => {
+  if (typeof window === 'undefined') {
+    return {
+      obraId: null as number | null,
+      activeView: 'materiais' as 'materiais' | 'ferramentas',
+    };
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const obraIdParam = params.get('obraId') || params.get('obra');
+  const viewParam = params.get('view');
+  const parsedObraId = obraIdParam ? Number(obraIdParam) : NaN;
+
+  return {
+    obraId: Number.isFinite(parsedObraId) && parsedObraId > 0 ? parsedObraId : null,
+    activeView: viewParam === 'ferramentas' ? 'ferramentas' : 'materiais',
+  };
+};
+
 export default function AlmoxarifadoAcesso(): JSX.Element {
+  const initialContext = getInitialAccessContext();
   const { toast } = useToast();
   const [mode, setMode] = useState<'register' | 'login'>('register');
   const [code, setCode] = useState('');
@@ -47,8 +67,8 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
   const [loading, setLoading] = useState(false);
   const [deviceInfo, setDeviceInfo] = useState<AlmoxDeviceInfo | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
-  const [targetObraId, setTargetObraId] = useState<number | null>(null);
-  const [activeView, setActiveView] = useState<'materiais' | 'ferramentas'>('materiais');
+  const [targetObraId] = useState<number | null>(initialContext.obraId);
+  const [activeView, setActiveView] = useState<'materiais' | 'ferramentas'>(initialContext.activeView);
 
   const deviceStorageKey = targetObraId ? `${DEVICE_KEY}_${targetObraId}` : DEVICE_KEY;
 
@@ -57,23 +77,20 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
   };
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const obraIdParam = params.get('obraId') || params.get('obra');
-    const viewParam = params.get('view');
-    const parsed = obraIdParam ? Number(obraIdParam) : NaN;
-    setTargetObraId(Number.isFinite(parsed) && parsed > 0 ? parsed : null);
-
-    if (viewParam === 'ferramentas') {
-      setActiveView('ferramentas');
-    }
-  }, []);
-
-  useEffect(() => {
     const raw = localStorage.getItem(deviceStorageKey);
-    if (!raw) return;
+    if (!raw) {
+      setDeviceInfo(null);
+      setAuthenticated(false);
+      setMode('register');
+      return;
+    }
+
     try {
       const parsed: AlmoxDeviceInfo = JSON.parse(raw);
       if (targetObraId && Number(parsed.obraId) !== targetObraId) {
+        setDeviceInfo(null);
+        setAuthenticated(false);
+        setMode('register');
         return;
       }
 
@@ -86,9 +103,14 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
 
       if (hasValidSession) {
         setAuthenticated(true);
+      } else {
+        setAuthenticated(false);
       }
     } catch {
       localStorage.removeItem(deviceStorageKey);
+      setDeviceInfo(null);
+      setAuthenticated(false);
+      setMode('register');
     }
   }, [deviceStorageKey, targetObraId]);
 
@@ -314,7 +336,14 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void; onAbrir
   const [itemsEditorQuery, setItemsEditorQuery] = useState('');
 
   const filteredItems = useMemo(() => {
-    return items.filter((it) => Number(it?.quantidade ?? 0) > 0);
+    return [...items].sort((a, b) => {
+      const catA = String(a?.categoria || 'Sem categoria').toLowerCase();
+      const catB = String(b?.categoria || 'Sem categoria').toLowerCase();
+      if (catA !== catB) {
+        return catA.localeCompare(catB);
+      }
+      return String(a?.nome || '').localeCompare(String(b?.nome || ''));
+    });
   }, [items]);
 
   const itemsFiltradosEditor = useMemo(() => {
@@ -387,12 +416,14 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void; onAbrir
   };
 
   const onPickSuggestion = (it: any) => {
+    setMovementType('entrada');
     setMovementItemId(String(it.id));
     setMovementItem(it);
+    setMovementQuery(it.nome || '');
     setSuggestions([]);
     setQuery('');
-    setMovementQuery('');
     setMovementSuggestions([]);
+    setMovementOpen(true);
   };
 
   const onPickMovementSuggestion = (it: any) => {
@@ -421,6 +452,18 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void; onAbrir
 
   const submitMovement = async () => {
     if (!movementItemId || !movementQtd || !obraId) return toast({ title: 'Erro', description: 'Informe item e quantidade', variant: 'destructive' });
+
+    if (movementQtd <= 0) {
+      return toast({ title: 'Erro', description: 'Informe uma quantidade maior que zero', variant: 'destructive' });
+    }
+
+    if ((movementType === 'saida' || movementType === 'devolucao') && movementItem && movementQtd > Number(movementItem.quantidade || 0)) {
+      return toast({
+        title: 'Erro',
+        description: 'Quantidade insuficiente em estoque',
+        variant: 'destructive'
+      });
+    }
 
     if (movementType === 'entrada' && (!movementNumeroPedido.trim() || !movementEmpresaNome.trim())) {
       return toast({
@@ -453,7 +496,11 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void; onAbrir
       await carregar();
     } catch (e) {
       console.error(e);
-      toast({ title: 'Erro', description: 'Falha ao registrar movimento', variant: 'destructive' });
+      toast({
+        title: 'Erro',
+        description: e instanceof Error ? e.message : 'Falha ao registrar movimento',
+        variant: 'destructive'
+      });
     } finally { setLoading(false); }
   };
 
@@ -558,6 +605,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void; onAbrir
                 <TableHead>QTD</TableHead>
                 <TableHead>Unidade</TableHead>
                 <TableHead>Categoria</TableHead>
+                <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -568,6 +616,9 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void; onAbrir
                   <TableCell>{it.quantidade}</TableCell>
                   <TableCell>{it.unidade}</TableCell>
                   <TableCell>{it.categoria}</TableCell>
+                  <TableCell className={Number(it.quantidade ?? 0) > 0 ? 'text-green-600' : 'text-amber-600'}>
+                    {Number(it.quantidade ?? 0) > 0 ? 'Em estoque' : 'Sem estoque'}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

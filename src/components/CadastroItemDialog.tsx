@@ -47,7 +47,8 @@ const CadastroItemDialog: React.FC<Props> = ({ open, onOpenChange, onCreated, ob
       onOpenChange(false);
     } catch (e) {
       console.error(e);
-      toast({ title: 'Erro', description: 'Falha ao criar item', variant: 'destructive' });
+      const message = e instanceof Error ? e.message : 'Falha ao criar item';
+      toast({ title: 'Erro', description: message, variant: 'destructive' });
     } finally { setLoading(false); }
   };
 

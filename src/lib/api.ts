@@ -1733,6 +1733,12 @@ export const createItem = async (
         if (rpcError.code === 'PGRST202') {
           throw new Error('Função de cadastro do almoxarife não encontrada. Aplique a migration create_almox_item_by_device no banco.');
         }
+        if (rpcError.code === '42501') {
+          throw new Error('Sem permissão para cadastrar item pelo almoxarife (RLS). Aplique as migrations de segurança do almox.');
+        }
+        if (rpcError.message) {
+          throw new Error(`Falha ao cadastrar item: ${rpcError.message}`);
+        }
         throw rpcError;
       }
 

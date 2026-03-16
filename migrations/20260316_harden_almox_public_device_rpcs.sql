@@ -142,13 +142,13 @@ begin
       now()
     );
 
-    update public.almox_items
-      set quantidade = coalesce(quantidade, 0) + v_quantidade
-    where id = v_item.id;
+    update public.almox_items as item
+      set quantidade = coalesce(item.quantidade, 0) + v_quantidade
+    where item.id = v_item.id;
 
     select * into v_item
-    from public.almox_items
-    where id = v_item.id;
+    from public.almox_items item
+    where item.id = v_item.id;
   end if;
 
   return query
@@ -376,9 +376,9 @@ begin
     raise exception 'Quantidade insuficiente em estoque';
   end if;
 
-  update public.almox_items
+  update public.almox_items as item
     set quantidade = v_nova_quantidade
-  where id = v_item.id;
+  where item.id = v_item.id;
 
   insert into public.almox_movements (
     obra_id,
@@ -530,11 +530,11 @@ begin
     raise exception 'Item nao encontrado';
   end if;
 
-  update public.almox_items
+  update public.almox_items as item
     set is_deleted = true,
         deleted_at = now(),
         quantidade = 0
-  where id = v_item.id;
+  where item.id = v_item.id;
 
   if coalesce(v_item.quantidade, 0) > 0 then
     insert into public.almox_movements (

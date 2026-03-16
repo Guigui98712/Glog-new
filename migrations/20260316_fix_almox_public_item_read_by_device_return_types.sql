@@ -1,5 +1,6 @@
--- Permite leitura de itens no fluxo publico do almox por dispositivo validado,
--- sem depender de sessao autenticada do usuario no navegador.
+-- Corrige os tipos de retorno das funcoes publicas do almox.
+-- Em alguns ambientes, almox_items.id e almox_items.obra_id sao integer,
+-- entao o RETURN QUERY precisa fazer cast explicito para bigint.
 
 create or replace function public.list_almox_items_by_device(
   p_obra_id bigint,

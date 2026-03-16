@@ -3,7 +3,7 @@
 
 create or replace function public.create_almox_item_by_device(
   p_obra_id bigint,
-  p_device_id bigint,
+  p_device_id text,
   p_nome text,
   p_unidade text default null,
   p_categoria text default null,
@@ -38,7 +38,7 @@ begin
   select d.*
     into v_device
   from public.almox_access_devices d
-  where d.id = p_device_id
+  where d.id::text = p_device_id
     and d.obra_id = p_obra_id
     and d.active = true
   limit 1;
@@ -106,5 +106,5 @@ begin
 end;
 $$;
 
-grant execute on function public.create_almox_item_by_device(bigint, bigint, text, text, text, numeric) to anon;
-grant execute on function public.create_almox_item_by_device(bigint, bigint, text, text, text, numeric) to authenticated;
+grant execute on function public.create_almox_item_by_device(bigint, text, text, text, text, numeric) to anon;
+grant execute on function public.create_almox_item_by_device(bigint, text, text, text, text, numeric) to authenticated;

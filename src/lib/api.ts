@@ -1712,7 +1712,7 @@ export const getItemById = async (obraId: number, id: number) => {
 
 export const createItem = async (
   item: { nome: string; unidade?: string | null; categoria?: string | null; quantidade?: number | null; obra_id?: number | null },
-  options?: { deviceId?: number | null }
+  options?: { deviceId?: string | number | null }
 ) => {
   if (DISABLE_GOOGLE_APIS) return null;
   try {
@@ -1722,7 +1722,7 @@ export const createItem = async (
     if (item.obra_id && options?.deviceId) {
       const { data: rpcData, error: rpcError } = await supabase.rpc('create_almox_item_by_device', {
         p_obra_id: item.obra_id,
-        p_device_id: options.deviceId,
+        p_device_id: String(options.deviceId),
         p_nome: item.nome,
         p_unidade: item.unidade || null,
         p_categoria: item.categoria || null,

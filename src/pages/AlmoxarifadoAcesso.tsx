@@ -20,7 +20,7 @@ const DEVICE_KEY = 'almox_access_device';
 
 type AlmoxDeviceInfo = {
   obraId: number;
-  deviceId: number;
+  deviceId: string;
   deviceName: string;
   sessionExpiresAt?: string | null;
 };
@@ -149,7 +149,7 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
 
       const info: AlmoxDeviceInfo = {
         obraId: data.obra_id,
-        deviceId: data.id,
+        deviceId: String(data.id),
         deviceName: data.device_name,
         sessionExpiresAt: getNextDailyExpiration(20)
       };
@@ -196,12 +196,16 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
     try {
       const verified: any = await verificarDispositivoAlmoxarife(loginObraId, loginDeviceName, password);
 
-      const resolvedDeviceId = Number(
+      const resolvedDeviceId = String(
         deviceInfo?.deviceId ??
         verified?.id ??
         verified?.device_id ??
-        0
+        ''
       );
+
+      if (!resolvedDeviceId) {
+        throw new Error('Dispositivo não identificado para esta sessão');
+      }
 
       const infoWithSession: AlmoxDeviceInfo = {
         obraId: loginObraId,
@@ -333,7 +337,7 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
   );
 };
 
-const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: number | null; onSair: () => void; onAbrirFerramentas: () => void }> = ({ obraId, deviceId, onSair, onAbrirFerramentas }) => {
+const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number | null; onSair: () => void; onAbrirFerramentas: () => void }> = ({ obraId, deviceId, onSair, onAbrirFerramentas }) => {
   const { toast } = useToast();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);

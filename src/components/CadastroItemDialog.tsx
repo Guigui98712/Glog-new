@@ -22,7 +22,7 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   onCreated?: () => void;
   obraId: number;
-  deviceId?: number | null;
+  deviceId?: string | number | null;
 };
 
 const CadastroItemDialog: React.FC<Props> = ({ open, onOpenChange, onCreated, obraId, deviceId }) => {

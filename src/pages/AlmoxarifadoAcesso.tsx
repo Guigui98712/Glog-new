@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/components/ui/use-toast';
 import { listarItens, getItemById, registerMovement, registrarDispositivoAlmoxarife, verificarDispositivoAlmoxarife, validarSessaoDispositivoAlmoxarife, getAlmoxarifadoHistorico, getAlmoxarifadoHistoricoAnos, excluirItemAlmox, listarFerramentasAlmox, criarFerramentaAlmox, retirarFerramentaAlmox, devolverFerramentaAlmox } from '@/lib/api';
 import CadastroItemDialog from '@/components/CadastroItemDialog';
-import { MoreVertical, Trash2 } from 'lucide-react';
+import { MoreVertical, Trash2, Undo2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -627,14 +627,6 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
       });
     }
 
-    if (movementType === 'devolucao_empresa' && !movementAlmoxarifeNome.trim()) {
-      return toast({
-        title: 'Erro',
-        description: 'Informe o nome do almoxarife responsável pela devolução',
-        variant: 'destructive'
-      });
-    }
-
     setLoading(true);
     try {
       const typedTerm = movementItemId.trim();
@@ -665,16 +657,15 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
             : movementType;
 
       await registerMovement(obraId, resolvedItemId, movementApiType, movementQtd, {
-        numero_pedido: movementType === 'entrada' || movementType === 'devolucao_empresa' ? movementNumeroPedido : null,
+        numero_pedido: movementType === 'entrada' ? movementNumeroPedido : null,
         empresa_nome: movementType === 'entrada' || movementType === 'devolucao_empresa' ? movementEmpresaNome : null,
-        retirado_por: movementType === 'saida' || movementType === 'devolucao_empresa' ? movementRetiradoPor : null,
+        retirado_por: movementType === 'saida' ? movementRetiradoPor : null,
         observacao:
           movementType === 'devolucao'
             ? 'devolucao'
             : movementType === 'saida'
               ? `almoxarife:${movementAlmoxarifeNome.trim()}`
-              : `devolucao_empresa;almoxarife:${movementAlmoxarifeNome.trim()}`
-              : null,
+              : 'devolucao_empresa',
       }, {
         deviceId,
       });
@@ -751,39 +742,45 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-4">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-xl font-bold">Almoxarifado</h1>
-        <div className="flex items-center gap-2 flex-wrap justify-end">
-          <Button variant="outline" onClick={onAbrirFerramentas}>Ferramentas</Button>
-          <Button variant="outline" onClick={abrirHistorico}>Histórico</Button>
-          <Button variant="outline" onClick={() => setShowItemsEditor(true)}>Itens</Button>
-          <Button onClick={() => setShowCadastro(true)}>Cadastrar item</Button>
-          <Button variant="outline" onClick={onSair}>Sair</Button>
+        <div className="w-full sm:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:flex-wrap sm:justify-end">
+          <Button variant="outline" onClick={onAbrirFerramentas} className="w-full sm:w-auto">Ferramentas</Button>
+          <Button variant="outline" onClick={abrirHistorico} className="w-full sm:w-auto">Histórico</Button>
+          <Button variant="outline" onClick={() => setShowItemsEditor(true)} className="w-full sm:w-auto">Itens</Button>
+          <Button onClick={() => setShowCadastro(true)} className="w-full sm:w-auto">Cadastrar item</Button>
+          <Button variant="outline" onClick={onSair} className="w-full sm:w-auto">Sair</Button>
         </div>
       </div>
 
-      <div className="w-full flex justify-end">
-        <div className="flex items-center gap-2 flex-wrap justify-end">
-          <Button
-            onClick={() => abrirMovimento('devolucao')}
-            variant="ghost"
-            className="h-8 w-8 rounded-md border border-black bg-white p-0 text-lg font-semibold !text-black hover:bg-gray-100 hover:!text-black"
-            disabled={loading}
-            aria-label="Retornar ao estoque"
-            title="Retornar ao estoque"
-          >
-            ↩
-          </Button>
-          <Button
-            onClick={() => abrirMovimento('devolucao_empresa')}
-            variant="ghost"
-            className="h-8 w-8 rounded-md border border-black bg-white p-0 text-lg font-semibold !text-black hover:bg-gray-100 hover:!text-black"
-            disabled={loading}
-            aria-label="Devolver para empresa"
-            title="Devolver para empresa"
-          >
-            ↪
-          </Button>
-          <Button onClick={() => abrirMovimento('saida')} className="bg-yellow-500 hover:bg-yellow-600 text-white sm:w-32" disabled={loading}>Saída</Button>
-          <Button onClick={() => abrirMovimento('entrada')} className="bg-green-500 hover:bg-green-600 text-white sm:w-32" disabled={loading}>Entrada</Button>
+      <div className="w-full">
+        <div className="flex justify-center">
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <Button onClick={() => abrirMovimento('saida')} className="bg-yellow-500 hover:bg-yellow-600 text-white flex-1 sm:w-32" disabled={loading}>Saída</Button>
+            <Button onClick={() => abrirMovimento('entrada')} className="bg-green-500 hover:bg-green-600 text-white flex-1 sm:w-32" disabled={loading}>Entrada</Button>
+          </div>
+        </div>
+        <div className="mt-2 flex justify-end">
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => abrirMovimento('devolucao')}
+              variant="ghost"
+              className="h-8 w-8 p-0 !text-black hover:!text-black"
+              disabled={loading}
+              aria-label="Retorno ao almoxarifado"
+              title="Retorno ao almoxarifado"
+            >
+              <Undo2 className="h-4 w-4" />
+            </Button>
+            <Button
+              onClick={() => abrirMovimento('devolucao_empresa')}
+              variant="outline"
+              className="h-8 px-3 text-xs"
+              disabled={loading}
+              aria-label="Devolução"
+              title="Devolução"
+            >
+              Devolução
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -879,7 +876,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
                           {mov.item_excluido ? ' (item excluído)' : ''}
                         </TableCell>
                         <TableCell className={mov.observacao === 'item_excluido' ? 'text-red-600 font-semibold' : (mov.observacao === 'entrada_inicial' ? 'text-cyan-700 font-semibold' : (String(mov.observacao || '').includes('devolucao_empresa') ? 'text-orange-600 font-semibold' : (mov.observacao === 'devolucao' ? 'text-blue-600 font-semibold' : (mov.tipo === 'entrada' ? 'text-green-600 font-semibold' : 'text-yellow-600 font-semibold'))))}>
-                          {mov.observacao === 'item_excluido' ? 'Excluído' : (mov.observacao === 'entrada_inicial' ? 'Cadastro' : (String(mov.observacao || '').includes('devolucao_empresa') ? '↪ Devolução Empresa' : (mov.observacao === 'devolucao' ? '↩ Devolução' : (mov.tipo === 'entrada' ? '↓ Entrada' : '↑ Saída'))))}
+                          {mov.observacao === 'item_excluido' ? 'Excluído' : (mov.observacao === 'entrada_inicial' ? 'Cadastro' : (String(mov.observacao || '').includes('devolucao_empresa') ? 'Devolução' : (mov.observacao === 'devolucao' ? '↩ Devolução' : (mov.tipo === 'entrada' ? '↓ Entrada' : '↑ Saída'))))}
                         </TableCell>
                         <TableCell>{mov.quantidade}</TableCell>
                         <TableCell>{mov.numero_pedido || '-'}</TableCell>
@@ -894,15 +891,15 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
             )}
           </div>
 
-          <div className="flex justify-end border-t px-4 py-3">
-            <Button variant="outline" onClick={() => setShowHistory(false)}>Fechar</Button>
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 border-t px-4 py-3">
+            <Button variant="outline" onClick={() => setShowHistory(false)} className="w-full sm:w-auto">Fechar</Button>
           </div>
         </DialogContent>
       </Dialog>
 
       {/* Items Editor Modal */}
       <Dialog open={showItemsEditor} onOpenChange={setShowItemsEditor}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="w-[95vw] max-w-4xl">
           <DialogHeader>
             <DialogTitle>Editor de Itens</DialogTitle>
           </DialogHeader>
@@ -958,7 +955,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
       </Dialog>
 
       <Dialog open={movementOpen} onOpenChange={setMovementOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {movementType === 'entrada'
@@ -966,8 +963,8 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
                 : movementType === 'saida'
                   ? 'Registrar saída'
                   : movementType === 'devolucao_empresa'
-                    ? 'Registrar devolução para empresa'
-                    : 'Registrar retorno ao estoque'}
+                    ? 'Registrar devolução'
+                    : 'Registrar retorno ao almoxarifado'}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
@@ -999,7 +996,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
               <Input type="number" value={movementQtd.toString()} onChange={(e) => setMovementQtd(Number(e.target.value || 0))} />
             </div>
 
-            {(movementType === 'entrada' || movementType === 'devolucao_empresa') && (
+            {movementType === 'entrada' && (
               <>
                 <div>
                   <label className="block text-sm font-medium mb-1">Número do pedido</label>
@@ -1020,7 +1017,18 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
               </>
             )}
 
-            {(movementType === 'saida' || movementType === 'devolucao_empresa') && (
+            {movementType === 'devolucao_empresa' && (
+              <div>
+                <label className="block text-sm font-medium mb-1">Nome da empresa</label>
+                <Input
+                  value={movementEmpresaNome}
+                  onChange={(e) => setMovementEmpresaNome(e.target.value)}
+                  placeholder="Ex.: Fornecedora ABC"
+                />
+              </div>
+            )}
+
+            {movementType === 'saida' && (
               <>
                 <div>
                   <label className="block text-sm font-medium mb-1">Nome do almoxarife</label>
@@ -1031,19 +1039,19 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">{movementType === 'devolucao_empresa' ? 'Nome de quem levou para devolução' : 'Nome de quem retirou'}</label>
+                  <label className="block text-sm font-medium mb-1">Nome de quem retirou</label>
                   <Input
                     value={movementRetiradoPor}
                     onChange={(e) => setMovementRetiradoPor(e.target.value)}
-                    placeholder={movementType === 'devolucao_empresa' ? 'Ex.: Motorista da empresa' : 'Ex.: João Silva'}
+                    placeholder="Ex.: João Silva"
                   />
                 </div>
               </>
             )}
 
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setMovementOpen(false)}>Cancelar</Button>
-              <Button onClick={submitMovement}>Registrar</Button>
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2">
+              <Button variant="ghost" onClick={() => setMovementOpen(false)} className="w-full sm:w-auto">Cancelar</Button>
+              <Button onClick={submitMovement} className="w-full sm:w-auto">Registrar</Button>
             </div>
           </div>
         </DialogContent>
@@ -1198,10 +1206,10 @@ const AlmoxarifadoFerramentasPublic: React.FC<{ obraId: number; onSair: () => vo
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-4">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-xl font-bold">Ferramentas</h1>
-        <div className="flex items-center gap-2 flex-wrap justify-end">
-          <Button variant="outline" onClick={onVoltarMateriais}>Materiais</Button>
-          <Button onClick={abrirCadastro}>Cadastrar ferramenta</Button>
-          <Button variant="outline" onClick={onSair}>Sair</Button>
+        <div className="w-full sm:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:flex-wrap sm:justify-end">
+          <Button variant="outline" onClick={onVoltarMateriais} className="w-full sm:w-auto">Materiais</Button>
+          <Button onClick={abrirCadastro} className="w-full sm:w-auto">Cadastrar ferramenta</Button>
+          <Button variant="outline" onClick={onSair} className="w-full sm:w-auto">Sair</Button>
         </div>
       </div>
 
@@ -1247,7 +1255,7 @@ const AlmoxarifadoFerramentasPublic: React.FC<{ obraId: number; onSair: () => vo
       )}
 
       <Dialog open={showCadastro} onOpenChange={setShowCadastro}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[95vw] max-w-md">
           <DialogHeader>
             <DialogTitle>Cadastrar ferramenta</DialogTitle>
           </DialogHeader>
@@ -1282,16 +1290,16 @@ const AlmoxarifadoFerramentasPublic: React.FC<{ obraId: number; onSair: () => vo
               </div>
             )}
 
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setShowCadastro(false)}>Cancelar</Button>
-              <Button onClick={salvarCadastro} disabled={loading}>Salvar</Button>
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2">
+              <Button variant="ghost" onClick={() => setShowCadastro(false)} className="w-full sm:w-auto">Cancelar</Button>
+              <Button onClick={salvarCadastro} disabled={loading} className="w-full sm:w-auto">Salvar</Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
       <Dialog open={showAcao} onOpenChange={setShowAcao}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[95vw] max-w-md">
           <DialogHeader>
             <DialogTitle>{ferramentaSelecionada?.nome}</DialogTitle>
           </DialogHeader>

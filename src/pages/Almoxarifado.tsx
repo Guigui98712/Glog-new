@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Undo2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import CadastroItemDialog from '@/components/CadastroItemDialog';
-import { listarItens, searchItems, getItemById, registerMovement, getAlmoxarifadoHistorico, getAlmoxarifadoHistoricoAnos, criarCodigoAlmoxarife, listarDispositivosAlmoxarife, revogarDispositivoAlmoxarife, excluirItemAlmox } from '@/lib/api';
+import { listarItens, getItemById, registerMovement, getAlmoxarifadoHistorico, getAlmoxarifadoHistoricoAnos, criarCodigoAlmoxarife, listarDispositivosAlmoxarife, revogarDispositivoAlmoxarife, excluirItemAlmox } from '@/lib/api';
 import { Copy, MoreVertical, Trash2 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -40,8 +40,6 @@ const Almoxarifado: React.FC = () => {
   const [movementItemId, setMovementItemId] = useState<string>('');
   const [movementItem, setMovementItem] = useState<any>(null);
   const [movementQtd, setMovementQtd] = useState<number>(1);
-  const [movementQuery, setMovementQuery] = useState('');
-  const [movementSuggestions, setMovementSuggestions] = useState<any[]>([]);
   const [movementNumeroPedido, setMovementNumeroPedido] = useState('');
   const [movementEmpresaNome, setMovementEmpresaNome] = useState('');
   const [movementAlmoxarifeNome, setMovementAlmoxarifeNome] = useState('');
@@ -120,29 +118,11 @@ const Almoxarifado: React.FC = () => {
     }
   };
 
-  // autocomplete para modal de movimento
-  useEffect(() => {
-    let mounted = true;
-    const run = async () => {
-      if (!movementQuery || movementQuery.trim().length < 1) { setMovementSuggestions([]); return; }
-      try {
-        const res = await searchItems(obraId, movementQuery.trim());
-        if (mounted) setMovementSuggestions(res || []);
-      } catch (e) {
-        console.error(e);
-      }
-    };
-    run();
-    return () => { mounted = false; };
-  }, [movementQuery, obraId]);
-
   const abrirMovimento = (type: 'entrada'|'saida'|'devolucao'|'devolucao_empresa') => {
     setMovementType(type);
     setMovementItemId('');
     setMovementItem(null);
     setMovementQtd(1);
-    setMovementQuery('');
-    setMovementSuggestions([]);
     setMovementNumeroPedido('');
     setMovementEmpresaNome('');
     setMovementAlmoxarifeNome('');
@@ -153,8 +133,6 @@ const Almoxarifado: React.FC = () => {
   const onPickMovementSuggestion = (it: any) => {
     setMovementItemId(String(it.id));
     setMovementItem(it);
-    setMovementQuery(it.nome);
-    setMovementSuggestions([]);
   };
 
   const onItemIdChange = async (val: string) => {
@@ -168,9 +146,6 @@ const Almoxarifado: React.FC = () => {
     const localMatch = items.find((it) => String(it.id) === trimmedValue);
     if (localMatch) {
       setMovementItem(localMatch);
-      if (!movementQuery) {
-        setMovementQuery(localMatch.nome || '');
-      }
       return;
     }
 
@@ -179,9 +154,6 @@ const Almoxarifado: React.FC = () => {
       try {
         const it = await getItemById(obraId, idNum);
         setMovementItem(it || null);
-        if (it && !movementQuery) {
-          setMovementQuery(it.nome || '');
-        }
       } catch (e) {
         console.error(e);
         setMovementItem(null);
@@ -239,14 +211,6 @@ const Almoxarifado: React.FC = () => {
       });
     }
 
-    if (movementType === 'devolucao_empresa' && !movementAlmoxarifeNome.trim()) {
-      return toast({
-        title: 'Erro',
-        description: 'Informe o nome do almoxarife responsável pela devolução',
-        variant: 'destructive'
-      });
-    }
-
     setLoading(true);
     try {
       const resolvedItemId = Number(movementItem?.id ?? movementItemId.trim());
@@ -269,16 +233,15 @@ const Almoxarifado: React.FC = () => {
             : movementType;
 
       await registerMovement(obraId, resolvedItemId, movementApiType, movementQtd, {
-        numero_pedido: movementType === 'entrada' || movementType === 'devolucao_empresa' ? movementNumeroPedido : null,
+        numero_pedido: movementType === 'entrada' ? movementNumeroPedido : null,
         empresa_nome: movementType === 'entrada' || movementType === 'devolucao_empresa' ? movementEmpresaNome : null,
-        retirado_por: movementType === 'saida' || movementType === 'devolucao_empresa' ? movementRetiradoPor : null,
+        retirado_por: movementType === 'saida' ? movementRetiradoPor : null,
         observacao:
           movementType === 'devolucao'
             ? 'devolucao'
             : movementType === 'saida'
               ? `almoxarife:${movementAlmoxarifeNome.trim()}`
-              : `devolucao_empresa;almoxarife:${movementAlmoxarifeNome.trim()}`
-              : null,
+              : 'devolucao_empresa',
       });
       setMovementItemId(String(resolvedItemId));
       setMovementItem(resolvedItem);
@@ -403,6 +366,17 @@ const Almoxarifado: React.FC = () => {
       .slice(0, 10);
   }, [items, movementItemId]);
 
+  const showMovementSuggestions = useMemo(() => {
+    if (movementIdSuggestions.length === 0) return false;
+    if (!movementItem) return true;
+
+    const term = movementItemId.trim().toLowerCase();
+    const itemNome = String(movementItem?.nome || '').trim().toLowerCase();
+    const itemId = String(movementItem?.id || '').trim().toLowerCase();
+
+    return !(term && (term === itemNome || term === itemId));
+  }, [movementIdSuggestions, movementItem, movementItemId]);
+
   const dispositivosAtivos = useMemo(() => {
     return devices.filter((device) => device.active);
   }, [devices]);
@@ -458,35 +432,41 @@ const Almoxarifado: React.FC = () => {
             Ferramentas
           </Button>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" onClick={abrirHistorico} className="text-sm">Histórico</Button>
-          <Button variant="outline" onClick={() => setShowItemsEditor(true)} className="text-sm">Itens</Button>
-          <Button onClick={() => setShowCadastro(true)} className="text-sm">Cadastrar</Button>
+        <div className="w-full sm:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          <Button variant="outline" onClick={abrirHistorico} className="w-full sm:w-auto text-sm">Histórico</Button>
+          <Button variant="outline" onClick={() => setShowItemsEditor(true)} className="w-full sm:w-auto text-sm">Itens</Button>
+          <Button onClick={() => setShowCadastro(true)} className="w-full sm:w-auto text-sm">Cadastrar</Button>
         </div>
       </div>
 
-      <div className="w-full flex justify-end">
-        <div className="flex items-center gap-2 flex-wrap justify-end">
-          <Button
-            onClick={() => abrirMovimento('devolucao')}
-            variant="ghost"
-            className="h-8 w-8 rounded-md border border-black bg-white p-0 text-lg font-semibold !text-black hover:bg-gray-100 hover:!text-black"
-            aria-label="Retornar ao estoque"
-            title="Retornar ao estoque"
-          >
-            ↩
-          </Button>
-          <Button
-            onClick={() => abrirMovimento('devolucao_empresa')}
-            variant="ghost"
-            className="h-8 w-8 rounded-md border border-black bg-white p-0 text-lg font-semibold !text-black hover:bg-gray-100 hover:!text-black"
-            aria-label="Devolver para empresa"
-            title="Devolver para empresa"
-          >
-            ↪
-          </Button>
-          <Button onClick={() => abrirMovimento('saida')} className="bg-yellow-500 hover:bg-yellow-600 text-white sm:w-40">Saída</Button>
-          <Button onClick={() => abrirMovimento('entrada')} className="bg-green-500 hover:bg-green-600 text-white sm:w-40">Entrada</Button>
+      <div className="w-full">
+        <div className="flex justify-center">
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <Button onClick={() => abrirMovimento('saida')} className="bg-yellow-500 hover:bg-yellow-600 text-white flex-1 sm:w-40">Saída</Button>
+            <Button onClick={() => abrirMovimento('entrada')} className="bg-green-500 hover:bg-green-600 text-white flex-1 sm:w-40">Entrada</Button>
+          </div>
+        </div>
+        <div className="mt-2 flex justify-end">
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => abrirMovimento('devolucao')}
+              variant="ghost"
+              className="h-8 w-8 p-0 !text-black hover:!text-black"
+              aria-label="Retorno ao almoxarifado"
+              title="Retorno ao almoxarifado"
+            >
+              <Undo2 className="h-4 w-4" />
+            </Button>
+            <Button
+              onClick={() => abrirMovimento('devolucao_empresa')}
+              variant="outline"
+              className="h-8 px-3 text-xs"
+              aria-label="Devolução"
+              title="Devolução"
+            >
+              Devolução
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -598,7 +578,7 @@ const Almoxarifado: React.FC = () => {
 
       {/* Search Detail Modal */}
       <Dialog open={showSearchDetail} onOpenChange={setShowSearchDetail}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[95vw] max-w-md">
           <DialogHeader>
             <DialogTitle>{selectedSearchItem?.nome}</DialogTitle>
           </DialogHeader>
@@ -620,8 +600,8 @@ const Almoxarifado: React.FC = () => {
                 <label className="text-sm font-medium text-gray-500">Categoria</label>
                 <p className="text-lg font-semibold">{selectedSearchItem.categoria}</p>
               </div>
-              <div className="flex justify-end gap-2 pt-3">
-                <Button variant="ghost" onClick={() => setShowSearchDetail(false)}>Fechar</Button>
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-3">
+                <Button variant="ghost" onClick={() => setShowSearchDetail(false)} className="w-full sm:w-auto">Fechar</Button>
               </div>
             </div>
           )}
@@ -629,7 +609,7 @@ const Almoxarifado: React.FC = () => {
       </Dialog>
 
       <Dialog open={showCodeModal} onOpenChange={setShowCodeModal}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[95vw] max-w-md">
           <DialogHeader>
             <DialogTitle>Código de acesso</DialogTitle>
           </DialogHeader>
@@ -642,8 +622,8 @@ const Almoxarifado: React.FC = () => {
               <label className="text-sm font-medium text-gray-500">Expira em</label>
               <p className="text-sm">{generatedExpiresAt ? new Date(generatedExpiresAt).toLocaleString('pt-BR') : '-'}</p>
             </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button onClick={() => setShowCodeModal(false)}>Fechar</Button>
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-2">
+              <Button onClick={() => setShowCodeModal(false)} className="w-full sm:w-auto">Fechar</Button>
             </div>
           </div>
         </DialogContent>
@@ -714,7 +694,7 @@ const Almoxarifado: React.FC = () => {
                               {mov.item_excluido ? ' (item excluído)' : ''}
                             </TableCell>
                             <TableCell className={mov.observacao === 'item_excluido' ? 'text-red-600 font-semibold' : (mov.observacao === 'entrada_inicial' ? 'text-cyan-700 font-semibold' : (String(mov.observacao || '').includes('devolucao_empresa') ? 'text-orange-600 font-semibold' : (mov.observacao === 'devolucao' ? 'text-blue-600 font-semibold' : (mov.tipo === 'entrada' ? 'text-green-600 font-semibold' : 'text-yellow-600 font-semibold'))))}>
-                              {mov.observacao === 'item_excluido' ? 'Excluído' : (mov.observacao === 'entrada_inicial' ? 'Cadastro' : (String(mov.observacao || '').includes('devolucao_empresa') ? '↪ Devolução Empresa' : (mov.observacao === 'devolucao' ? '↩ Devolução' : (mov.tipo === 'entrada' ? '↓ Entrada' : '↑ Saída'))))}
+                              {mov.observacao === 'item_excluido' ? 'Excluído' : (mov.observacao === 'entrada_inicial' ? 'Cadastro' : (String(mov.observacao || '').includes('devolucao_empresa') ? 'Devolução' : (mov.observacao === 'devolucao' ? '↩ Devolução' : (mov.tipo === 'entrada' ? '↓ Entrada' : '↑ Saída'))))}
                             </TableCell>
                             <TableCell>{mov.quantidade}</TableCell>
                             <TableCell>{mov.numero_pedido || '-'}</TableCell>
@@ -731,15 +711,15 @@ const Almoxarifado: React.FC = () => {
             )}
           </div>
 
-          <div className="flex justify-end border-t px-4 py-3">
-            <Button variant="outline" onClick={() => setShowHistory(false)}>Fechar</Button>
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 border-t px-4 py-3">
+            <Button variant="outline" onClick={() => setShowHistory(false)} className="w-full sm:w-auto">Fechar</Button>
           </div>
         </DialogContent>
       </Dialog>
 
       {/* Items Editor Modal */}
       <Dialog open={showItemsEditor} onOpenChange={setShowItemsEditor}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="w-[95vw] max-w-4xl">
           <DialogHeader>
             <DialogTitle>Editor de Itens</DialogTitle>
           </DialogHeader>
@@ -795,7 +775,7 @@ const Almoxarifado: React.FC = () => {
       </Dialog>
 
       <Dialog open={movementOpen} onOpenChange={setMovementOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {movementType === 'entrada'
@@ -803,15 +783,15 @@ const Almoxarifado: React.FC = () => {
                 : movementType === 'saida'
                   ? 'Registrar saída'
                   : movementType === 'devolucao_empresa'
-                    ? 'Registrar devolução para empresa'
-                    : 'Registrar retorno ao estoque'}
+                    ? 'Registrar devolução'
+                    : 'Registrar retorno ao almoxarifado'}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>
               <label className="block text-sm font-medium mb-1">ID ou Nome do item</label>
               <Input value={movementItemId} onChange={(e) => onItemIdChange(e.target.value)} placeholder="Digite o ID" className="mb-2" />
-              {movementIdSuggestions.length > 0 && (
+              {showMovementSuggestions && (
                 <div className="mt-2 mb-2 bg-white border rounded-md shadow-sm max-w-md">
                   {movementIdSuggestions.map((suggestion) => (
                     <div
@@ -824,14 +804,6 @@ const Almoxarifado: React.FC = () => {
                   ))}
                 </div>
               )}
-              <Input value={movementQuery} onChange={(e) => setMovementQuery(e.target.value)} placeholder="Ou comece a digitar o nome..." />
-              {movementSuggestions.length > 0 && (
-                <div className="mt-2 bg-white border rounded-md shadow-sm max-w-md">
-                  {movementSuggestions.map(s => (
-                    <div key={s.id} className="p-2 hover:bg-gray-50 cursor-pointer" onClick={() => onPickMovementSuggestion(s)}>{s.nome}</div>
-                  ))}
-                </div>
-              )}
               {movementItem && <div className="mt-2 text-sm text-gray-600">Encontrado: {movementItem.nome} — Qtd atual: {movementItem.quantidade}</div>}
             </div>
             <div>
@@ -839,7 +811,7 @@ const Almoxarifado: React.FC = () => {
               <Input type="number" value={movementQtd.toString()} onChange={(e) => setMovementQtd(Number(e.target.value || 0))} />
             </div>
 
-            {(movementType === 'entrada' || movementType === 'devolucao_empresa') && (
+            {movementType === 'entrada' && (
               <>
                 <div>
                   <label className="block text-sm font-medium mb-1">Número do pedido</label>
@@ -860,7 +832,18 @@ const Almoxarifado: React.FC = () => {
               </>
             )}
 
-            {(movementType === 'saida' || movementType === 'devolucao_empresa') && (
+            {movementType === 'devolucao_empresa' && (
+              <div>
+                <label className="block text-sm font-medium mb-1">Nome da empresa</label>
+                <Input
+                  value={movementEmpresaNome}
+                  onChange={(e) => setMovementEmpresaNome(e.target.value)}
+                  placeholder="Ex.: Fornecedora ABC"
+                />
+              </div>
+            )}
+
+            {movementType === 'saida' && (
               <>
                 <div>
                   <label className="block text-sm font-medium mb-1">Nome do almoxarife</label>
@@ -871,19 +854,19 @@ const Almoxarifado: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">{movementType === 'devolucao_empresa' ? 'Nome de quem levou para devolução' : 'Nome de quem retirou'}</label>
+                  <label className="block text-sm font-medium mb-1">Nome de quem retirou</label>
                   <Input
                     value={movementRetiradoPor}
                     onChange={(e) => setMovementRetiradoPor(e.target.value)}
-                    placeholder={movementType === 'devolucao_empresa' ? 'Ex.: Motorista da empresa' : 'Ex.: João Silva'}
+                    placeholder="Ex.: João Silva"
                   />
                 </div>
               </>
             )}
 
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setMovementOpen(false)}>Cancelar</Button>
-              <Button onClick={submitMovement}>Registrar</Button>
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2">
+              <Button variant="ghost" onClick={() => setMovementOpen(false)} className="w-full sm:w-auto">Cancelar</Button>
+              <Button onClick={submitMovement} className="w-full sm:w-auto">Registrar</Button>
             </div>
           </div>
         </DialogContent>

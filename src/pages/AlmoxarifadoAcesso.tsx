@@ -394,8 +394,6 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
   const [movementItemId, setMovementItemId] = useState<string>('');
   const [movementItem, setMovementItem] = useState<any>(null);
   const [movementQtd, setMovementQtd] = useState<number>(1);
-  const [movementQuery, setMovementQuery] = useState('');
-  const [movementSuggestions, setMovementSuggestions] = useState<any[]>([]);
   const [movementNumeroPedido, setMovementNumeroPedido] = useState('');
   const [movementEmpresaNome, setMovementEmpresaNome] = useState('');
   const [movementRetiradoPor, setMovementRetiradoPor] = useState('');
@@ -436,14 +434,35 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
     const term = movementItemId.trim().toLowerCase();
     if (!term) return [];
 
-    return items
-      .filter((it) => {
+    const scored = items
+      .map((it) => {
         const idText = String(it.id ?? '').toLowerCase();
         const nome = String(it.nome || '').toLowerCase();
-        const categoria = String(it.categoria || '').toLowerCase();
-        return idText.includes(term) || nome.includes(term) || categoria.includes(term);
+        const idExact = idText === term;
+        const idStarts = idText.startsWith(term);
+        const nomeStarts = nome.startsWith(term);
+        const idContains = idText.includes(term);
+        const nomeContains = nome.includes(term);
+
+        if (!idContains && !nomeContains) {
+          return null;
+        }
+
+        let score = 0;
+        if (idExact) score += 100;
+        if (idStarts) score += 60;
+        if (nomeStarts) score += 40;
+        if (idContains) score += 20;
+        if (nomeContains) score += 10;
+
+        return { it, score };
       })
-      .slice(0, 10);
+      .filter((entry): entry is { it: any; score: number } => !!entry)
+      .sort((a, b) => b.score - a.score || String(a.it.nome || '').localeCompare(String(b.it.nome || '')))
+      .slice(0, 10)
+      .map((entry) => entry.it);
+
+    return scored;
   }, [items, movementItemId]);
 
   useEffect(() => { carregar(); }, [obraId, deviceId]);
@@ -477,28 +496,11 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
     return () => { mounted = false; };
   }, [query, obraId, deviceId]);
 
-  useEffect(() => {
-    let mounted = true;
-    const run = async () => {
-      if (!movementQuery || movementQuery.trim().length < 1) { setMovementSuggestions([]); return; }
-      try {
-        const res = await searchItems(obraId, movementQuery.trim(), { deviceId });
-        if (mounted) setMovementSuggestions(res || []);
-      } catch (e) {
-        console.error(e);
-      }
-    };
-    run();
-    return () => { mounted = false; };
-  }, [movementQuery, obraId, deviceId]);
-
   const abrirMovimento = (type: 'entrada' | 'saida' | 'devolucao') => {
     setMovementType(type);
     setMovementItemId('');
     setMovementItem(null);
     setMovementQtd(1);
-    setMovementQuery('');
-    setMovementSuggestions([]);
     setMovementNumeroPedido('');
     setMovementEmpresaNome('');
     setMovementRetiradoPor('');
@@ -507,20 +509,16 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
 
   const onPickSuggestion = (it: any) => {
     setMovementType('entrada');
-    setMovementItemId(String(it.id));
+    setMovementItemId(it.nome || String(it.id));
     setMovementItem(it);
-    setMovementQuery(it.nome || '');
     setSuggestions([]);
     setQuery('');
-    setMovementSuggestions([]);
     setMovementOpen(true);
   };
 
   const onPickMovementSuggestion = (it: any) => {
-    setMovementItemId(String(it.id));
+    setMovementItemId(it.nome || String(it.id));
     setMovementItem(it);
-    setMovementQuery(it.nome);
-    setMovementSuggestions([]);
   };
 
   const onItemIdChange = async (val: string) => {
@@ -531,12 +529,13 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
       return;
     }
 
-    const localMatch = items.find((it) => String(it.id) === trimmedValue);
+    const lowered = trimmedValue.toLowerCase();
+
+    const localMatch = items.find(
+      (it) => String(it.id) === trimmedValue || String(it.nome || '').toLowerCase() === lowered
+    );
     if (localMatch) {
       setMovementItem(localMatch);
-      if (!movementQuery) {
-        setMovementQuery(localMatch.nome || '');
-      }
       return;
     }
 
@@ -545,9 +544,6 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
       try {
         const it = await getItemById(obraId, idNum, { deviceId });
         setMovementItem(it || null);
-        if (it && !movementQuery) {
-          setMovementQuery(it.nome || '');
-        }
       } catch (e) {
         console.error(e);
         setMovementItem(null);
@@ -591,12 +587,20 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
 
     setLoading(true);
     try {
-      const resolvedItemId = Number(movementItem?.id ?? movementItemId.trim());
+      const typedTerm = movementItemId.trim();
+      const typedTermLower = typedTerm.toLowerCase();
+
+      const bestLocalMatch = movementItem
+        ?? items.find((it) => String(it.id) === typedTerm)
+        ?? items.find((it) => String(it.nome || '').toLowerCase() === typedTermLower)
+        ?? (movementIdSuggestions.length === 1 ? movementIdSuggestions[0] : null);
+
+      const resolvedItemId = Number(bestLocalMatch?.id ?? typedTerm);
       if (!Number.isFinite(resolvedItemId)) {
         throw new Error('Selecione um item válido');
       }
 
-      const resolvedItem = movementItem
+      const resolvedItem = bestLocalMatch
         ?? items.find((it) => Number(it.id) === resolvedItemId)
         ?? await getItemById(obraId, resolvedItemId, { deviceId });
       if (!resolvedItem) {
@@ -613,7 +617,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
       }, {
         deviceId,
       });
-      setMovementItemId(String(resolvedItemId));
+      setMovementItemId(resolvedItem.nome || String(resolvedItemId));
       setMovementItem(resolvedItem);
       toast({ title: 'Registrado', description: 'Movimento registrado com sucesso' });
       setMovementOpen(false);
@@ -894,7 +898,12 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
           <div className="space-y-3">
             <div>
               <label className="block text-sm font-medium mb-1">ID ou Nome do item</label>
-              <Input value={movementItemId} onChange={(e) => onItemIdChange(e.target.value)} placeholder="Digite o ID" className="mb-2" />
+              <Input
+                value={movementItemId}
+                onChange={(e) => onItemIdChange(e.target.value)}
+                placeholder="Digite ID ou nome do item"
+                className="mb-2"
+              />
               {movementIdSuggestions.length > 0 && (
                 <div className="mt-2 mb-2 bg-white border rounded-md shadow-sm max-w-md">
                   {movementIdSuggestions.map((suggestion) => (
@@ -905,14 +914,6 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
                     >
                       {suggestion.id} - {suggestion.nome}
                     </div>
-                  ))}
-                </div>
-              )}
-              <Input value={movementQuery} onChange={(e) => setMovementQuery(e.target.value)} placeholder="Ou comece a digitar o nome..." />
-              {movementSuggestions.length > 0 && (
-                <div className="mt-2 bg-white border rounded-md shadow-sm max-w-md">
-                  {movementSuggestions.map(s => (
-                    <div key={s.id} className="p-2 hover:bg-gray-50 cursor-pointer" onClick={() => onPickMovementSuggestion(s)}>{s.nome}</div>
                   ))}
                 </div>
               )}

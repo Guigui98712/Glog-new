@@ -1652,9 +1652,23 @@ export const listarEtapasFluxograma = async (obraId: number) => {
 };
 
 // ===== Almoxarifado (itens e movimentos) =====
-export const listarItens = async (obraId: number) => {
+export const listarItens = async (obraId: number, options?: { deviceId?: string | number | null }) => {
   if (DISABLE_GOOGLE_APIS) return [];
   try {
+    if (options?.deviceId) {
+      const { data, error } = await supabase.rpc('list_almox_items_by_device', {
+        p_obra_id: obraId,
+        p_device_id: String(options.deviceId),
+      });
+      if (error) {
+        if (error.code === 'PGRST202') {
+          throw new Error('Função list_almox_items_by_device não encontrada. Aplique a migration 20260316_fix_almox_public_item_read_by_device.sql no banco.');
+        }
+        throw error;
+      }
+      return data || [];
+    }
+
     const { data, error } = await supabase
       .from('almox_items')
       .select('*')
@@ -1669,10 +1683,26 @@ export const listarItens = async (obraId: number) => {
   }
 };
 
-export const searchItems = async (obraId: number, q: string) => {
+export const searchItems = async (obraId: number, q: string, options?: { deviceId?: string | number | null }) => {
   if (DISABLE_GOOGLE_APIS) return [];
   try {
     const term = q.trim();
+
+    if (options?.deviceId) {
+      const { data, error } = await supabase.rpc('search_almox_items_by_device', {
+        p_obra_id: obraId,
+        p_device_id: String(options.deviceId),
+        p_query: term,
+      });
+      if (error) {
+        if (error.code === 'PGRST202') {
+          throw new Error('Função search_almox_items_by_device não encontrada. Aplique a migration 20260316_fix_almox_public_item_read_by_device.sql no banco.');
+        }
+        throw error;
+      }
+      return data || [];
+    }
+
     const { data, error } = await supabase
       .from('almox_items')
       .select('*')
@@ -1689,9 +1719,25 @@ export const searchItems = async (obraId: number, q: string) => {
   }
 };
 
-export const getItemById = async (obraId: number, id: number) => {
+export const getItemById = async (obraId: number, id: number, options?: { deviceId?: string | number | null }) => {
   if (DISABLE_GOOGLE_APIS) return null;
   try {
+    if (options?.deviceId) {
+      const { data, error } = await supabase.rpc('get_almox_item_by_device', {
+        p_obra_id: obraId,
+        p_device_id: String(options.deviceId),
+        p_item_id: id,
+      });
+      if (error) {
+        if (error.code === 'PGRST202') {
+          throw new Error('Função get_almox_item_by_device não encontrada. Aplique a migration 20260316_fix_almox_public_item_read_by_device.sql no banco.');
+        }
+        throw error;
+      }
+      const row: any = Array.isArray(data) ? data[0] : data;
+      return row || null;
+    }
+
     const { data, error } = await supabase
       .from('almox_items')
       .select('*')

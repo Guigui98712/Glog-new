@@ -24,6 +24,11 @@
     Cache-Control = "no-cache"
 
 [[headers]]
+  for = "/almox.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
   for = "/*"
   [headers.values]
     X-Frame-Options = "DENY"

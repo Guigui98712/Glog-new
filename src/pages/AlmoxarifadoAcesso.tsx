@@ -393,7 +393,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
     if (!obraId) return;
     setLoading(true);
     try {
-      const data = await listarItens(obraId);
+      const data = await listarItens(obraId, { deviceId });
       setItems(data || []);
     } catch (err) {
       console.error(err);
@@ -408,7 +408,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
     const run = async () => {
       if (!query || query.trim().length < 1) { setSuggestions([]); return; }
       try {
-        const res = await searchItems(obraId, query.trim());
+        const res = await searchItems(obraId, query.trim(), { deviceId });
         if (mounted) setSuggestions(res || []);
       } catch (e) {
         console.error(e);
@@ -423,7 +423,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
     const run = async () => {
       if (!movementQuery || movementQuery.trim().length < 1) { setMovementSuggestions([]); return; }
       try {
-        const res = await searchItems(obraId, movementQuery.trim());
+        const res = await searchItems(obraId, movementQuery.trim(), { deviceId });
         if (mounted) setMovementSuggestions(res || []);
       } catch (e) {
         console.error(e);
@@ -470,7 +470,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
     const idNum = Number(val);
     if (!isNaN(idNum)) {
       try {
-        const it = await getItemById(obraId, idNum);
+        const it = await getItemById(obraId, idNum, { deviceId });
         setMovementItem(it || null);
       } catch (e) {
         console.error(e);

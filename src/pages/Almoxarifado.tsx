@@ -35,10 +35,6 @@ const Almoxarifado: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [showCadastro, setShowCadastro] = useState(false);
 
-  // search/autocomplete
-  const [query, setQuery] = useState('');
-  const [suggestions, setSuggestions] = useState<any[]>([]);
-
   // Entrada/Saida form
   const [movementOpen, setMovementOpen] = useState(false);
   const [movementType, setMovementType] = useState<'entrada'|'saida'|'devolucao'>('entrada');
@@ -125,22 +121,6 @@ const Almoxarifado: React.FC = () => {
     }
   };
 
-  // autocomplete para pesquisa principal
-  useEffect(() => {
-    let mounted = true;
-    const run = async () => {
-      if (!query || query.trim().length < 1) { setSuggestions([]); return; }
-      try {
-        const res = await searchItems(obraId, query.trim());
-        if (mounted) setSuggestions(res || []);
-      } catch (e) {
-        console.error(e);
-      }
-    };
-    run();
-    return () => { mounted = false; };
-  }, [query, obraId]);
-
   // autocomplete para modal de movimento
   useEffect(() => {
     let mounted = true;
@@ -169,24 +149,6 @@ const Almoxarifado: React.FC = () => {
     setMovementAlmoxarifeNome('');
     setMovementRetiradoPor('');
     setMovementOpen(true);
-  };
-
-  const abrirEntradaPorSugestao = (it: any) => {
-    abrirMovimento('entrada');
-    setMovementItemId(String(it.id));
-    setMovementItem(it);
-    setMovementQuery(it.nome || '');
-    setSuggestions([]);
-    setQuery('');
-  };
-
-  const onPickSuggestion = (it: any) => {
-    setMovementItemId(String(it.id));
-    setMovementItem(it);
-    setSuggestions([]);
-    setQuery('');
-    setMovementQuery('');
-    setMovementSuggestions([]);
   };
 
   const onPickMovementSuggestion = (it: any) => {
@@ -396,13 +358,6 @@ const Almoxarifado: React.FC = () => {
     });
   }, [items]);
 
-  const onClickSuggestion = (it: any) => {
-    setSelectedSearchItem(it);
-    setShowSearchDetail(true);
-    setSuggestions([]);
-    setQuery('');
-  };
-
   const itemsFiltradosEditor = useMemo(() => {
     if (!itemsEditorQuery || !itemsEditorQuery.trim()) return items;
     const q = itemsEditorQuery.trim().toLowerCase();
@@ -436,24 +391,14 @@ const Almoxarifado: React.FC = () => {
     const q = historyQuery.trim().toLowerCase();
 
     return history.filter((mov) => {
+      const itemId = String(mov.item_id ?? mov.id_item ?? mov.itemId ?? '').toLowerCase();
       const itemNome = String(mov.item_nome || '').toLowerCase();
-      const tipo = String(mov.tipo || '').toLowerCase();
-      const data = mov.data ? new Date(mov.data).toLocaleDateString('pt-BR').toLowerCase() : '';
-      const quantidade = String(mov.quantidade ?? '').toLowerCase();
-      const numeroPedido = String(mov.numero_pedido || '').toLowerCase();
       const empresaNome = String(mov.empresa_nome || '').toLowerCase();
-      const retiradoPor = String(mov.retirado_por || '').toLowerCase();
-      const observacao = String(mov.observacao || '').toLowerCase();
 
       return (
+        itemId.includes(q) ||
         itemNome.includes(q) ||
-        tipo.includes(q) ||
-        data.includes(q) ||
-        quantidade.includes(q) ||
-        numeroPedido.includes(q) ||
-        empresaNome.includes(q) ||
-        retiradoPor.includes(q) ||
-        observacao.includes(q)
+        empresaNome.includes(q)
       );
     });
   }, [history, historyQuery]);
@@ -590,22 +535,6 @@ const Almoxarifado: React.FC = () => {
       </Card>
 
       <Card className="p-4">
-        <div className="flex gap-2 items-center">
-          <Input placeholder="Pesquisar itens" value={query} onChange={(e) => setQuery(e.target.value)} className="w-full md:w-96" />
-        </div>
-        {suggestions.length > 0 && (
-          <div className="mt-2 bg-white border rounded-md shadow-sm max-w-md">
-            {suggestions.map(s => (
-              <div key={s.id} className="flex justify-between items-center p-2 hover:bg-gray-50 cursor-pointer border-b last:border-b-0">
-                <div onClick={() => onClickSuggestion(s)} className="flex-1">{s.nome}</div>
-                <button onClick={(e) => { e.stopPropagation(); abrirEntradaPorSugestao(s); }} className="text-xs px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600">Entrada</button>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
-
-      <Card className="p-4">
         <h2 className="font-semibold mb-3">Lista de materiais</h2>
         <div className="overflow-x-auto">
           <Table>
@@ -725,7 +654,7 @@ const Almoxarifado: React.FC = () => {
               <>
                 <div className="mb-4">
                   <Input
-                    placeholder="Pesquisar histórico..."
+                    placeholder="Pesquisar histórico por ID, item ou empresa..."
                     value={historyQuery}
                     onChange={(e) => setHistoryQuery(e.target.value)}
                     className="w-full"

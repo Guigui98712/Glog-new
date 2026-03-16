@@ -2,6 +2,8 @@
 -- Objetivo: evitar dependencia de sessao autenticada, reduzir divergencias entre ambientes
 -- e manter leitura, cadastro, movimentacao, historico e exclusao no mesmo modelo.
 
+drop function if exists public.create_almox_item_by_device(bigint, bigint, text, text, text, numeric);
+
 create or replace function public.assert_valid_almox_device(
   p_obra_id bigint,
   p_device_id text
@@ -34,7 +36,7 @@ create or replace function public.check_almox_device_session(
 )
 returns table (
   is_valid boolean,
-  device_id bigint,
+  device_id text,
   obra_id bigint,
   device_name text,
   active boolean
@@ -46,14 +48,14 @@ as $$
 begin
   if p_obra_id is null or p_device_id is null or coalesce(trim(p_device_id), '') = '' then
     return query
-    select false, null::bigint, p_obra_id, null::text, false;
+    select false, null::text, p_obra_id, null::text, false;
     return;
   end if;
 
   return query
   select
     true as is_valid,
-    d.id::bigint,
+    d.id::text,
     d.obra_id::bigint,
     d.device_name,
     d.active
@@ -65,7 +67,7 @@ begin
 
   if not found then
     return query
-    select false, null::bigint, p_obra_id, null::text, false;
+    select false, null::text, p_obra_id, null::text, false;
   end if;
 end;
 $$;

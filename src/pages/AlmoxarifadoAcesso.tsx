@@ -397,6 +397,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
   const [movementNumeroPedido, setMovementNumeroPedido] = useState('');
   const [movementEmpresaNome, setMovementEmpresaNome] = useState('');
   const [movementRetiradoPor, setMovementRetiradoPor] = useState('');
+  const [movementAlmoxarifeNome, setMovementAlmoxarifeNome] = useState('');
 
   const [showCadastro, setShowCadastro] = useState(false);
 
@@ -408,6 +409,30 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
 
   const [showItemsEditor, setShowItemsEditor] = useState(false);
   const [itemsEditorQuery, setItemsEditorQuery] = useState('');
+  const [itemEmpresasByNome, setItemEmpresasByNome] = useState<Record<string, string[]>>({});
+
+  const buildItemEmpresasIndex = (movimentos: any[]): Record<string, string[]> => {
+    const map = new Map<string, Set<string>>();
+
+    for (const mov of movimentos || []) {
+      const itemNome = String(mov?.item_nome || '').trim().toLowerCase();
+      const empresa = String(mov?.empresa_nome || '').trim().toLowerCase();
+      if (!itemNome || !empresa) continue;
+
+      if (!map.has(itemNome)) {
+        map.set(itemNome, new Set<string>());
+      }
+
+      map.get(itemNome)?.add(empresa);
+    }
+
+    const result: Record<string, string[]> = {};
+    for (const [key, value] of map.entries()) {
+      result[key] = Array.from(value);
+    }
+
+    return result;
+  };
 
   const filteredItems = useMemo(() => {
     return [...items].sort((a, b) => {
@@ -426,9 +451,10 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
     return items.filter((it) => {
       const nome = String(it.nome || '').toLowerCase();
       const categoria = String(it.categoria || '').toLowerCase();
-      return nome.includes(q) || categoria.includes(q);
+      const empresas = itemEmpresasByNome[nome] || [];
+      return nome.includes(q) || categoria.includes(q) || empresas.some((empresa) => empresa.includes(q));
     });
-  }, [items, itemsEditorQuery]);
+  }, [items, itemsEditorQuery, itemEmpresasByNome]);
 
   const movementIdSuggestions = useMemo(() => {
     const term = movementItemId.trim().toLowerCase();
@@ -465,6 +491,17 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
     return scored;
   }, [items, movementItemId]);
 
+  const showMovementSuggestions = useMemo(() => {
+    if (movementIdSuggestions.length === 0) return false;
+    if (!movementItem) return true;
+
+    const term = movementItemId.trim().toLowerCase();
+    const itemNome = String(movementItem?.nome || '').trim().toLowerCase();
+    const itemId = String(movementItem?.id || '').trim().toLowerCase();
+
+    return !(term && (term === itemNome || term === itemId));
+  }, [movementIdSuggestions, movementItem, movementItemId]);
+
   useEffect(() => { carregar(); }, [obraId, deviceId]);
 
   const carregar = async () => {
@@ -473,6 +510,13 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
     try {
       const data = await listarItens(obraId, { deviceId });
       setItems(data || []);
+
+      try {
+        const historico = await getAlmoxarifadoHistorico(obraId, undefined, { deviceId });
+        setItemEmpresasByNome(buildItemEmpresasIndex(historico || []));
+      } catch (historyError) {
+        console.warn('Aviso: não foi possível indexar empresas para busca de itens', historyError);
+      }
     } catch (err) {
       console.error(err);
       toast({ title: 'Erro', description: 'Não foi possível carregar itens', variant: 'destructive' });
@@ -504,6 +548,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
     setMovementNumeroPedido('');
     setMovementEmpresaNome('');
     setMovementRetiradoPor('');
+    setMovementAlmoxarifeNome('');
     setMovementOpen(true);
   };
 
@@ -585,6 +630,14 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
       });
     }
 
+    if (movementType === 'saida' && !movementAlmoxarifeNome.trim()) {
+      return toast({
+        title: 'Erro',
+        description: 'Informe o nome do almoxarife responsável pela saída',
+        variant: 'destructive'
+      });
+    }
+
     setLoading(true);
     try {
       const typedTerm = movementItemId.trim();
@@ -613,7 +666,12 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
         numero_pedido: movementType === 'entrada' ? movementNumeroPedido : null,
         empresa_nome: movementType === 'entrada' ? movementEmpresaNome : null,
         retirado_por: movementType === 'saida' ? movementRetiradoPor : null,
-        observacao: movementType === 'devolucao' ? 'devolucao' : null,
+        observacao:
+          movementType === 'devolucao'
+            ? 'devolucao'
+            : movementType === 'saida'
+              ? `almoxarife:${movementAlmoxarifeNome.trim()}`
+              : null,
       }, {
         deviceId,
       });
@@ -701,7 +759,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
 
       <div className="w-full flex justify-center">
         <div className="flex flex-col sm:flex-row items-center gap-3">
-          <Button onClick={() => abrirMovimento('devolucao')} variant="outline" className="w-full sm:w-28 h-9 text-xs" disabled={loading}>Devolução</Button>
+          <Button onClick={() => abrirMovimento('devolucao')} variant="outline" className="w-full sm:w-28 h-9 text-xs" disabled={loading} aria-label="Devolução" title="Devolução">↩</Button>
           <div className="flex items-center gap-3 w-full sm:w-auto">
             <Button onClick={() => abrirMovimento('saida')} className="bg-yellow-500 hover:bg-yellow-600 text-white flex-1 sm:w-32" disabled={loading}>Saída</Button>
             <Button onClick={() => abrirMovimento('entrada')} className="bg-green-500 hover:bg-green-600 text-white flex-1 sm:w-32" disabled={loading}>Entrada</Button>
@@ -904,7 +962,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
                 placeholder="Digite ID ou nome do item"
                 className="mb-2"
               />
-              {movementIdSuggestions.length > 0 && (
+              {showMovementSuggestions && (
                 <div className="mt-2 mb-2 bg-white border rounded-md shadow-sm max-w-md">
                   {movementIdSuggestions.map((suggestion) => (
                     <div
@@ -946,14 +1004,24 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
             )}
 
             {movementType === 'saida' && (
-              <div>
-                <label className="block text-sm font-medium mb-1">Nome de quem retirou</label>
-                <Input
-                  value={movementRetiradoPor}
-                  onChange={(e) => setMovementRetiradoPor(e.target.value)}
-                  placeholder="Ex.: João Silva"
-                />
-              </div>
+              <>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Nome do almoxarife</label>
+                  <Input
+                    value={movementAlmoxarifeNome}
+                    onChange={(e) => setMovementAlmoxarifeNome(e.target.value)}
+                    placeholder="Ex.: Carlos Souza"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Nome de quem retirou</label>
+                  <Input
+                    value={movementRetiradoPor}
+                    onChange={(e) => setMovementRetiradoPor(e.target.value)}
+                    placeholder="Ex.: João Silva"
+                  />
+                </div>
+              </>
             )}
 
             <div className="flex justify-end gap-2">

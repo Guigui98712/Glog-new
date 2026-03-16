@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/components/ui/use-toast';
-import { listarItens, searchItems, getItemById, registerMovement, registrarDispositivoAlmoxarife, verificarDispositivoAlmoxarife, validarSessaoDispositivoAlmoxarife, getAlmoxarifadoHistorico, getAlmoxarifadoHistoricoAnos, excluirItemAlmox, listarFerramentasAlmox, criarFerramentaAlmox, retirarFerramentaAlmox, devolverFerramentaAlmox } from '@/lib/api';
+import { listarItens, getItemById, registerMovement, registrarDispositivoAlmoxarife, verificarDispositivoAlmoxarife, validarSessaoDispositivoAlmoxarife, getAlmoxarifadoHistorico, getAlmoxarifadoHistoricoAnos, excluirItemAlmox, listarFerramentasAlmox, criarFerramentaAlmox, retirarFerramentaAlmox, devolverFerramentaAlmox } from '@/lib/api';
 import CadastroItemDialog from '@/components/CadastroItemDialog';
 import { MoreVertical, Trash2 } from 'lucide-react';
 import {
@@ -58,9 +58,8 @@ const getInitialAccessContext = () => {
 
 const getAlmoxarifeNome = (observacao?: string | null) => {
   const obs = String(observacao || '');
-  const prefix = 'almoxarife:';
-  if (!obs.startsWith(prefix)) return '-';
-  const nome = obs.slice(prefix.length).trim();
+  const match = obs.match(/almoxarife:([^;|]+)/i);
+  const nome = String(match?.[1] || '').trim();
   return nome || '-';
 };
 
@@ -394,11 +393,9 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
   const { toast } = useToast();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [query, setQuery] = useState('');
-  const [suggestions, setSuggestions] = useState<any[]>([]);
 
   const [movementOpen, setMovementOpen] = useState(false);
-  const [movementType, setMovementType] = useState<'entrada' | 'saida' | 'devolucao'>('entrada');
+  const [movementType, setMovementType] = useState<'entrada' | 'saida' | 'devolucao' | 'devolucao_empresa'>('entrada');
   const [movementItemId, setMovementItemId] = useState<string>('');
   const [movementItem, setMovementItem] = useState<any>(null);
   const [movementQtd, setMovementQtd] = useState<number>(1);
@@ -533,22 +530,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
     }
   };
 
-  useEffect(() => {
-    let mounted = true;
-    const run = async () => {
-      if (!query || query.trim().length < 1) { setSuggestions([]); return; }
-      try {
-        const res = await searchItems(obraId, query.trim(), { deviceId });
-        if (mounted) setSuggestions(res || []);
-      } catch (e) {
-        console.error(e);
-      }
-    };
-    run();
-    return () => { mounted = false; };
-  }, [query, obraId, deviceId]);
-
-  const abrirMovimento = (type: 'entrada' | 'saida' | 'devolucao') => {
+  const abrirMovimento = (type: 'entrada' | 'saida' | 'devolucao' | 'devolucao_empresa') => {
     setMovementType(type);
     setMovementItemId('');
     setMovementItem(null);
@@ -557,15 +539,6 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
     setMovementEmpresaNome('');
     setMovementRetiradoPor('');
     setMovementAlmoxarifeNome('');
-    setMovementOpen(true);
-  };
-
-  const onPickSuggestion = (it: any) => {
-    setMovementType('entrada');
-    setMovementItemId(it.nome || String(it.id));
-    setMovementItem(it);
-    setSuggestions([]);
-    setQuery('');
     setMovementOpen(true);
   };
 
@@ -614,7 +587,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
       return toast({ title: 'Erro', description: 'Informe uma quantidade maior que zero', variant: 'destructive' });
     }
 
-    if ((movementType === 'saida' || movementType === 'devolucao') && movementItem && movementQtd > Number(movementItem.quantidade || 0)) {
+    if ((movementType === 'saida' || movementType === 'devolucao_empresa') && movementItem && movementQtd > Number(movementItem.quantidade || 0)) {
       return toast({
         title: 'Erro',
         description: 'Quantidade insuficiente em estoque',
@@ -646,6 +619,22 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
       });
     }
 
+    if (movementType === 'devolucao_empresa' && !movementEmpresaNome.trim()) {
+      return toast({
+        title: 'Erro',
+        description: 'Informe o nome da empresa para registrar devolução',
+        variant: 'destructive'
+      });
+    }
+
+    if (movementType === 'devolucao_empresa' && !movementAlmoxarifeNome.trim()) {
+      return toast({
+        title: 'Erro',
+        description: 'Informe o nome do almoxarife responsável pela devolução',
+        variant: 'destructive'
+      });
+    }
+
     setLoading(true);
     try {
       const typedTerm = movementItemId.trim();
@@ -668,17 +657,23 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
         throw new Error('Item não encontrado para esta obra');
       }
 
-      const movementApiType = movementType === 'devolucao' ? 'entrada' : movementType;
+      const movementApiType =
+        movementType === 'devolucao'
+          ? 'entrada'
+          : movementType === 'devolucao_empresa'
+            ? 'saida'
+            : movementType;
 
       await registerMovement(obraId, resolvedItemId, movementApiType, movementQtd, {
-        numero_pedido: movementType === 'entrada' ? movementNumeroPedido : null,
-        empresa_nome: movementType === 'entrada' ? movementEmpresaNome : null,
-        retirado_por: movementType === 'saida' ? movementRetiradoPor : null,
+        numero_pedido: movementType === 'entrada' || movementType === 'devolucao_empresa' ? movementNumeroPedido : null,
+        empresa_nome: movementType === 'entrada' || movementType === 'devolucao_empresa' ? movementEmpresaNome : null,
+        retirado_por: movementType === 'saida' || movementType === 'devolucao_empresa' ? movementRetiradoPor : null,
         observacao:
           movementType === 'devolucao'
             ? 'devolucao'
             : movementType === 'saida'
               ? `almoxarife:${movementAlmoxarifeNome.trim()}`
+              : `devolucao_empresa;almoxarife:${movementAlmoxarifeNome.trim()}`
               : null,
       }, {
         deviceId,
@@ -765,37 +760,32 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
         </div>
       </div>
 
-      <div className="w-full flex justify-center">
-        <div className="flex flex-col sm:flex-row items-center gap-3">
+      <div className="w-full flex justify-end">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           <Button
             onClick={() => abrirMovimento('devolucao')}
-            variant="outline"
-            className="h-8 w-10 text-lg font-semibold text-black border-black hover:text-black"
+            variant="ghost"
+            className="h-8 w-8 rounded-md border border-black bg-white p-0 text-lg font-semibold !text-black hover:bg-gray-100 hover:!text-black"
             disabled={loading}
-            aria-label="Devolução"
-            title="Devolução"
+            aria-label="Retornar ao estoque"
+            title="Retornar ao estoque"
           >
             ↩
           </Button>
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            <Button onClick={() => abrirMovimento('saida')} className="bg-yellow-500 hover:bg-yellow-600 text-white flex-1 sm:w-32" disabled={loading}>Saída</Button>
-            <Button onClick={() => abrirMovimento('entrada')} className="bg-green-500 hover:bg-green-600 text-white flex-1 sm:w-32" disabled={loading}>Entrada</Button>
-          </div>
+          <Button
+            onClick={() => abrirMovimento('devolucao_empresa')}
+            variant="ghost"
+            className="h-8 w-8 rounded-md border border-black bg-white p-0 text-lg font-semibold !text-black hover:bg-gray-100 hover:!text-black"
+            disabled={loading}
+            aria-label="Devolver para empresa"
+            title="Devolver para empresa"
+          >
+            ↪
+          </Button>
+          <Button onClick={() => abrirMovimento('saida')} className="bg-yellow-500 hover:bg-yellow-600 text-white sm:w-32" disabled={loading}>Saída</Button>
+          <Button onClick={() => abrirMovimento('entrada')} className="bg-green-500 hover:bg-green-600 text-white sm:w-32" disabled={loading}>Entrada</Button>
         </div>
       </div>
-
-      <Card className="p-4">
-        <div className="flex gap-2 items-center">
-          <Input placeholder="Pesquisar itens" value={query} onChange={(e) => setQuery(e.target.value)} className="w-full md:w-96" />
-        </div>
-        {suggestions.length > 0 && (
-          <div className="mt-2 bg-white border rounded-md shadow-sm max-w-md">
-            {suggestions.map(s => (
-              <div key={s.id} className="p-2 hover:bg-gray-50 cursor-pointer" onClick={() => onPickSuggestion(s)}>{s.nome}</div>
-            ))}
-          </div>
-        )}
-      </Card>
 
       <Card className="p-4">
         <h2 className="font-semibold mb-3">Lista de materiais</h2>
@@ -888,8 +878,8 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
                           {mov.item_nome}
                           {mov.item_excluido ? ' (item excluído)' : ''}
                         </TableCell>
-                        <TableCell className={mov.observacao === 'item_excluido' ? 'text-red-600 font-semibold' : (mov.observacao === 'entrada_inicial' ? 'text-cyan-700 font-semibold' : (mov.observacao === 'devolucao' ? 'text-blue-600 font-semibold' : (mov.tipo === 'entrada' ? 'text-green-600 font-semibold' : 'text-yellow-600 font-semibold')))}>
-                          {mov.observacao === 'item_excluido' ? 'Excluído' : (mov.observacao === 'entrada_inicial' ? 'Cadastro' : (mov.observacao === 'devolucao' ? '↩ Devolução' : (mov.tipo === 'entrada' ? '↓ Entrada' : '↑ Saída')))}
+                        <TableCell className={mov.observacao === 'item_excluido' ? 'text-red-600 font-semibold' : (mov.observacao === 'entrada_inicial' ? 'text-cyan-700 font-semibold' : (String(mov.observacao || '').includes('devolucao_empresa') ? 'text-orange-600 font-semibold' : (mov.observacao === 'devolucao' ? 'text-blue-600 font-semibold' : (mov.tipo === 'entrada' ? 'text-green-600 font-semibold' : 'text-yellow-600 font-semibold'))))}>
+                          {mov.observacao === 'item_excluido' ? 'Excluído' : (mov.observacao === 'entrada_inicial' ? 'Cadastro' : (String(mov.observacao || '').includes('devolucao_empresa') ? '↪ Devolução Empresa' : (mov.observacao === 'devolucao' ? '↩ Devolução' : (mov.tipo === 'entrada' ? '↓ Entrada' : '↑ Saída'))))}
                         </TableCell>
                         <TableCell>{mov.quantidade}</TableCell>
                         <TableCell>{mov.numero_pedido || '-'}</TableCell>
@@ -970,7 +960,15 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
       <Dialog open={movementOpen} onOpenChange={setMovementOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{movementType === 'entrada' ? 'Registrar entrada' : movementType === 'saida' ? 'Registrar saída' : 'Registrar devolução'}</DialogTitle>
+            <DialogTitle>
+              {movementType === 'entrada'
+                ? 'Registrar entrada'
+                : movementType === 'saida'
+                  ? 'Registrar saída'
+                  : movementType === 'devolucao_empresa'
+                    ? 'Registrar devolução para empresa'
+                    : 'Registrar retorno ao estoque'}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>
@@ -1001,7 +999,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
               <Input type="number" value={movementQtd.toString()} onChange={(e) => setMovementQtd(Number(e.target.value || 0))} />
             </div>
 
-            {movementType === 'entrada' && (
+            {(movementType === 'entrada' || movementType === 'devolucao_empresa') && (
               <>
                 <div>
                   <label className="block text-sm font-medium mb-1">Número do pedido</label>
@@ -1022,7 +1020,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
               </>
             )}
 
-            {movementType === 'saida' && (
+            {(movementType === 'saida' || movementType === 'devolucao_empresa') && (
               <>
                 <div>
                   <label className="block text-sm font-medium mb-1">Nome do almoxarife</label>
@@ -1033,11 +1031,11 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Nome de quem retirou</label>
+                  <label className="block text-sm font-medium mb-1">{movementType === 'devolucao_empresa' ? 'Nome de quem levou para devolução' : 'Nome de quem retirou'}</label>
                   <Input
                     value={movementRetiradoPor}
                     onChange={(e) => setMovementRetiradoPor(e.target.value)}
-                    placeholder="Ex.: João Silva"
+                    placeholder={movementType === 'devolucao_empresa' ? 'Ex.: Motorista da empresa' : 'Ex.: João Silva'}
                   />
                 </div>
               </>

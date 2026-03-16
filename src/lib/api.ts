@@ -2439,7 +2439,15 @@ export const registrarDispositivoAlmoxarife = async (code: string, deviceName: s
       p_device_name: deviceName,
       p_password: password
     });
-    if (error) throw error;
+    if (error) {
+      if (error.code === 'PGRST202') {
+        throw new Error('Função register_almox_device não encontrada no banco de produção.');
+      }
+      if (error.code === '42501') {
+        throw new Error('Sem permissão para registrar dispositivo. Verifique a migration de SECURITY DEFINER.');
+      }
+      throw error;
+    }
 
     const row: any = Array.isArray(data) ? data[0] : data;
     if (!row) {
@@ -2470,7 +2478,15 @@ export const verificarDispositivoAlmoxarife = async (obraId: number, deviceName:
       p_device_name: deviceName,
       p_password: password
     });
-    if (error) throw error;
+    if (error) {
+      if (error.code === 'PGRST202') {
+        throw new Error('Função verify_almox_device não encontrada no banco de produção.');
+      }
+      if (error.code === '42501') {
+        throw new Error('Sem permissão para autenticar dispositivo. Verifique a migration de SECURITY DEFINER.');
+      }
+      throw error;
+    }
 
     const row: any = Array.isArray(data) ? data[0] : data;
     if (!row) {

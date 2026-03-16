@@ -432,6 +432,20 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
     });
   }, [items, itemsEditorQuery]);
 
+  const movementIdSuggestions = useMemo(() => {
+    const term = movementItemId.trim().toLowerCase();
+    if (!term) return [];
+
+    return items
+      .filter((it) => {
+        const idText = String(it.id ?? '').toLowerCase();
+        const nome = String(it.nome || '').toLowerCase();
+        const categoria = String(it.categoria || '').toLowerCase();
+        return idText.includes(term) || nome.includes(term) || categoria.includes(term);
+      })
+      .slice(0, 10);
+  }, [items, movementItemId]);
+
   useEffect(() => { carregar(); }, [obraId, deviceId]);
 
   const carregar = async () => {
@@ -511,19 +525,37 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
 
   const onItemIdChange = async (val: string) => {
     setMovementItemId(val);
-    if (!val) { setMovementItem(null); return; }
-    const idNum = Number(val);
-    if (!isNaN(idNum)) {
+    const trimmedValue = val.trim();
+    if (!trimmedValue) {
+      setMovementItem(null);
+      return;
+    }
+
+    const localMatch = items.find((it) => String(it.id) === trimmedValue);
+    if (localMatch) {
+      setMovementItem(localMatch);
+      if (!movementQuery) {
+        setMovementQuery(localMatch.nome || '');
+      }
+      return;
+    }
+
+    const idNum = Number(trimmedValue);
+    if (!Number.isNaN(idNum)) {
       try {
         const it = await getItemById(obraId, idNum, { deviceId });
         setMovementItem(it || null);
+        if (it && !movementQuery) {
+          setMovementQuery(it.nome || '');
+        }
       } catch (e) {
         console.error(e);
         setMovementItem(null);
       }
-    } else {
-      setMovementItem(null);
+      return;
     }
+
+    setMovementItem(null);
   };
 
   const submitMovement = async () => {
@@ -559,14 +591,21 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
 
     setLoading(true);
     try {
-      const resolvedItem = movementItem ?? await getItemById(obraId, Number(movementItemId), { deviceId });
+      const resolvedItemId = Number(movementItem?.id ?? movementItemId.trim());
+      if (!Number.isFinite(resolvedItemId)) {
+        throw new Error('Selecione um item válido');
+      }
+
+      const resolvedItem = movementItem
+        ?? items.find((it) => Number(it.id) === resolvedItemId)
+        ?? await getItemById(obraId, resolvedItemId, { deviceId });
       if (!resolvedItem) {
         throw new Error('Item não encontrado para esta obra');
       }
 
       const movementApiType = movementType === 'devolucao' ? 'entrada' : movementType;
 
-      await registerMovement(obraId, Number(movementItemId), movementApiType, movementQtd, {
+      await registerMovement(obraId, resolvedItemId, movementApiType, movementQtd, {
         numero_pedido: movementType === 'entrada' ? movementNumeroPedido : null,
         empresa_nome: movementType === 'entrada' ? movementEmpresaNome : null,
         retirado_por: movementType === 'saida' ? movementRetiradoPor : null,
@@ -574,6 +613,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
       }, {
         deviceId,
       });
+      setMovementItemId(String(resolvedItemId));
       setMovementItem(resolvedItem);
       toast({ title: 'Registrado', description: 'Movimento registrado com sucesso' });
       setMovementOpen(false);
@@ -855,6 +895,19 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
             <div>
               <label className="block text-sm font-medium mb-1">ID ou Nome do item</label>
               <Input value={movementItemId} onChange={(e) => onItemIdChange(e.target.value)} placeholder="Digite o ID" className="mb-2" />
+              {movementIdSuggestions.length > 0 && (
+                <div className="mt-2 mb-2 bg-white border rounded-md shadow-sm max-w-md">
+                  {movementIdSuggestions.map((suggestion) => (
+                    <div
+                      key={`id-${suggestion.id}`}
+                      className="p-2 hover:bg-gray-50 cursor-pointer"
+                      onClick={() => onPickMovementSuggestion(suggestion)}
+                    >
+                      {suggestion.id} - {suggestion.nome}
+                    </div>
+                  ))}
+                </div>
+              )}
               <Input value={movementQuery} onChange={(e) => setMovementQuery(e.target.value)} placeholder="Ou comece a digitar o nome..." />
               {movementSuggestions.length > 0 && (
                 <div className="mt-2 bg-white border rounded-md shadow-sm max-w-md">

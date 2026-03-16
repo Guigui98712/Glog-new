@@ -1662,7 +1662,7 @@ export const listarItens = async (obraId: number, options?: { deviceId?: string 
       });
       if (error) {
         if (error.code === 'PGRST202') {
-          throw new Error('Função list_almox_items_by_device não encontrada. Aplique a migration 20260316_fix_almox_public_item_read_by_device.sql no banco.');
+          throw new Error('Função list_almox_items_by_device não encontrada. Aplique a migration 20260316_harden_almox_public_device_rpcs.sql no banco.');
         }
         throw error;
       }
@@ -1696,7 +1696,7 @@ export const searchItems = async (obraId: number, q: string, options?: { deviceI
       });
       if (error) {
         if (error.code === 'PGRST202') {
-          throw new Error('Função search_almox_items_by_device não encontrada. Aplique a migration 20260316_fix_almox_public_item_read_by_device.sql no banco.');
+          throw new Error('Função search_almox_items_by_device não encontrada. Aplique a migration 20260316_harden_almox_public_device_rpcs.sql no banco.');
         }
         throw error;
       }
@@ -1730,7 +1730,7 @@ export const getItemById = async (obraId: number, id: number, options?: { device
       });
       if (error) {
         if (error.code === 'PGRST202') {
-          throw new Error('Função get_almox_item_by_device não encontrada. Aplique a migration 20260316_fix_almox_public_item_read_by_device.sql no banco.');
+          throw new Error('Função get_almox_item_by_device não encontrada. Aplique a migration 20260316_harden_almox_public_device_rpcs.sql no banco.');
         }
         throw error;
       }
@@ -1777,7 +1777,7 @@ export const createItem = async (
 
       if (rpcError) {
         if (rpcError.code === 'PGRST202') {
-          throw new Error('Função de cadastro do almoxarife não encontrada. Aplique a migration create_almox_item_by_device no banco.');
+          throw new Error('Função de cadastro do almoxarife não encontrada. Aplique a migration 20260316_harden_almox_public_device_rpcs.sql no banco.');
         }
         if (rpcError.code === '42501') {
           throw new Error('Sem permissão para cadastrar item pelo almoxarife (RLS). Aplique as migrations de segurança do almox.');
@@ -1838,13 +1838,40 @@ export const registerMovement = async (
   itemId: number,
   type: 'entrada' | 'saida',
   quantidade: number,
-  metadata?: AlmoxMovementMetadata
+  metadata?: AlmoxMovementMetadata,
+  options?: { deviceId?: string | number | null }
 ) => {
   if (DISABLE_GOOGLE_APIS) return null;
   try {
     const normalizedQuantidade = Number(quantidade);
     if (!Number.isFinite(normalizedQuantidade) || normalizedQuantidade <= 0) {
       throw new Error('Informe uma quantidade valida maior que zero');
+    }
+
+    if (options?.deviceId) {
+      const { data, error } = await supabase.rpc('register_almox_movement_by_device', {
+        p_obra_id: obraId,
+        p_device_id: String(options.deviceId),
+        p_item_id: itemId,
+        p_tipo: type,
+        p_quantidade: normalizedQuantidade,
+        p_numero_pedido: metadata?.numero_pedido?.trim() || null,
+        p_empresa_nome: metadata?.empresa_nome?.trim() || null,
+        p_retirado_por: metadata?.retirado_por?.trim() || null,
+        p_observacao: metadata?.observacao?.trim() || null,
+      });
+
+      if (error) {
+        if (error.code === 'PGRST202') {
+          throw new Error('Função register_almox_movement_by_device não encontrada. Aplique a migration 20260316_harden_almox_public_device_rpcs.sql no banco.');
+        }
+        if (error.message) {
+          throw new Error(error.message);
+        }
+        throw error;
+      }
+
+      return Array.isArray(data) ? data[0] || null : data;
     }
 
     const { data: itemAtual, error: itemErr } = await supabase
@@ -1938,9 +1965,24 @@ export const registerMovement = async (
   }
 };
 
-export const getAlmoxarifadoHistorico = async (obraId: number, year?: number) => {
+export const getAlmoxarifadoHistorico = async (obraId: number, year?: number, options?: { deviceId?: string | number | null }) => {
   if (DISABLE_GOOGLE_APIS) return [];
   try {
+    if (options?.deviceId) {
+      const { data, error } = await supabase.rpc('get_almox_history_by_device', {
+        p_obra_id: obraId,
+        p_device_id: String(options.deviceId),
+        p_year: year ?? null,
+      });
+      if (error) {
+        if (error.code === 'PGRST202') {
+          throw new Error('Função get_almox_history_by_device não encontrada. Aplique a migration 20260316_harden_almox_public_device_rpcs.sql no banco.');
+        }
+        throw error;
+      }
+      return data || [];
+    }
+
     let query = supabase
       .from('almox_movements')
       .select(`
@@ -2026,10 +2068,30 @@ export const getAlmoxarifadoHistorico = async (obraId: number, year?: number) =>
   }
 };
 
-export const excluirItemAlmox = async (itemId: number) => {
+export const excluirItemAlmox = async (itemId: number, options?: { obraId?: number | null; deviceId?: string | number | null }) => {
   if (DISABLE_GOOGLE_APIS) return null;
 
   try {
+    if (options?.obraId && options?.deviceId) {
+      const { data, error } = await supabase.rpc('delete_almox_item_by_device', {
+        p_obra_id: options.obraId,
+        p_device_id: String(options.deviceId),
+        p_item_id: itemId,
+      });
+
+      if (error) {
+        if (error.code === 'PGRST202') {
+          throw new Error('Função delete_almox_item_by_device não encontrada. Aplique a migration 20260316_harden_almox_public_device_rpcs.sql no banco.');
+        }
+        if (error.message) {
+          throw new Error(error.message);
+        }
+        throw error;
+      }
+
+      return Array.isArray(data) ? data[0] || null : data;
+    }
+
     const { data: itemAtual, error: itemAtualError } = await supabase
       .from('almox_items')
       .select('id, obra_id, quantidade, nome, is_deleted')
@@ -2079,10 +2141,27 @@ export const excluirItemAlmox = async (itemId: number) => {
   }
 };
 
-export const getAlmoxarifadoHistoricoAnos = async (obraId: number) => {
+export const getAlmoxarifadoHistoricoAnos = async (obraId: number, options?: { deviceId?: string | number | null }) => {
   if (DISABLE_GOOGLE_APIS) return [];
 
   try {
+    if (options?.deviceId) {
+      const { data, error } = await supabase.rpc('get_almox_history_years_by_device', {
+        p_obra_id: obraId,
+        p_device_id: String(options.deviceId),
+      });
+      if (error) {
+        if (error.code === 'PGRST202') {
+          throw new Error('Função get_almox_history_years_by_device não encontrada. Aplique a migration 20260316_harden_almox_public_device_rpcs.sql no banco.');
+        }
+        throw error;
+      }
+      return (data || [])
+        .map((row: any) => Number(row?.year))
+        .filter((value: number) => Number.isFinite(value))
+        .sort((a: number, b: number) => b - a);
+    }
+
     const years = new Set<number>();
     const pageSize = 1000;
     let from = 0;
@@ -2552,6 +2631,28 @@ export const verificarDispositivoAlmoxarife = async (obraId: number, deviceName:
     return row;
   } catch (err) {
     console.error('Erro verificarDispositivoAlmoxarife', err);
+    throw err;
+  }
+};
+
+export const validarSessaoDispositivoAlmoxarife = async (obraId: number, deviceId: string | number) => {
+  if (DISABLE_GOOGLE_APIS) return null;
+  try {
+    const { data, error } = await supabase.rpc('check_almox_device_session', {
+      p_obra_id: obraId,
+      p_device_id: String(deviceId),
+    });
+    if (error) {
+      if (error.code === 'PGRST202') {
+        throw new Error('Função check_almox_device_session não encontrada. Aplique a migration 20260316_harden_almox_public_device_rpcs.sql no banco.');
+      }
+      throw error;
+    }
+
+    const row: any = Array.isArray(data) ? data[0] : data;
+    return row || { is_valid: false, active: false };
+  } catch (err) {
+    console.error('Erro validarSessaoDispositivoAlmoxarife', err);
     throw err;
   }
 };

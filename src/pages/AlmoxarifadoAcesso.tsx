@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/components/ui/use-toast';
-import { listarItens, searchItems, getItemById, registerMovement, registrarDispositivoAlmoxarife, verificarDispositivoAlmoxarife, getAlmoxarifadoHistorico, getAlmoxarifadoHistoricoAnos, excluirItemAlmox, listarFerramentasAlmox, criarFerramentaAlmox, retirarFerramentaAlmox, devolverFerramentaAlmox } from '@/lib/api';
+import { listarItens, searchItems, getItemById, registerMovement, registrarDispositivoAlmoxarife, verificarDispositivoAlmoxarife, validarSessaoDispositivoAlmoxarife, getAlmoxarifadoHistorico, getAlmoxarifadoHistoricoAnos, excluirItemAlmox, listarFerramentasAlmox, criarFerramentaAlmox, retirarFerramentaAlmox, devolverFerramentaAlmox } from '@/lib/api';
 import CadastroItemDialog from '@/components/CadastroItemDialog';
 import { MoreVertical, Trash2 } from 'lucide-react';
 import {
@@ -76,21 +76,26 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
     localStorage.setItem(deviceStorageKey, JSON.stringify(info));
   };
 
+  const clearDeviceInfo = () => {
+    localStorage.removeItem(deviceStorageKey);
+    setDeviceInfo(null);
+    setAuthenticated(false);
+    setMode('register');
+    setPassword('');
+    setPasswordConfirm('');
+  };
+
   useEffect(() => {
     const raw = localStorage.getItem(deviceStorageKey);
     if (!raw) {
-      setDeviceInfo(null);
-      setAuthenticated(false);
-      setMode('register');
+      clearDeviceInfo();
       return;
     }
 
     try {
       const parsed: AlmoxDeviceInfo = JSON.parse(raw);
       if (targetObraId && Number(parsed.obraId) !== targetObraId) {
-        setDeviceInfo(null);
-        setAuthenticated(false);
-        setMode('register');
+        clearDeviceInfo();
         return;
       }
 
@@ -107,12 +112,54 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
         setAuthenticated(false);
       }
     } catch {
-      localStorage.removeItem(deviceStorageKey);
-      setDeviceInfo(null);
-      setAuthenticated(false);
-      setMode('register');
+      clearDeviceInfo();
     }
   }, [deviceStorageKey, targetObraId]);
+
+  useEffect(() => {
+    if (!authenticated || !deviceInfo?.deviceId || !deviceInfo?.obraId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const checkSession = async (showToastOnRevoke = false) => {
+      try {
+        const session: any = await validarSessaoDispositivoAlmoxarife(deviceInfo.obraId, deviceInfo.deviceId);
+        if (cancelled) {
+          return;
+        }
+
+        if (!session?.is_valid || session?.active === false) {
+          clearDeviceInfo();
+          if (showToastOnRevoke) {
+            toast({ title: 'Acesso revogado', description: 'Este dispositivo foi deslogado porque o acesso foi revogado.', variant: 'destructive' });
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao validar sessão do almoxarife:', error);
+      }
+    };
+
+    const intervalId = window.setInterval(() => {
+      void checkSession(true);
+    }, 30000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void checkSession(true);
+      }
+    };
+
+    void checkSession(false);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [authenticated, deviceInfo?.deviceId, deviceInfo?.obraId, deviceStorageKey, toast]);
 
   const handleRegistrar = async () => {
     if (!code.trim()) {
@@ -241,9 +288,7 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
   };
 
   const handleRemoverDispositivo = () => {
-    localStorage.removeItem(deviceStorageKey);
-    setDeviceInfo(null);
-    setMode('register');
+    clearDeviceInfo();
     setDeviceName('');
     setPassword('');
     setPasswordConfirm('');
@@ -387,7 +432,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
     });
   }, [items, itemsEditorQuery]);
 
-  useEffect(() => { carregar(); }, [obraId]);
+  useEffect(() => { carregar(); }, [obraId, deviceId]);
 
   const carregar = async () => {
     if (!obraId) return;
@@ -416,7 +461,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
     };
     run();
     return () => { mounted = false; };
-  }, [query, obraId]);
+  }, [query, obraId, deviceId]);
 
   useEffect(() => {
     let mounted = true;
@@ -431,7 +476,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
     };
     run();
     return () => { mounted = false; };
-  }, [movementQuery, obraId]);
+  }, [movementQuery, obraId, deviceId]);
 
   const abrirMovimento = (type: 'entrada' | 'saida' | 'devolucao') => {
     setMovementType(type);
@@ -514,6 +559,11 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
 
     setLoading(true);
     try {
+      const resolvedItem = movementItem ?? await getItemById(obraId, Number(movementItemId), { deviceId });
+      if (!resolvedItem) {
+        throw new Error('Item não encontrado para esta obra');
+      }
+
       const movementApiType = movementType === 'devolucao' ? 'entrada' : movementType;
 
       await registerMovement(obraId, Number(movementItemId), movementApiType, movementQtd, {
@@ -521,7 +571,10 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
         empresa_nome: movementType === 'entrada' ? movementEmpresaNome : null,
         retirado_por: movementType === 'saida' ? movementRetiradoPor : null,
         observacao: movementType === 'devolucao' ? 'devolucao' : null,
+      }, {
+        deviceId,
       });
+      setMovementItem(resolvedItem);
       toast({ title: 'Registrado', description: 'Movimento registrado com sucesso' });
       setMovementOpen(false);
       await carregar();
@@ -541,7 +594,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
     setHistoryYear(currentYear);
     setHistoryLoading(true);
     try {
-      const anos = await getAlmoxarifadoHistoricoAnos(obraId);
+      const anos = await getAlmoxarifadoHistoricoAnos(obraId, { deviceId });
       setHistoryYears(anos || []);
     } catch (e) {
       console.error('Erro ao carregar histórico:', e);
@@ -558,7 +611,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
     const load = async () => {
       setHistoryLoading(true);
       try {
-        const data = await getAlmoxarifadoHistorico(obraId, historyYear);
+        const data = await getAlmoxarifadoHistorico(obraId, historyYear, { deviceId });
         if (mounted) setHistory(data || []);
       } catch (e) {
         console.error('Erro ao carregar histórico:', e);
@@ -574,13 +627,13 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
     return () => {
       mounted = false;
     };
-  }, [showHistory, obraId, historyYear, toast]);
+  }, [showHistory, obraId, historyYear, deviceId, toast]);
 
   const excluirItem = async (itemId: number) => {
     if (!confirm('Tem certeza que deseja excluir este item?')) return;
 
     try {
-      await excluirItemAlmox(itemId);
+      await excluirItemAlmox(itemId, { obraId, deviceId });
       toast({ title: 'Sucesso', description: 'Item excluído com sucesso' });
       await carregar();
     } catch (e) {

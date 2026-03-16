@@ -56,6 +56,14 @@ const getInitialAccessContext = () => {
   };
 };
 
+const getAlmoxarifeNome = (observacao?: string | null) => {
+  const obs = String(observacao || '');
+  const prefix = 'almoxarife:';
+  if (!obs.startsWith(prefix)) return '-';
+  const nome = obs.slice(prefix.length).trim();
+  return nome || '-';
+};
+
 export default function AlmoxarifadoAcesso(): JSX.Element {
   const initialContext = getInitialAccessContext();
   const { toast } = useToast();
@@ -759,7 +767,16 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
 
       <div className="w-full flex justify-center">
         <div className="flex flex-col sm:flex-row items-center gap-3">
-          <Button onClick={() => abrirMovimento('devolucao')} variant="outline" className="w-full sm:w-28 h-9 text-xs" disabled={loading} aria-label="Devolução" title="Devolução">↩</Button>
+          <Button
+            onClick={() => abrirMovimento('devolucao')}
+            variant="outline"
+            className="h-8 w-10 text-lg font-semibold text-black border-black hover:text-black"
+            disabled={loading}
+            aria-label="Devolução"
+            title="Devolução"
+          >
+            ↩
+          </Button>
           <div className="flex items-center gap-3 w-full sm:w-auto">
             <Button onClick={() => abrirMovimento('saida')} className="bg-yellow-500 hover:bg-yellow-600 text-white flex-1 sm:w-32" disabled={loading}>Saída</Button>
             <Button onClick={() => abrirMovimento('entrada')} className="bg-green-500 hover:bg-green-600 text-white flex-1 sm:w-32" disabled={loading}>Entrada</Button>
@@ -859,6 +876,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
                       <TableHead>Quantidade</TableHead>
                       <TableHead>Nº Pedido</TableHead>
                       <TableHead>Empresa</TableHead>
+                      <TableHead>Almoxarife</TableHead>
                       <TableHead>Retirado por</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -876,6 +894,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
                         <TableCell>{mov.quantidade}</TableCell>
                         <TableCell>{mov.numero_pedido || '-'}</TableCell>
                         <TableCell>{mov.empresa_nome || '-'}</TableCell>
+                        <TableCell>{getAlmoxarifeNome(mov.observacao)}</TableCell>
                         <TableCell>{mov.retirado_por || '-'}</TableCell>
                       </TableRow>
                     ))}

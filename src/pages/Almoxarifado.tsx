@@ -17,6 +17,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
+const getAlmoxarifeNome = (observacao?: string | null) => {
+  const obs = String(observacao || '');
+  const prefix = 'almoxarife:';
+  if (!obs.startsWith(prefix)) return '-';
+  const nome = obs.slice(prefix.length).trim();
+  return nome || '-';
+};
+
 const Almoxarifado: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -41,6 +49,7 @@ const Almoxarifado: React.FC = () => {
   const [movementSuggestions, setMovementSuggestions] = useState<any[]>([]);
   const [movementNumeroPedido, setMovementNumeroPedido] = useState('');
   const [movementEmpresaNome, setMovementEmpresaNome] = useState('');
+  const [movementAlmoxarifeNome, setMovementAlmoxarifeNome] = useState('');
   const [movementRetiradoPor, setMovementRetiradoPor] = useState('');
 
   // History modal
@@ -157,6 +166,7 @@ const Almoxarifado: React.FC = () => {
     setMovementSuggestions([]);
     setMovementNumeroPedido('');
     setMovementEmpresaNome('');
+    setMovementAlmoxarifeNome('');
     setMovementRetiradoPor('');
     setMovementOpen(true);
   };
@@ -252,6 +262,14 @@ const Almoxarifado: React.FC = () => {
       });
     }
 
+    if (movementType === 'saida' && !movementAlmoxarifeNome.trim()) {
+      return toast({
+        title: 'Erro',
+        description: 'Informe o nome do almoxarife responsável pela saída',
+        variant: 'destructive'
+      });
+    }
+
     setLoading(true);
     try {
       const resolvedItemId = Number(movementItem?.id ?? movementItemId.trim());
@@ -272,7 +290,12 @@ const Almoxarifado: React.FC = () => {
         numero_pedido: movementType === 'entrada' ? movementNumeroPedido : null,
         empresa_nome: movementType === 'entrada' ? movementEmpresaNome : null,
         retirado_por: movementType === 'saida' ? movementRetiradoPor : null,
-        observacao: movementType === 'devolucao' ? 'devolucao' : null,
+        observacao:
+          movementType === 'devolucao'
+            ? 'devolucao'
+            : movementType === 'saida'
+              ? `almoxarife:${movementAlmoxarifeNome.trim()}`
+              : null,
       });
       setMovementItemId(String(resolvedItemId));
       setMovementItem(resolvedItem);
@@ -478,7 +501,15 @@ const Almoxarifado: React.FC = () => {
 
       <div className="w-full flex justify-center">
         <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-          <Button onClick={() => abrirMovimento('devolucao')} variant="outline" className="w-full sm:w-28 h-9 text-xs">Devolução</Button>
+          <Button
+            onClick={() => abrirMovimento('devolucao')}
+            variant="outline"
+            className="h-8 w-10 text-lg font-semibold text-black border-black hover:text-black"
+            aria-label="Devolução"
+            title="Devolução"
+          >
+            ↩
+          </Button>
           <div className="flex items-center gap-3 w-full sm:w-auto">
             <Button onClick={() => abrirMovimento('saida')} className="bg-yellow-500 hover:bg-yellow-600 text-white flex-1 sm:w-40">Saída</Button>
             <Button onClick={() => abrirMovimento('entrada')} className="bg-green-500 hover:bg-green-600 text-white flex-1 sm:w-40">Entrada</Button>
@@ -713,6 +744,7 @@ const Almoxarifado: React.FC = () => {
                           <TableHead>Quantidade</TableHead>
                           <TableHead>Nº Pedido</TableHead>
                           <TableHead>Empresa</TableHead>
+                          <TableHead>Almoxarife</TableHead>
                           <TableHead>Retirado por</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -730,6 +762,7 @@ const Almoxarifado: React.FC = () => {
                             <TableCell>{mov.quantidade}</TableCell>
                             <TableCell>{mov.numero_pedido || '-'}</TableCell>
                             <TableCell>{mov.empresa_nome || '-'}</TableCell>
+                            <TableCell>{getAlmoxarifeNome(mov.observacao)}</TableCell>
                             <TableCell>{mov.retirado_por || '-'}</TableCell>
                           </TableRow>
                         ))}
@@ -863,14 +896,24 @@ const Almoxarifado: React.FC = () => {
             )}
 
             {movementType === 'saida' && (
-              <div>
-                <label className="block text-sm font-medium mb-1">Nome de quem retirou</label>
-                <Input
-                  value={movementRetiradoPor}
-                  onChange={(e) => setMovementRetiradoPor(e.target.value)}
-                  placeholder="Ex.: João Silva"
-                />
-              </div>
+              <>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Nome do almoxarife</label>
+                  <Input
+                    value={movementAlmoxarifeNome}
+                    onChange={(e) => setMovementAlmoxarifeNome(e.target.value)}
+                    placeholder="Ex.: Carlos Souza"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Nome de quem retirou</label>
+                  <Input
+                    value={movementRetiradoPor}
+                    onChange={(e) => setMovementRetiradoPor(e.target.value)}
+                    placeholder="Ex.: João Silva"
+                  />
+                </div>
+              </>
             )}
 
             <div className="flex justify-end gap-2">

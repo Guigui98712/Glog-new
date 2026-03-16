@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { buscarObra } from '@/lib/api';
 import { DemandaItem } from '@/types/demanda';
 import { toast } from 'sonner';
 import ImageCacheService from './ImageCacheService';
@@ -31,20 +32,16 @@ class DemandaService {
       console.log('[DEBUG] DemandaService - Iniciando carregamento de demandas para obra:', obraId);
       this.loadingState.set(obraId, true);
 
-      // Carregar nome da obra
-      console.log('[DEBUG] DemandaService - Buscando dados da obra');
-      const { data: obra, error: obraError } = await supabase
-        .from('obras')
-        .select('nome')
-        .eq('id', obraId)
-        .single();
-
-      if (obraError) {
-        console.error('[DEBUG] DemandaService - Erro ao buscar obra:', obraError);
-        throw new Error('Erro ao carregar obra: ' + obraError.message);
+      // Carregar nome da obra com fallback para compartilhadas.
+      let obraNome = `Obra ${obraId}`;
+      try {
+        console.log('[DEBUG] DemandaService - Buscando dados da obra');
+        const obra: any = await buscarObra(obraId);
+        obraNome = String(obra?.nome || obra?.obra_nome || obraNome);
+        console.log('[DEBUG] DemandaService - Obra encontrada:', obraNome);
+      } catch (obraLookupError) {
+        console.warn('[DEBUG] DemandaService - Falha ao buscar nome da obra, usando fallback:', obraLookupError);
       }
-
-      console.log('[DEBUG] DemandaService - Obra encontrada:', obra);
 
       // Carregar itens de demanda
       console.log('[DEBUG] DemandaService - Buscando itens de demanda');
@@ -102,7 +99,7 @@ class DemandaService {
 
       return {
         items: itensConvertidos,
-        obraNome: obra.nome
+        obraNome
       };
 
     } catch (error) {

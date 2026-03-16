@@ -129,15 +129,11 @@ const PendenciasObra = () => {
   const { data: obra, isLoading: obraLoading, error: obraError } = useQuery({
     queryKey: ['obra', id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('obras')
-        .select('*')
-        .eq('id', id)
-        .single();
-        
-      if (error) throw error;
+      if (!id) throw new Error('Obra não encontrada');
+
+      const data = await buscarObra(Number(id));
       if (!data) throw new Error('Obra não encontrada');
-      
+
       return data;
     },
     staleTime: 1000 * 60 * 10, // 10 minutos

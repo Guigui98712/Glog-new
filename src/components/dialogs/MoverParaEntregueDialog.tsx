@@ -217,14 +217,6 @@ export function MoverParaEntregueDialog({
         return;
       }
 
-      const { data: obra, error: obraError } = await supabase
-        .from('obras')
-        .select('nome, responsavel')
-        .eq('id', item.obra_id)
-        .single();
-
-      if (obraError) throw obraError;
-
       // Array para armazenar os nomes dos arquivos
       let notasFiscais: string[] = [];
 

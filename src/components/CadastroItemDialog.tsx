@@ -22,9 +22,10 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   onCreated?: () => void;
   obraId: number;
+  deviceId?: number | null;
 };
 
-const CadastroItemDialog: React.FC<Props> = ({ open, onOpenChange, onCreated, obraId }) => {
+const CadastroItemDialog: React.FC<Props> = ({ open, onOpenChange, onCreated, obraId, deviceId }) => {
   const [nome, setNome] = useState('');
   const [unidade, setUnidade] = useState('un');
   const [categoria, setCategoria] = useState('');
@@ -36,7 +37,10 @@ const CadastroItemDialog: React.FC<Props> = ({ open, onOpenChange, onCreated, ob
     if (!nome.trim()) return toast({ title: 'Erro', description: 'Digite o nome do item', variant: 'destructive' });
     setLoading(true);
     try {
-      await createItem({ nome: nome.trim(), unidade: unidade || 'un', categoria: categoria || null, quantidade: quantidade || 0, obra_id: obraId });
+      await createItem(
+        { nome: nome.trim(), unidade: unidade || 'un', categoria: categoria || null, quantidade: quantidade || 0, obra_id: obraId },
+        { deviceId: deviceId ?? undefined }
+      );
       toast({ title: 'Criado', description: 'Item cadastrado com sucesso' });
       setNome(''); setUnidade('un'); setCategoria(''); setQuantidade(0);
       onCreated && onCreated();

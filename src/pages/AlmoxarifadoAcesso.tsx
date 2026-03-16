@@ -326,13 +326,14 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
   return (
     <AlmoxarifadoPublic
       obraId={deviceInfo?.obraId || 0}
+      deviceId={deviceInfo?.deviceId ?? null}
       onSair={handleSair}
       onAbrirFerramentas={() => setActiveView('ferramentas')}
     />
   );
 };
 
-const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void; onAbrirFerramentas: () => void }> = ({ obraId, onSair, onAbrirFerramentas }) => {
+const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: number | null; onSair: () => void; onAbrirFerramentas: () => void }> = ({ obraId, deviceId, onSair, onAbrirFerramentas }) => {
   const { toast } = useToast();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -652,69 +653,82 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; onSair: () => void; onAbrir
         </div>
       </Card>
 
-      <CadastroItemDialog open={showCadastro} onOpenChange={setShowCadastro} onCreated={() => { setShowCadastro(false); carregar(); }} obraId={obraId} />
+      <CadastroItemDialog
+        open={showCadastro}
+        onOpenChange={setShowCadastro}
+        onCreated={() => { setShowCadastro(false); carregar(); }}
+        obraId={obraId}
+        deviceId={deviceId}
+      />
 
       {/* History Modal */}
       <Dialog open={showHistory} onOpenChange={setShowHistory}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Histórico de Movimentações</DialogTitle>
-          </DialogHeader>
-          {historyYears.length > 0 && (
-            <div className="flex justify-end mb-3">
-              <select
-                value={historyYear}
-                onChange={(e) => setHistoryYear(Number(e.target.value))}
-                className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
-              >
-                {historyYears.map((year) => (
-                  <option key={year} value={year}>{year}</option>
-                ))}
-              </select>
-            </div>
-          )}
-          {historyLoading ? (
-            <div className="flex items-center justify-center min-h-[200px]">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-              <p className="ml-2 text-sm text-gray-600">Carregando...</p>
-            </div>
-          ) : history.length === 0 ? (
-            <div className="text-sm text-gray-500">Nenhuma movimentação registrada.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Item</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Quantidade</TableHead>
-                    <TableHead>Nº Pedido</TableHead>
-                    <TableHead>Empresa</TableHead>
-                    <TableHead>Retirado por</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {history.map((mov, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell>{new Date(mov.data).toLocaleDateString('pt-BR')}</TableCell>
-                      <TableCell>
-                        {mov.item_nome}
-                        {mov.item_excluido ? ' (item excluído)' : ''}
-                      </TableCell>
-                      <TableCell className={mov.observacao === 'devolucao' ? 'text-blue-600 font-semibold' : (mov.tipo === 'entrada' ? 'text-green-600 font-semibold' : 'text-yellow-600 font-semibold')}>
-                        {mov.observacao === 'devolucao' ? '↩ Devolução' : (mov.tipo === 'entrada' ? '↓ Entrada' : '↑ Saída')}
-                      </TableCell>
-                      <TableCell>{mov.quantidade}</TableCell>
-                      <TableCell>{mov.numero_pedido || '-'}</TableCell>
-                      <TableCell>{mov.empresa_nome || '-'}</TableCell>
-                      <TableCell>{mov.retirado_por || '-'}</TableCell>
-                    </TableRow>
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[85vh] p-0 overflow-hidden flex flex-col">
+          <div className="flex items-center justify-between border-b px-4 py-3">
+            <DialogTitle className="text-base sm:text-lg">Histórico de Movimentações</DialogTitle>
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-y-auto p-4">
+            {historyYears.length > 0 && (
+              <div className="flex justify-end mb-3">
+                <select
+                  value={historyYear}
+                  onChange={(e) => setHistoryYear(Number(e.target.value))}
+                  className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
+                >
+                  {historyYears.map((year) => (
+                    <option key={year} value={year}>{year}</option>
                   ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+                </select>
+              </div>
+            )}
+            {historyLoading ? (
+              <div className="flex items-center justify-center min-h-[200px]">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                <p className="ml-2 text-sm text-gray-600">Carregando...</p>
+              </div>
+            ) : history.length === 0 ? (
+              <div className="text-sm text-gray-500">Nenhuma movimentação registrada.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Data</TableHead>
+                      <TableHead>Item</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Quantidade</TableHead>
+                      <TableHead>Nº Pedido</TableHead>
+                      <TableHead>Empresa</TableHead>
+                      <TableHead>Retirado por</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {history.map((mov, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell>{new Date(mov.data).toLocaleDateString('pt-BR')}</TableCell>
+                        <TableCell>
+                          {mov.item_nome}
+                          {mov.item_excluido ? ' (item excluído)' : ''}
+                        </TableCell>
+                        <TableCell className={mov.observacao === 'item_excluido' ? 'text-red-600 font-semibold' : (mov.observacao === 'entrada_inicial' ? 'text-cyan-700 font-semibold' : (mov.observacao === 'devolucao' ? 'text-blue-600 font-semibold' : (mov.tipo === 'entrada' ? 'text-green-600 font-semibold' : 'text-yellow-600 font-semibold')))}>
+                          {mov.observacao === 'item_excluido' ? 'Excluído' : (mov.observacao === 'entrada_inicial' ? 'Cadastro' : (mov.observacao === 'devolucao' ? '↩ Devolução' : (mov.tipo === 'entrada' ? '↓ Entrada' : '↑ Saída')))}
+                        </TableCell>
+                        <TableCell>{mov.quantidade}</TableCell>
+                        <TableCell>{mov.numero_pedido || '-'}</TableCell>
+                        <TableCell>{mov.empresa_nome || '-'}</TableCell>
+                        <TableCell>{mov.retirado_por || '-'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end border-t px-4 py-3">
+            <Button variant="outline" onClick={() => setShowHistory(false)}>Fechar</Button>
+          </div>
         </DialogContent>
       </Dialog>
 

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
+import { buscarObra } from '@/lib/api';
 import NotificationService from '@/services/NotificationService';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -135,14 +136,6 @@ Enviado via GLog App`;
         return;
       }
 
-      const { data: obra, error: obraError } = await supabase
-        .from('obras')
-        .select('nome, responsavel')
-        .eq('id', obraId)
-        .single();
-
-      if (obraError) throw obraError;
-
       const { data: novaDemanda, error: insertError } = await supabase
         .from('demanda_itens')
         .insert({
@@ -197,13 +190,13 @@ Enviado via GLog App`;
         return;
       }
 
-      const { data: obra, error: obraError } = await supabase
-        .from('obras')
-        .select('nome, responsavel')
-        .eq('id', obraId)
-        .single();
-
-      if (obraError) throw obraError;
+      let obraNome = `Obra ${obraId}`;
+      try {
+        const obra: any = await buscarObra(obraId);
+        obraNome = String(obra?.nome || obra?.obra_nome || obraNome);
+      } catch (obraLookupError) {
+        console.warn('[AdicionarDemandaDialog] Falha ao buscar nome da obra para compartilhamento:', obraLookupError);
+      }
 
       const { data: novaDemanda, error: insertError } = await supabase
         .from('demanda_itens')
@@ -227,7 +220,7 @@ Enviado via GLog App`;
       await enviarNotificacaoLocalNovaDemanda(textoFinal);
 
       // Compartilhar via WhatsApp
-      await compartilharViaWhatsApp(obra.nome, textoFinal);
+      await compartilharViaWhatsApp(obraNome, textoFinal);
 
       toast.success('Lista de demanda adicionada e compartilhada com sucesso');
       onDemandaAdicionada();

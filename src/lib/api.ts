@@ -1710,10 +1710,40 @@ export const getItemById = async (obraId: number, id: number) => {
   }
 };
 
-export const createItem = async (item: { nome: string; unidade?: string | null; categoria?: string | null; quantidade?: number | null; obra_id?: number | null }) => {
+export const createItem = async (
+  item: { nome: string; unidade?: string | null; categoria?: string | null; quantidade?: number | null; obra_id?: number | null },
+  options?: { deviceId?: number | null }
+) => {
   if (DISABLE_GOOGLE_APIS) return null;
   try {
     const initialQuantity = Number(item.quantidade || 0);
+
+    // Fluxo público do almoxarifado: usa RPC com SECURITY DEFINER para respeitar autenticação por dispositivo.
+    if (item.obra_id && options?.deviceId) {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('create_almox_item_by_device', {
+        p_obra_id: item.obra_id,
+        p_device_id: options.deviceId,
+        p_nome: item.nome,
+        p_unidade: item.unidade || null,
+        p_categoria: item.categoria || null,
+        p_quantidade: initialQuantity,
+      });
+
+      if (rpcError) {
+        if (rpcError.code === 'PGRST202') {
+          throw new Error('Função de cadastro do almoxarife não encontrada. Aplique a migration create_almox_item_by_device no banco.');
+        }
+        throw rpcError;
+      }
+
+      const row: any = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+      if (!row) {
+        throw new Error('Resposta inválida ao cadastrar item do almoxarife');
+      }
+
+      return row;
+    }
+
     const payload = {
       ...item,
       quantidade: 0,
@@ -1729,7 +1759,9 @@ export const createItem = async (item: { nome: string; unidade?: string | null; 
     
     if (data && initialQuantity > 0 && item.obra_id) {
       try {
-        await registerMovement(item.obra_id, data.id, 'entrada', initialQuantity);
+        await registerMovement(item.obra_id, data.id, 'entrada', initialQuantity, {
+          observacao: 'entrada_inicial',
+        });
       } catch (historyErr) {
         console.warn('Aviso: Entrada inicial não foi registrada no histórico', historyErr);
       }
@@ -1883,11 +1915,45 @@ export const getAlmoxarifadoHistorico = async (obraId: number, year?: number) =>
     const { data, error } = await query;
     
     if (error) throw error;
+
+    const movimentos = data || [];
+    const itemIds = Array.from(
+      new Set(
+        movimentos
+          .map((mov: any) => Number(mov?.item_id))
+          .filter((id: number) => Number.isFinite(id) && id > 0)
+      )
+    );
+
+    const itemMap = new Map<number, { nome?: string | null; is_deleted?: boolean | null }>();
+
+    if (itemIds.length > 0) {
+      const { data: itemData, error: itemError } = await supabase
+        .from('almox_items')
+        .select('id, nome, is_deleted')
+        .in('id', itemIds);
+
+      if (itemError) {
+        console.warn('Aviso getAlmoxarifadoHistorico: falha ao carregar status dos itens', itemError);
+      } else {
+        for (const item of (itemData || []) as Array<{ id: number; nome?: string | null; is_deleted?: boolean | null }>) {
+          itemMap.set(Number(item.id), item);
+        }
+      }
+    }
     
+    const movimentosComQuantidade = movimentos.filter((mov: any) => Number(mov?.quantidade || 0) > 0);
+
     // Mapear resultado para formato esperado
-    return (data || []).map((mov: any) => {
-      const itemNomeBase = mov.almox_items?.nome || 'Item removido';
-      const itemExcluido = !!mov.almox_items?.is_deleted || !mov.almox_items;
+    return movimentosComQuantidade.map((mov: any) => {
+      const relationItem = Array.isArray(mov.almox_items) ? mov.almox_items[0] : mov.almox_items;
+      const mappedItem = itemMap.get(Number(mov.item_id));
+      const itemNomeBase = relationItem?.nome || mappedItem?.nome || 'Item removido';
+      const itemExcluido = relationItem
+        ? !!relationItem.is_deleted
+        : mappedItem
+          ? !!mappedItem.is_deleted
+          : true;
 
       return {
         id: mov.id,
@@ -1912,6 +1978,15 @@ export const excluirItemAlmox = async (itemId: number) => {
   if (DISABLE_GOOGLE_APIS) return null;
 
   try {
+    const { data: itemAtual, error: itemAtualError } = await supabase
+      .from('almox_items')
+      .select('id, obra_id, quantidade, nome, is_deleted')
+      .eq('id', itemId)
+      .single();
+
+    if (itemAtualError) throw itemAtualError;
+    if (!itemAtual) throw new Error('Item não encontrado');
+
     const { data, error } = await supabase
       .from('almox_items')
       .update({
@@ -1924,6 +1999,27 @@ export const excluirItemAlmox = async (itemId: number) => {
       .single();
 
     if (error) throw error;
+
+    const quantidadeAtual = Number(itemAtual.quantidade || 0);
+    if (quantidadeAtual > 0) {
+      const { error: movErr } = await supabase
+        .from('almox_movements')
+        .insert([
+          {
+            obra_id: itemAtual.obra_id,
+            item_id: itemAtual.id,
+            tipo: 'saida',
+            quantidade: quantidadeAtual,
+            observacao: 'item_excluido',
+            criado_em: new Date().toISOString(),
+          },
+        ]);
+
+      if (movErr) {
+        console.warn('Aviso excluirItemAlmox: não foi possível registrar movimento de exclusão', movErr);
+      }
+    }
+
     return data;
   } catch (err) {
     console.error('Erro excluirItemAlmox', err);

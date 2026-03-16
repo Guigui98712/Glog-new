@@ -7,6 +7,7 @@ import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabase";
+import { buscarObra } from "@/lib/api";
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -28,15 +29,10 @@ export function DemandaRelatorios() {
     try {
       setLoading(true);
 
-      // Carregar nome da obra
-      const { data: obra, error: obraError } = await supabase
-        .from('obras')
-        .select('nome')
-        .eq('id', id)
-        .single();
-
-      if (obraError) throw obraError;
-      setObraNome(obra.nome);
+      // Carregar nome da obra com suporte a compartilhamento
+      const obra = await buscarObra(Number(id));
+      if (!obra) throw new Error('Obra não encontrada');
+      setObraNome(obra.nome || 'Obra');
 
       // Carregar relatórios
       const { data: relatoriosData, error: relatoriosError } = await supabase

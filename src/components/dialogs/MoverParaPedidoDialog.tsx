@@ -39,15 +39,6 @@ export function MoverParaPedidoDialog({
         return;
       }
 
-      // Buscar informações da obra
-      const { data: obra, error: obraError } = await supabase
-        .from('obras')
-        .select('nome, responsavel')
-        .eq('id', item.obra_id)
-        .single();
-
-      if (obraError) throw obraError;
-
       // Atualizar item
       const { error: updateError } = await supabase
         .from('demanda_itens')

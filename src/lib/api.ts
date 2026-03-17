@@ -2195,10 +2195,24 @@ export const getAlmoxarifadoHistoricoAnos = async (obraId: number, options?: { d
 };
 
 // ===== Ferramentas do Almoxarifado =====
-export const listarFerramentasAlmox = async (obraId: number) => {
+export const listarFerramentasAlmox = async (obraId: number, options?: { deviceId?: string | number | null }) => {
   if (DISABLE_GOOGLE_APIS) return [];
 
   try {
+    if (options?.deviceId) {
+      const { data, error } = await supabase.rpc('list_almox_tools_by_device', {
+        p_obra_id: obraId,
+        p_device_id: String(options.deviceId),
+      });
+      if (error) {
+        if (error.code === 'PGRST202') {
+          throw new Error('Função list_almox_tools_by_device não encontrada. Aplique a migration 20260317_add_almox_tools_device_rpcs.sql no banco.');
+        }
+        throw error;
+      }
+      return data || [];
+    }
+
     const { data, error } = await (supabase as any)
       .from('almox_tools')
       .select('*')
@@ -2247,7 +2261,7 @@ export const criarFerramentaAlmox = async (payload: {
   nome: string;
   descricao?: string | null;
   foto?: File | null;
-}) => {
+}, options?: { deviceId?: string | number | null }) => {
   if (DISABLE_GOOGLE_APIS) return null;
 
   try {
@@ -2262,6 +2276,29 @@ export const criarFerramentaAlmox = async (payload: {
       foto_url: fotoUrl,
       updated_at: new Date().toISOString(),
     };
+
+    if (options?.deviceId) {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('create_almox_tool_by_device', {
+        p_obra_id: payload.obra_id,
+        p_device_id: String(options.deviceId),
+        p_nome: payload.nome,
+        p_descricao: payload.descricao || null,
+        p_foto_url: fotoUrl,
+      });
+
+      if (rpcError) {
+        if (rpcError.code === 'PGRST202') {
+          throw new Error('Função create_almox_tool_by_device não encontrada. Aplique a migration 20260317_add_almox_tools_device_rpcs.sql no banco.');
+        }
+        if (rpcError.message) {
+          throw new Error(rpcError.message);
+        }
+        throw rpcError;
+      }
+
+      const row: any = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+      return row || null;
+    }
 
     const { data, error } = await (supabase as any)
       .from('almox_tools')
@@ -2291,10 +2328,36 @@ export const criarFerramentaAlmox = async (payload: {
   }
 };
 
-export const retirarFerramentaAlmox = async (toolId: number, pessoaNome: string) => {
+export const retirarFerramentaAlmox = async (
+  toolId: number,
+  pessoaNome: string,
+  options?: { obraId?: number | null; deviceId?: string | number | null }
+) => {
   if (DISABLE_GOOGLE_APIS) return null;
 
   try {
+    if (options?.obraId && options?.deviceId) {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('withdraw_almox_tool_by_device', {
+        p_obra_id: options.obraId,
+        p_device_id: String(options.deviceId),
+        p_tool_id: toolId,
+        p_pessoa_nome: pessoaNome,
+      });
+
+      if (rpcError) {
+        if (rpcError.code === 'PGRST202') {
+          throw new Error('Função withdraw_almox_tool_by_device não encontrada. Aplique a migration 20260317_add_almox_tools_device_rpcs.sql no banco.');
+        }
+        if (rpcError.message) {
+          throw new Error(rpcError.message);
+        }
+        throw rpcError;
+      }
+
+      const row: any = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+      return row || null;
+    }
+
     const { data, error } = await (supabase as any)
       .from('almox_tools')
       .update({
@@ -2328,10 +2391,34 @@ export const retirarFerramentaAlmox = async (toolId: number, pessoaNome: string)
   }
 };
 
-export const devolverFerramentaAlmox = async (toolId: number) => {
+export const devolverFerramentaAlmox = async (
+  toolId: number,
+  options?: { obraId?: number | null; deviceId?: string | number | null }
+) => {
   if (DISABLE_GOOGLE_APIS) return null;
 
   try {
+    if (options?.obraId && options?.deviceId) {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('return_almox_tool_by_device', {
+        p_obra_id: options.obraId,
+        p_device_id: String(options.deviceId),
+        p_tool_id: toolId,
+      });
+
+      if (rpcError) {
+        if (rpcError.code === 'PGRST202') {
+          throw new Error('Função return_almox_tool_by_device não encontrada. Aplique a migration 20260317_add_almox_tools_device_rpcs.sql no banco.');
+        }
+        if (rpcError.message) {
+          throw new Error(rpcError.message);
+        }
+        throw rpcError;
+      }
+
+      const row: any = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+      return row || null;
+    }
+
     const { data: toolAtual, error: toolAtualError } = await (supabase as any)
       .from('almox_tools')
       .select('*')

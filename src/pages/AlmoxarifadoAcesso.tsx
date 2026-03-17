@@ -373,6 +373,7 @@ export default function AlmoxarifadoAcesso(): JSX.Element {
     return (
       <AlmoxarifadoFerramentasPublic
         obraId={deviceInfo?.obraId || 0}
+        deviceId={deviceInfo?.deviceId ?? null}
         onSair={handleSair}
         onVoltarMateriais={() => setActiveView('materiais')}
       />
@@ -1060,8 +1061,9 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
   );
 }
 
-const AlmoxarifadoFerramentasPublic: React.FC<{ obraId: number; onSair: () => void; onVoltarMateriais: () => void }> = ({
+const AlmoxarifadoFerramentasPublic: React.FC<{ obraId: number; deviceId: string | number | null; onSair: () => void; onVoltarMateriais: () => void }> = ({
   obraId,
+  deviceId,
   onSair,
   onVoltarMateriais,
 }) => {
@@ -1085,7 +1087,7 @@ const AlmoxarifadoFerramentasPublic: React.FC<{ obraId: number; onSair: () => vo
     if (!obraId) return;
     setLoading(true);
     try {
-      const data = await listarFerramentasAlmox(obraId);
+      const data = await listarFerramentasAlmox(obraId, { deviceId });
       setFerramentas(data || []);
     } catch (err) {
       console.error(err);
@@ -1097,7 +1099,7 @@ const AlmoxarifadoFerramentasPublic: React.FC<{ obraId: number; onSair: () => vo
 
   useEffect(() => {
     carregarFerramentas();
-  }, [obraId]);
+  }, [obraId, deviceId]);
 
   const ferramentasOrdenadas = useMemo(() => {
     const copy = [...ferramentas];
@@ -1153,7 +1155,7 @@ const AlmoxarifadoFerramentasPublic: React.FC<{ obraId: number; onSair: () => vo
         nome: cadastroNome.trim(),
         descricao: cadastroDescricao.trim() || null,
         foto: cadastroFoto,
-      });
+      }, { deviceId });
 
       toast({ title: 'Sucesso', description: 'Ferramenta cadastrada com sucesso' });
       setShowCadastro(false);
@@ -1185,10 +1187,10 @@ const AlmoxarifadoFerramentasPublic: React.FC<{ obraId: number; onSair: () => vo
     setSavingAcao(true);
     try {
       if (jaRetirada) {
-        await devolverFerramentaAlmox(ferramentaSelecionada.id);
+        await devolverFerramentaAlmox(ferramentaSelecionada.id, { obraId, deviceId });
         toast({ title: 'Sucesso', description: 'Ferramenta devolvida ao estoque' });
       } else {
-        await retirarFerramentaAlmox(ferramentaSelecionada.id, nomeRetirada.trim());
+        await retirarFerramentaAlmox(ferramentaSelecionada.id, nomeRetirada.trim(), { obraId, deviceId });
         toast({ title: 'Sucesso', description: 'Retirada registrada com sucesso' });
       }
 

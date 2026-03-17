@@ -671,18 +671,18 @@ const Almoxarifado: React.FC = () => {
                 {historyFiltrado.length === 0 ? (
                   <div className="text-sm text-gray-500">Nenhum resultado encontrado para a pesquisa.</div>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <Table>
+                  <div className="overflow-x-auto pb-2">
+                    <Table className="min-w-[860px]">
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Data</TableHead>
-                          <TableHead>Item</TableHead>
-                          <TableHead>Tipo</TableHead>
-                          <TableHead>Quantidade</TableHead>
-                          <TableHead>Nº Pedido</TableHead>
-                          <TableHead>Empresa</TableHead>
-                          <TableHead>Almoxarife</TableHead>
-                          <TableHead>Retirado por</TableHead>
+                          <TableHead className="min-w-[100px]">Data</TableHead>
+                          <TableHead className="min-w-[140px]">Item</TableHead>
+                          <TableHead className="min-w-[120px]">Tipo</TableHead>
+                          <TableHead className="min-w-[100px]">Quantidade</TableHead>
+                          <TableHead className="min-w-[110px]">Nº Pedido</TableHead>
+                          <TableHead className="min-w-[120px]">Empresa</TableHead>
+                          <TableHead className="min-w-[120px]">Almoxarife</TableHead>
+                          <TableHead className="min-w-[120px]">Retirado por</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>

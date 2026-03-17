@@ -6,6 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/components/ui/use-toast';
+import { Checkbox } from '@/components/ui/checkbox';
 import { listarItens, getItemById, registerMovement, registrarDispositivoAlmoxarife, verificarDispositivoAlmoxarife, validarSessaoDispositivoAlmoxarife, getAlmoxarifadoHistorico, getAlmoxarifadoHistoricoAnos, excluirItemAlmox, listarFerramentasAlmox, criarFerramentaAlmox, retirarFerramentaAlmox, devolverFerramentaAlmox } from '@/lib/api';
 import CadastroItemDialog from '@/components/CadastroItemDialog';
 import { MoreVertical, Trash2, Undo2 } from 'lucide-react';
@@ -404,6 +405,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
   const [movementEmpresaNome, setMovementEmpresaNome] = useState('');
   const [movementRetiradoPor, setMovementRetiradoPor] = useState('');
   const [movementAlmoxarifeNome, setMovementAlmoxarifeNome] = useState('');
+  const [keepAddingItems, setKeepAddingItems] = useState(false);
 
   const [showCadastro, setShowCadastro] = useState(false);
 
@@ -540,6 +542,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
     setMovementEmpresaNome('');
     setMovementRetiradoPor('');
     setMovementAlmoxarifeNome('');
+    setKeepAddingItems(false);
     setMovementOpen(true);
   };
 
@@ -670,10 +673,17 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
       }, {
         deviceId,
       });
-      setMovementItemId(resolvedItem.nome || String(resolvedItemId));
-      setMovementItem(resolvedItem);
-      toast({ title: 'Registrado', description: 'Movimento registrado com sucesso' });
-      setMovementOpen(false);
+      if (movementType === 'entrada' && keepAddingItems) {
+        setMovementItemId('');
+        setMovementItem(null);
+        setMovementQtd(1);
+        toast({ title: 'Registrado', description: 'Entrada registrada. Você pode adicionar o próximo item.' });
+      } else {
+        setMovementItemId(resolvedItem.nome || String(resolvedItemId));
+        setMovementItem(resolvedItem);
+        toast({ title: 'Registrado', description: 'Movimento registrado com sucesso' });
+        setMovementOpen(false);
+      }
       await carregar();
     } catch (e) {
       console.error(e);
@@ -996,6 +1006,19 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
               <label className="block text-sm font-medium mb-1">Quantidade</label>
               <Input type="number" value={movementQtd.toString()} onChange={(e) => setMovementQtd(Number(e.target.value || 0))} />
             </div>
+
+            {movementType === 'entrada' && (
+              <div className="flex items-center gap-2 pt-1">
+                <Checkbox
+                  id="entrada-adicionar-mais-itens-acesso"
+                  checked={keepAddingItems}
+                  onCheckedChange={(checked) => setKeepAddingItems(checked === true)}
+                />
+                <label htmlFor="entrada-adicionar-mais-itens-acesso" className="text-sm text-gray-700">
+                  Adicionar mais itens após registrar
+                </label>
+              </div>
+            )}
 
             {movementType === 'entrada' && (
               <>

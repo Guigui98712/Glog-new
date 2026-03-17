@@ -1043,7 +1043,7 @@ Enviado via GLog App`;
                         </Button>
                       </div>
                     )}
-                    <div className="flex-grow pr-12">
+                    <div className="flex-grow pr-24">
                       <h3 className="font-medium break-words">{item.titulo}</h3>
                       {item.descricao && (
                         item.titulo === 'Lista de Demanda' ? (

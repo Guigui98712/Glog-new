@@ -1,4 +1,4 @@
-import { useState, useId } from 'react';
+import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -6,7 +6,6 @@ import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { buscarObra } from '@/lib/api';
 import NotificationService from '@/services/NotificationService';
-import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Device } from '@capacitor/device';
 import { Share } from '@capacitor/share';
@@ -36,10 +35,6 @@ export function AdicionarDemandaDialog({
 }: AdicionarDemandaDialogProps) {
   const [itens, setItens] = useState('');
   const [loading, setLoading] = useState(false);
-  const [useSimpleTextarea, setUseSimpleTextarea] = useState(true);
-  
-  const textareaId = useId();
-  const richTextLabelId = useId();
 
   const enviarNotificacaoLocalNovaDemanda = async (titulo: string) => {
     try {
@@ -119,16 +114,7 @@ Enviado via GLog App`;
     try {
       setLoading(true);
 
-      let textoFinal = '';
-      if (useSimpleTextarea) {
-        textoFinal = itens.trim();
-      } else {
-        textoFinal = itens
-          .replace(/<\/p>/g, '\n')         
-          .replace(/<[^>]*>/g, '')       
-          .replace(/\n+/g, '\n')         
-          .trim();
-      }
+      const textoFinal = itens.trim();
 
       if (!textoFinal) {
         toast.error('Digite pelo menos um item para a lista');
@@ -173,16 +159,7 @@ Enviado via GLog App`;
     try {
       setLoading(true);
 
-      let textoFinal = '';
-      if (useSimpleTextarea) {
-        textoFinal = itens.trim();
-      } else {
-        textoFinal = itens
-          .replace(/<\/p>/g, '\n')         
-          .replace(/<[^>]*>/g, '')       
-          .replace(/\n+/g, '\n')         
-          .trim();
-      }
+      const textoFinal = itens.trim();
 
       if (!textoFinal) {
         toast.error('Digite pelo menos um item para a lista');
@@ -234,11 +211,6 @@ Enviado via GLog App`;
     }
   };
 
-  const toggleEditor = () => {
-    setUseSimpleTextarea(!useSimpleTextarea);
-    setItens('');
-  };
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
@@ -250,47 +222,20 @@ Enviado via GLog App`;
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              {useSimpleTextarea ? (
-                <Label htmlFor={textareaId}>Itens da lista (um por linha)</Label>
-              ) : (
-                <Label id={richTextLabelId}>Itens da lista (um por linha)</Label>
-              )}
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={toggleEditor} 
-                type="button"
-                className="text-xs"
-              >
-                {useSimpleTextarea ? "Usar editor rico" : "Usar textarea simples"}
-              </Button>
-            </div>
-            
-            {useSimpleTextarea ? (
-              <textarea
-                id={textareaId}
-                value={itens}
-                onChange={(e) => setItens(e.target.value)}
-                placeholder="Digite os itens da lista, um em cada linha"
-                spellCheck={true}
-                autoCorrect="on"
-                autoCapitalize="sentences"
-                autoComplete="on"
-                inputMode="text"
-                lang="pt-BR"
-                className="w-full min-h-[200px] rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-              />
-            ) : (
-              <div aria-labelledby={richTextLabelId}>
-                <RichTextEditor
-                  value={itens}
-                  onChange={setItens}
-                  placeholder="Digite os itens da lista, um em cada linha"
-                  minHeight="200px"
-                />
-              </div>
-            )}
+            <Label htmlFor="demanda-itens">Itens da lista (um por linha)</Label>
+            <textarea
+              id="demanda-itens"
+              value={itens}
+              onChange={(e) => setItens(e.target.value)}
+              placeholder="Digite os itens da lista, um em cada linha"
+              spellCheck={true}
+              autoCorrect="on"
+              autoCapitalize="sentences"
+              autoComplete="on"
+              inputMode="text"
+              lang="pt-BR"
+              className="w-full min-h-[200px] rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            />
           </div>
         </div>
         <div className="flex justify-end gap-2">

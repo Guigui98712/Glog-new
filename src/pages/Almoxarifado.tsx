@@ -583,7 +583,36 @@ const Almoxarifado: React.FC = () => {
 
       <Card className="p-4">
         <h2 className="font-semibold mb-3">Lista de materiais</h2>
-        <div className="overflow-x-auto">
+        <div className="grid gap-3 md:hidden">
+          {itemsFiltrados.map(it => (
+            <div key={it.id} className="rounded-lg border p-3 space-y-2">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs text-gray-500">ID {it.id}</div>
+                  <div className="font-medium break-words">{it.nome}</div>
+                </div>
+                <div className={`text-xs font-semibold whitespace-nowrap ${Number(it.quantidade ?? 0) > 0 ? 'text-green-600' : 'text-amber-600'}`}>
+                  {Number(it.quantidade ?? 0) > 0 ? 'Em estoque' : 'Sem estoque'}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+                <div>
+                  <div className="text-gray-500">Quantidade</div>
+                  <div>{it.quantidade}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500">Unidade</div>
+                  <div className="break-words">{it.unidade}</div>
+                </div>
+                <div className="col-span-2">
+                  <div className="text-gray-500">Categoria</div>
+                  <div className="break-words">{it.categoria}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="hidden md:block overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -599,10 +628,10 @@ const Almoxarifado: React.FC = () => {
               {itemsFiltrados.map(it => (
                 <TableRow key={it.id}>
                   <TableCell>{it.id}</TableCell>
-                  <TableCell>{it.nome}</TableCell>
+                  <TableCell className="max-w-[280px] break-words">{it.nome}</TableCell>
                   <TableCell>{it.quantidade}</TableCell>
-                  <TableCell>{it.unidade}</TableCell>
-                  <TableCell>{it.categoria}</TableCell>
+                  <TableCell className="break-words">{it.unidade}</TableCell>
+                  <TableCell className="max-w-[220px] break-words">{it.categoria}</TableCell>
                   <TableCell className={Number(it.quantidade ?? 0) > 0 ? 'text-green-600' : 'text-amber-600'}>
                     {Number(it.quantidade ?? 0) > 0 ? 'Em estoque' : 'Sem estoque'}
                   </TableCell>

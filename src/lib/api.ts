@@ -2141,6 +2141,118 @@ export const excluirItemAlmox = async (itemId: number, options?: { obraId?: numb
   }
 };
 
+export const editarItemAlmox = async (
+  itemId: number,
+  updates: { nome?: string; unidade?: string; categoria?: string; quantidade?: number },
+  obraId: number,
+  options?: { deviceId?: string | number | null }
+) => {
+  if (DISABLE_GOOGLE_APIS) return null;
+
+  try {
+    const nomeLimpo = updates.nome !== undefined ? updates.nome.trim() : undefined;
+    const unidadeLimpa = updates.unidade !== undefined ? updates.unidade.trim() : undefined;
+    const categoriaLimpa = updates.categoria !== undefined ? updates.categoria.trim() : undefined;
+    const novaQuantidade = updates.quantidade !== undefined ? Number(updates.quantidade) : undefined;
+
+    if (novaQuantidade !== undefined && (!Number.isFinite(novaQuantidade) || novaQuantidade < 0)) {
+      throw new Error('Quantidade inválida. Informe um valor maior ou igual a zero');
+    }
+
+    if (options?.deviceId) {
+      const { data, error } = await supabase.rpc('update_almox_item_by_device', {
+        p_obra_id: obraId,
+        p_device_id: String(options.deviceId),
+        p_item_id: itemId,
+        p_nome: nomeLimpo ?? null,
+        p_unidade: unidadeLimpa ?? null,
+        p_categoria: categoriaLimpa ?? null,
+        p_quantidade: novaQuantidade ?? null,
+      });
+
+      if (error) {
+        if (error.code === 'PGRST202') {
+          throw new Error('Função update_almox_item_by_device não encontrada. Aplique a migration 20260323_update_almox_item_by_device.sql no banco.');
+        }
+        if (error.message) {
+          throw new Error(error.message);
+        }
+        throw error;
+      }
+
+      return Array.isArray(data) ? data[0] || null : data;
+    }
+
+    const { data: itemAtual, error: fetchErr } = await supabase
+      .from('almox_items')
+      .select('id, obra_id, nome, unidade, categoria, quantidade')
+      .eq('id', itemId)
+      .eq('is_deleted', false)
+      .single();
+
+    if (fetchErr) throw fetchErr;
+    if (!itemAtual) throw new Error('Item não encontrado');
+
+    const changes: string[] = [];
+    const quantidadeAtual = Number(itemAtual.quantidade ?? 0);
+
+    if (nomeLimpo !== undefined && nomeLimpo !== (itemAtual.nome || '')) {
+      changes.push(`Nome: "${itemAtual.nome}" → "${nomeLimpo}"`);
+    }
+    if (unidadeLimpa !== undefined && unidadeLimpa !== (itemAtual.unidade || '')) {
+      changes.push(`Unidade: "${itemAtual.unidade}" → "${unidadeLimpa}"`);
+    }
+    if (categoriaLimpa !== undefined && categoriaLimpa !== (itemAtual.categoria || '')) {
+      changes.push(`Categoria: "${itemAtual.categoria}" → "${categoriaLimpa}"`);
+    }
+    if (novaQuantidade !== undefined && novaQuantidade !== quantidadeAtual) {
+      changes.push(`Quantidade: ${quantidadeAtual} → ${novaQuantidade}`);
+    }
+
+    if (changes.length === 0) return itemAtual;
+
+    const payload: Record<string, string> = {};
+  if (nomeLimpo !== undefined) payload.nome = nomeLimpo;
+  if (unidadeLimpa !== undefined) payload.unidade = unidadeLimpa;
+  if (categoriaLimpa !== undefined) payload.categoria = categoriaLimpa;
+
+    const { data, error } = await supabase
+      .from('almox_items')
+      .update({ ...payload, ...(novaQuantidade !== undefined ? { quantidade: novaQuantidade } : {}) })
+      .eq('id', itemId)
+      .eq('obra_id', obraId)
+      .eq('is_deleted', false)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    const changesDescription = changes.join('; ');
+    const { error: movErr } = await supabase
+      .from('almox_movements')
+      .insert([
+        {
+          obra_id: obraId,
+          item_id: itemId,
+          tipo: 'entrada',
+          quantidade: 1,
+          observacao: 'item_editado',
+          empresa_nome: changesDescription,
+          criado_em: new Date().toISOString(),
+        },
+      ]);
+
+    if (movErr) {
+      console.warn('Aviso editarItemAlmox: não foi possível registrar histórico de edição', movErr);
+    }
+
+    return data;
+  } catch (err) {
+    console.error('Erro editarItemAlmox', err);
+    throw err;
+  }
+};
+
 export const getAlmoxarifadoHistoricoAnos = async (obraId: number, options?: { deviceId?: string | number | null }) => {
   if (DISABLE_GOOGLE_APIS) return [];
 

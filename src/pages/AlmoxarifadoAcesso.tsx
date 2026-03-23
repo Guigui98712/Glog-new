@@ -7,9 +7,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/components/ui/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
-import { listarItens, getItemById, registerMovement, registrarDispositivoAlmoxarife, verificarDispositivoAlmoxarife, validarSessaoDispositivoAlmoxarife, getAlmoxarifadoHistorico, getAlmoxarifadoHistoricoAnos, excluirItemAlmox, listarFerramentasAlmox, criarFerramentaAlmox, retirarFerramentaAlmox, devolverFerramentaAlmox } from '@/lib/api';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { listarItens, getItemById, registerMovement, registrarDispositivoAlmoxarife, verificarDispositivoAlmoxarife, validarSessaoDispositivoAlmoxarife, getAlmoxarifadoHistorico, getAlmoxarifadoHistoricoAnos, excluirItemAlmox, editarItemAlmox, listarFerramentasAlmox, criarFerramentaAlmox, retirarFerramentaAlmox, devolverFerramentaAlmox } from '@/lib/api';
 import CadastroItemDialog from '@/components/CadastroItemDialog';
-import { MoreVertical, Trash2, Undo2 } from 'lucide-react';
+import { MoreVertical, Pencil, Trash2, Undo2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,6 +19,16 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 const DEVICE_KEY = 'almox_access_device';
+
+const CATEGORIAS_ALMOX = [
+  'Alvenaria',
+  'Estrutura',
+  'Hidráulica',
+  'Elétrica',
+  'Ferramentas',
+  'EPIs',
+  'Geral',
+];
 
 type AlmoxDeviceInfo = {
   obraId: number;
@@ -71,6 +82,10 @@ const getHistoricoMovimentoMeta = (mov: { tipo?: string | null; observacao?: str
     return { className: 'text-red-600 font-semibold', label: 'Excluído' };
   }
 
+  if (observacao === 'item_editado') {
+    return { className: 'text-purple-600 font-semibold', label: 'Editado' };
+  }
+
   if (observacao === 'entrada_inicial') {
     return { className: 'text-cyan-700 font-semibold', label: 'Cadastro' };
   }
@@ -88,6 +103,15 @@ const getHistoricoMovimentoMeta = (mov: { tipo?: string | null; observacao?: str
   }
 
   return { className: 'text-yellow-600 font-semibold', label: '↑ Saída' };
+};
+
+const getHistoricoAlteracoes = (empresaNome?: string | null) => {
+  const text = String(empresaNome || '').trim();
+  if (!text) return [] as string[];
+  return text
+    .split(';')
+    .map((part) => part.trim())
+    .filter(Boolean);
 };
 
 export default function AlmoxarifadoAcesso(): JSX.Element {
@@ -444,6 +468,13 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
   const [showItemsEditor, setShowItemsEditor] = useState(false);
   const [itemsEditorQuery, setItemsEditorQuery] = useState('');
   const [itemEmpresasByNome, setItemEmpresasByNome] = useState<Record<string, string[]>>({});
+  const [showEditItem, setShowEditItem] = useState(false);
+  const [editItemData, setEditItemData] = useState<any>(null);
+  const [editItemNome, setEditItemNome] = useState('');
+  const [editItemUnidade, setEditItemUnidade] = useState('');
+  const [editItemCategoria, setEditItemCategoria] = useState('');
+  const [editItemQuantidade, setEditItemQuantidade] = useState<number>(0);
+  const [editItemLoading, setEditItemLoading] = useState(false);
 
   const buildItemEmpresasIndex = (movimentos: any[]): Record<string, string[]> => {
     const map = new Map<string, Set<string>>();
@@ -777,6 +808,52 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
     }
   };
 
+  const abrirEdicao = (item: any) => {
+    setEditItemData(item);
+    setEditItemNome(item.nome || '');
+    setEditItemUnidade(item.unidade || '');
+    setEditItemCategoria(item.categoria || '');
+    setEditItemQuantidade(Number(item.quantidade ?? 0));
+    setShowEditItem(true);
+  };
+
+  const salvarEdicao = async () => {
+    if (!editItemData || !obraId) return;
+    if (!editItemNome.trim()) {
+      return toast({ title: 'Erro', description: 'O nome do item não pode ser vazio', variant: 'destructive' });
+    }
+    if (!Number.isFinite(editItemQuantidade) || editItemQuantidade < 0) {
+      return toast({ title: 'Erro', description: 'Quantidade inválida. Use valor maior ou igual a zero', variant: 'destructive' });
+    }
+
+    setEditItemLoading(true);
+    try {
+      await editarItemAlmox(
+        editItemData.id,
+        {
+          nome: editItemNome,
+          unidade: editItemUnidade,
+          categoria: editItemCategoria,
+          quantidade: editItemQuantidade,
+        },
+        obraId,
+        { deviceId }
+      );
+      toast({ title: 'Sucesso', description: 'Item atualizado com sucesso' });
+      setShowEditItem(false);
+      await carregar();
+    } catch (e) {
+      console.error(e);
+      toast({
+        title: 'Erro',
+        description: e instanceof Error ? e.message : 'Falha ao editar item',
+        variant: 'destructive'
+      });
+    } finally {
+      setEditItemLoading(false);
+    }
+  };
+
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -893,6 +970,47 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
         deviceId={deviceId}
       />
 
+      <Dialog open={showEditItem} onOpenChange={setShowEditItem}>
+        <DialogContent className="w-[95vw] max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar item</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium mb-1">Nome</label>
+              <Input value={editItemNome} onChange={(e) => setEditItemNome(e.target.value)} placeholder="Nome do item" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Unidade</label>
+              <Input value={editItemUnidade} onChange={(e) => setEditItemUnidade(e.target.value)} placeholder="Ex.: kg, un, sc" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Categoria</label>
+              <Select value={editItemCategoria} onValueChange={setEditItemCategoria}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma categoria" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CATEGORIAS_ALMOX.map((cat) => (
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Quantidade</label>
+              <Input type="number" value={editItemQuantidade.toString()} onChange={(e) => setEditItemQuantidade(Number(e.target.value || 0))} min={0} />
+            </div>
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setShowEditItem(false)} disabled={editItemLoading} className="w-full sm:w-auto">Cancelar</Button>
+              <Button onClick={salvarEdicao} disabled={editItemLoading} className="w-full sm:w-auto">
+                {editItemLoading ? 'Salvando...' : 'Salvar'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* History Modal */}
       <Dialog open={showHistory} onOpenChange={setShowHistory}>
         <DialogContent className="w-[calc(100vw-1rem)] max-w-5xl max-h-[90vh] p-0 overflow-hidden flex flex-col">
@@ -938,15 +1056,29 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
                       <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
                         <div>
                           <div className="text-gray-500">Quantidade</div>
-                          <div>{mov.quantidade}</div>
+                          <div>{mov.observacao === 'item_editado' ? '-' : mov.quantidade}</div>
                         </div>
                         <div>
                           <div className="text-gray-500">Nº Pedido</div>
                           <div className="break-words">{mov.numero_pedido || '-'}</div>
                         </div>
                         <div>
-                          <div className="text-gray-500">Empresa</div>
-                          <div className="break-words">{mov.empresa_nome || '-'}</div>
+                          <div className="text-gray-500">{mov.observacao === 'item_editado' ? 'Alterações' : 'Empresa'}</div>
+                          {mov.observacao === 'item_editado' ? (
+                            <div className="space-y-1">
+                              {getHistoricoAlteracoes(mov.empresa_nome).length === 0 ? (
+                                <div className="break-words">-</div>
+                              ) : (
+                                getHistoricoAlteracoes(mov.empresa_nome).map((alteracao, changeIdx) => (
+                                  <div key={`${idx}-mobile-change-${changeIdx}`} className="break-words text-xs leading-5">
+                                    {alteracao}
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          ) : (
+                            <div className="break-words">{mov.empresa_nome || '-'}</div>
+                          )}
                         </div>
                         <div>
                           <div className="text-gray-500">Almoxarife</div>
@@ -969,7 +1101,7 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
                         <TableHead className="min-w-[120px]">Tipo</TableHead>
                         <TableHead className="min-w-[100px]">Quantidade</TableHead>
                         <TableHead className="min-w-[110px]">Nº Pedido</TableHead>
-                        <TableHead className="min-w-[120px]">Empresa</TableHead>
+                        <TableHead className="min-w-[220px]">Empresa / Alterações</TableHead>
                         <TableHead className="min-w-[120px]">Almoxarife</TableHead>
                         <TableHead className="min-w-[120px]">Retirado por</TableHead>
                       </TableRow>
@@ -985,9 +1117,25 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
                           <TableCell className={getHistoricoMovimentoMeta(mov).className}>
                             {getHistoricoMovimentoMeta(mov).label}
                           </TableCell>
-                          <TableCell>{mov.quantidade}</TableCell>
+                          <TableCell>{mov.observacao === 'item_editado' ? '-' : mov.quantidade}</TableCell>
                           <TableCell className="break-words">{mov.numero_pedido || '-'}</TableCell>
-                          <TableCell className="max-w-[180px] break-words">{mov.empresa_nome || '-'}</TableCell>
+                          <TableCell className="max-w-[320px] align-top" title={mov.observacao === 'item_editado' ? 'Alterações' : 'Empresa'}>
+                            {mov.observacao === 'item_editado' ? (
+                              <div className="space-y-1">
+                                {getHistoricoAlteracoes(mov.empresa_nome).length === 0 ? (
+                                  <div className="break-words">-</div>
+                                ) : (
+                                  getHistoricoAlteracoes(mov.empresa_nome).map((alteracao, changeIdx) => (
+                                    <div key={`${idx}-table-change-${changeIdx}`} className="break-words text-xs leading-5">
+                                      {alteracao}
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            ) : (
+                              <div className="break-words">{mov.empresa_nome || '-'}</div>
+                            )}
+                          </TableCell>
                           <TableCell className="max-w-[180px] break-words">{getAlmoxarifeNome(mov.observacao)}</TableCell>
                           <TableCell className="max-w-[180px] break-words">{mov.retirado_por || '-'}</TableCell>
                         </TableRow>
@@ -1035,6 +1183,10 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => abrirEdicao(it)} className="cursor-pointer">
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Editar
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => excluirItem(it.id)} className="text-red-600 cursor-pointer">
                           <Trash2 className="mr-2 h-4 w-4" />
                           Excluir
@@ -1087,6 +1239,10 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => abrirEdicao(it)} className="cursor-pointer">
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Editar
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => excluirItem(it.id)} className="text-red-600 cursor-pointer">
                               <Trash2 className="mr-2 h-4 w-4" />
                               Excluir

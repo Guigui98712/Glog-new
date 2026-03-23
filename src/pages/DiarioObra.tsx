@@ -704,7 +704,7 @@ const DiarioObra = () => {
                 }}
                 defaultMonth={data}
                 fromDate={new Date(2024, 0, 1)}
-                toDate={new Date(2025, 11, 31)}
+                toDate={new Date()}
                 disabled={(date) => date > new Date()}
               />
             </div>

@@ -10,6 +10,9 @@ interface AuthContextType {
   signUp: (email: string, password: string, name: string) => Promise<{ error: any | null, user: User | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: any | null, success: boolean }>;
+  sendPasswordRecoveryCode: (email: string) => Promise<{ error: any | null, success: boolean }>;
+  verifyPasswordRecoveryCode: (email: string, code: string) => Promise<{ error: any | null, success: boolean }>;
+  updatePassword: (password: string) => Promise<{ error: any | null, success: boolean }>;
   persistLogin: boolean;
   setPersistentLogin: (persist: boolean) => void;
 }
@@ -268,12 +271,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // Função para recuperação de senha
-  const resetPassword = async (email: string) => {
+  const sendPasswordRecoveryCode = async (email: string) => {
     try {
       console.log('[AUTH] Tentando recuperação de senha para:', email);
       
-      // Sempre usar o domínio do Netlify para recuperação
-      const redirectUrl = 'https://glogg.netlify.app/reset-password';
+      // Usa origem atual para funcionar em produção e ambientes de teste.
+      const redirectUrl = `${window.location.origin}/reset-password`;
       console.log('[AUTH] URL de redirecionamento:', redirectUrl);
       
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
@@ -295,6 +298,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Compatibilidade com chamadas antigas no app
+  const resetPassword = async (email: string) => {
+    return sendPasswordRecoveryCode(email);
+  };
+
+  const verifyPasswordRecoveryCode = async (email: string, code: string) => {
+    try {
+      console.log('[AUTH] Verificando código de recuperação para:', email);
+      const { error } = await supabase.auth.verifyOtp({
+        email,
+        token: code,
+        type: 'recovery',
+      });
+
+      if (error) {
+        console.error('[AUTH] Código de recuperação inválido/expirado:', error);
+        return { error, success: false };
+      }
+
+      return { error: null, success: true };
+    } catch (error) {
+      console.error('[AUTH] Erro ao verificar código de recuperação:', error);
+      return { error, success: false };
+    }
+  };
+
+  const updatePassword = async (password: string) => {
+    try {
+      console.log('[AUTH] Atualizando senha do usuário em recuperação');
+      const { error } = await supabase.auth.updateUser({ password });
+
+      if (error) {
+        console.error('[AUTH] Erro ao atualizar senha:', error);
+        return { error, success: false };
+      }
+
+      return { error: null, success: true };
+    } catch (error) {
+      console.error('[AUTH] Erro inesperado ao atualizar senha:', error);
+      return { error, success: false };
+    }
+  };
+
   // Função para logout
   const signOut = async () => {
     console.log('[AUTH] Signing out');
@@ -312,6 +358,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signUp,
     signOut,
     resetPassword,
+    sendPasswordRecoveryCode,
+    verifyPasswordRecoveryCode,
+    updatePassword,
     persistLogin: persistentLogin,
     setPersistentLogin: handleSetPersistentLogin,
   };

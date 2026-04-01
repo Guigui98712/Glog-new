@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,12 +15,17 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { hapticFeedback, HapticType } from '@/lib/haptics';
 import useDevice from '@/hooks/useDevice';
 import { Checkbox } from '@/components/ui/checkbox';
-import { cn } from "@/lib/utils";
+
+type ResetStep = 'email' | 'code' | 'password';
+
+type PasswordRecoveryCooldownResponse = {
+  allowed: boolean;
+  wait_seconds: number;
+};
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -29,11 +35,26 @@ const Login = () => {
   const [isRegister, setIsRegister] = useState(false);
   const [name, setName] = useState('');
   const [resetEmail, setResetEmail] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
+  const [resetStep, setResetStep] = useState<ResetStep>('email');
+  const [resendCountdown, setResendCountdown] = useState(0);
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+  const isRecoveryRpcAvailableRef = useRef(true);
   
-  const { signIn, signUp, resetPassword, setPersistentLogin, user, loading } = useAuth();
+  const {
+    signIn,
+    signUp,
+    sendPasswordRecoveryCode,
+    verifyPasswordRecoveryCode,
+    updatePassword,
+    setPersistentLogin,
+    user,
+    loading
+  } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const device = useDevice();
@@ -50,6 +71,22 @@ const Login = () => {
       setPersistentLogin(rememberMe);
     }
   }, [rememberMe, setPersistentLogin]);
+
+  useEffect(() => {
+    if (!isResetDialogOpen) {
+      return;
+    }
+
+    if (resendCountdown <= 0) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setResendCountdown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [isResetDialogOpen, resendCountdown]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -218,8 +255,69 @@ const Login = () => {
     }
   };
 
-  const handleResetPassword = async () => {
-    if (!resetEmail.trim()) {
+  const resetRecoveryDialogState = () => {
+    setResetStep('email');
+    setResetEmail('');
+    setResetCode('');
+    setResetNewPassword('');
+    setResetConfirmPassword('');
+    setResendCountdown(0);
+    setIsResetting(false);
+  };
+
+  const closeResetDialog = () => {
+    setIsResetDialogOpen(false);
+    resetRecoveryDialogState();
+  };
+
+  const checkRecoveryCooldown = async (emailToCheck: string) => {
+    if (!isRecoveryRpcAvailableRef.current) {
+      return { allowed: true, waitSeconds: 50 };
+    }
+
+    const { data, error } = await supabase.rpc('check_password_recovery_resend', {
+      p_email: emailToCheck,
+      p_cooldown_seconds: 50,
+    });
+
+    if (error) {
+      const message = String(error.message || '').toLowerCase();
+      const code = String((error as any).code || '').toLowerCase();
+
+      // Fallback para ambientes sem a RPC aplicada ou cache do PostgREST desatualizado.
+      if (
+        message.includes('404') ||
+        message.includes('not found') ||
+        code === '404' ||
+        code === 'pgrst202'
+      ) {
+        isRecoveryRpcAvailableRef.current = false;
+        console.warn('[LOGIN] RPC check_password_recovery_resend indisponível. Usando cooldown local.');
+        return { allowed: true, waitSeconds: 50 };
+      }
+
+      // Não bloqueia recuperação por erro de banco (ex: digest/pgcrypto).
+      console.warn('[LOGIN] Falha na RPC de cooldown. Usando cooldown local.', error);
+      return { allowed: true, waitSeconds: 50 };
+    }
+
+    const normalized = Array.isArray(data) ? data[0] : data;
+    const result = normalized as PasswordRecoveryCooldownResponse | null;
+
+    if (!result) {
+      return { allowed: true, waitSeconds: 0 };
+    }
+
+    return {
+      allowed: Boolean(result.allowed),
+      waitSeconds: Number(result.wait_seconds || 0),
+    };
+  };
+
+  const handleSendRecoveryCode = async () => {
+    const emailToRecover = resetEmail.trim().toLowerCase();
+
+    if (!emailToRecover) {
       toast({
         title: "Erro",
         description: "Por favor, informe seu email.",
@@ -228,9 +326,32 @@ const Login = () => {
       return;
     }
 
+    if (!emailToRecover.includes('@')) {
+      toast({
+        title: "Email inválido",
+        description: "Informe um email válido para recuperar sua senha.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsResetting(true);
     try {
-      const { error, success } = await resetPassword(resetEmail);
+      const cooldown = await checkRecoveryCooldown(emailToRecover);
+
+      if (!cooldown.allowed) {
+        const waitTime = Math.max(1, cooldown.waitSeconds);
+        setResendCountdown(waitTime);
+        setResetStep('code');
+        toast({
+          title: "Aguarde para reenviar",
+          description: `Você poderá solicitar um novo código em ${waitTime}s.`,
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const { error, success } = await sendPasswordRecoveryCode(emailToRecover);
       
       if (error) {
         toast({
@@ -239,11 +360,13 @@ const Login = () => {
           variant: "destructive"
         });
       } else if (success) {
+        setResetEmail(emailToRecover);
         toast({
           title: "Email enviado com sucesso! ✉️",
-          description: "Verifique sua caixa de entrada para instruções sobre como redefinir sua senha. Se não encontrar, verifique também a pasta de spam.",
+          description: "Enviamos um código de recuperação. Digite o código recebido para continuar.",
         });
-        setIsResetDialogOpen(false);
+        setResetStep('code');
+        setResendCountdown(Math.max(0, cooldown.waitSeconds || 50));
       }
     } catch (error: any) {
       toast({
@@ -254,6 +377,105 @@ const Login = () => {
     } finally {
       setIsResetting(false);
     }
+  };
+
+  const handleVerifyRecoveryCode = async () => {
+    const code = resetCode.trim();
+
+    if (!code) {
+      toast({
+        title: "Código obrigatório",
+        description: "Digite o código de recuperação enviado para o seu email.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsResetting(true);
+    try {
+      const { error, success } = await verifyPasswordRecoveryCode(resetEmail.trim(), code);
+
+      if (error || !success) {
+        toast({
+          title: "Código inválido",
+          description: error?.message || "O código informado é inválido ou expirou. Solicite um novo código.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      toast({
+        title: "Código validado",
+        description: "Agora defina sua nova senha.",
+      });
+      setResetStep('password');
+    } catch (error: any) {
+      toast({
+        title: "Erro ao validar código",
+        description: error?.message || "Não foi possível validar o código agora.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const handleUpdateRecoveredPassword = async () => {
+    if (resetNewPassword.length < 6) {
+      toast({
+        title: "Senha muito curta",
+        description: "A nova senha deve ter pelo menos 6 caracteres.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (resetNewPassword !== resetConfirmPassword) {
+      toast({
+        title: "Senhas não conferem",
+        description: "A senha e a confirmação devem ser idênticas.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsResetting(true);
+    try {
+      const { error, success } = await updatePassword(resetNewPassword);
+
+      if (error || !success) {
+        toast({
+          title: "Falha ao redefinir senha",
+          description: error?.message || "Não foi possível atualizar a senha. Tente novamente.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      toast({
+        title: "Senha redefinida com sucesso",
+        description: "Você já pode entrar com a nova senha.",
+      });
+
+      closeResetDialog();
+      setPassword('');
+      setConfirmPassword('');
+    } catch (error: any) {
+      toast({
+        title: "Erro inesperado",
+        description: error?.message || "Não foi possível concluir a redefinição de senha.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (resendCountdown > 0 || isResetting) {
+      return;
+    }
+    await handleSendRecoveryCode();
   };
 
   const toggleRegister = () => {
@@ -402,58 +624,169 @@ const Login = () => {
         </CardFooter>
       </Card>
 
-      <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
+      <Dialog
+        open={isResetDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeResetDialog();
+            return;
+          }
+          setIsResetDialogOpen(true);
+        }}
+      >
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Recuperar senha</DialogTitle>
             <DialogDescription>
-              Digite seu email para receber instruções de recuperação de senha.
+              {resetStep === 'email' && 'Digite seu email para receber o código de recuperação.'}
+              {resetStep === 'code' && 'Digite o código enviado para seu email para validar a recuperação.'}
+              {resetStep === 'password' && 'Digite e confirme sua nova senha.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="reset-email">Email</Label>
-              <Input
-                id="reset-email"
-                type="email"
-                value={resetEmail}
-                onChange={(e) => setResetEmail(e.target.value)}
-                inputMode="email"
-                autoComplete="email"
-                autoCapitalize="none"
-                spellCheck={false}
-                autoCorrect="off"
-                disabled={isResetting}
-                className={cn(
-                  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
-                )}
-              />
-            </div>
+            {resetStep === 'email' && (
+              <div className="space-y-2">
+                <Label htmlFor="reset-email">Email</Label>
+                <Input
+                  id="reset-email"
+                  type="email"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  inputMode="email"
+                  autoComplete="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  autoCorrect="off"
+                  disabled={isResetting}
+                  className="min-h-[44px]"
+                />
+              </div>
+            )}
+
+            {resetStep === 'code' && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="reset-code">Código de recuperação</Label>
+                  <Input
+                    id="reset-code"
+                    type="text"
+                    value={resetCode}
+                    onChange={(e) => setResetCode(e.target.value)}
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    autoCorrect="off"
+                    disabled={isResetting}
+                    placeholder="Digite o código recebido"
+                    className="min-h-[44px]"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Enviado para: {resetEmail}
+                </p>
+              </>
+            )}
+
+            {resetStep === 'password' && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="reset-new-password">Nova senha</Label>
+                  <Input
+                    id="reset-new-password"
+                    type="password"
+                    value={resetNewPassword}
+                    onChange={(e) => setResetNewPassword(e.target.value)}
+                    autoComplete="new-password"
+                    disabled={isResetting}
+                    className="min-h-[44px]"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reset-confirm-password">Confirmar nova senha</Label>
+                  <Input
+                    id="reset-confirm-password"
+                    type="password"
+                    value={resetConfirmPassword}
+                    onChange={(e) => setResetConfirmPassword(e.target.value)}
+                    autoComplete="new-password"
+                    disabled={isResetting}
+                    className="min-h-[44px]"
+                  />
+                </div>
+              </>
+            )}
           </div>
           <DialogFooter>
             <Button 
               variant="outline" 
-              onClick={() => setIsResetDialogOpen(false)}
+              onClick={closeResetDialog}
               disabled={isResetting}
               className="min-h-[44px]"
               hapticType={HapticType.LIGHT}
             >
               Cancelar
             </Button>
-            <Button 
-              onClick={handleResetPassword} 
-              disabled={isResetting}
-              loading={isResetting}
-              className="min-h-[44px]"
-              hapticType={HapticType.MEDIUM}
-            >
-              {isResetting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Enviando...
-                </>
-              ) : 'Enviar'}
-            </Button>
+
+            {resetStep === 'email' && (
+              <Button 
+                onClick={handleSendRecoveryCode}
+                disabled={isResetting}
+                loading={isResetting}
+                className="min-h-[44px]"
+                hapticType={HapticType.MEDIUM}
+              >
+                {isResetting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Enviando...
+                  </>
+                ) : 'Enviar código'}
+              </Button>
+            )}
+
+            {resetStep === 'code' && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleResendCode}
+                  disabled={isResetting || resendCountdown > 0}
+                  className="min-h-[44px]"
+                  hapticType={HapticType.LIGHT}
+                >
+                  {resendCountdown > 0 ? `Reenviar (${resendCountdown}s)` : 'Reenviar código'}
+                </Button>
+                <Button 
+                  onClick={handleVerifyRecoveryCode}
+                  disabled={isResetting}
+                  loading={isResetting}
+                  className="min-h-[44px]"
+                  hapticType={HapticType.MEDIUM}
+                >
+                  {isResetting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Validando...
+                    </>
+                  ) : 'Validar código'}
+                </Button>
+              </>
+            )}
+
+            {resetStep === 'password' && (
+              <Button 
+                onClick={handleUpdateRecoveredPassword}
+                disabled={isResetting}
+                loading={isResetting}
+                className="min-h-[44px]"
+                hapticType={HapticType.MEDIUM}
+              >
+                {isResetting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Salvando...
+                  </>
+                ) : 'Redefinir senha'}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -235,9 +235,13 @@ export default function ViagensObra() {
   };
 
   // Customização visual dos dias
-  const tileClassName = ({ date }: { date: Date }) => {
+  const tileClassName = ({ date, view }: { date: Date; view: string }) => {
+    if (view !== 'month') {
+      return '';
+    }
+
     const dateString = format(date, 'yyyy-MM-dd');
-    return diasComViagem.includes(dateString) ? 'bg-blue-200 text-blue-900 font-bold rounded-full' : '';
+    return diasComViagem.includes(dateString) ? 'viagem-dia' : '';
   };
 
   if (loadingInitial) {
@@ -255,12 +259,15 @@ export default function ViagensObra() {
     <div className="container mx-auto p-4">
       <h2 className="text-2xl font-semibold mb-4">Viagens - Controle de Deslocamentos</h2>
 
-      <Card className="p-4 max-w-xl mx-auto">
-        <Calendar
-          locale="pt-BR"
-          tileClassName={tileClassName}
-          onClickDay={handleDayClick}
-        />
+      <Card className="p-3 sm:p-4 max-w-xl mx-auto">
+        <div className="w-full flex justify-center">
+          <Calendar
+            locale="pt-BR"
+            className="viagens-calendar"
+            tileClassName={tileClassName}
+            onClickDay={handleDayClick}
+          />
+        </div>
       </Card>
 
       {/* Tabela de contagem mensal */}

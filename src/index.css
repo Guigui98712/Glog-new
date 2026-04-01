@@ -259,3 +259,62 @@ textarea,
     min-width: 44px;
   }
 }
+
+.viagens-calendar .viagem-dia abbr {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 9999px;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.viagens-calendar .viagem-dia:enabled:hover abbr,
+.viagens-calendar .viagem-dia:enabled:focus abbr,
+.viagens-calendar .viagem-dia.react-calendar__tile--active abbr {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.viagens-calendar {
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.75rem;
+  padding: 0.5rem;
+}
+
+.viagens-calendar .react-calendar__navigation button {
+  min-width: 2.25rem;
+  font-size: 0.95rem;
+}
+
+.viagens-calendar .react-calendar__tile {
+  padding: 0.65rem 0.35rem;
+}
+
+@media (max-width: 640px) {
+  .viagens-calendar {
+    max-width: 100%;
+    padding: 0.35rem;
+  }
+
+  .viagens-calendar .react-calendar__navigation {
+    margin-bottom: 0.5rem;
+  }
+
+  .viagens-calendar .react-calendar__navigation button {
+    min-width: 2rem;
+    font-size: 0.85rem;
+  }
+
+  .viagens-calendar .react-calendar__tile {
+    padding: 0.55rem 0.25rem;
+    font-size: 0.85rem;
+  }
+}

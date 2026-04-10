@@ -1013,12 +1013,12 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
 
       {/* History Modal */}
       <Dialog open={showHistory} onOpenChange={setShowHistory}>
-        <DialogContent className="w-[calc(100vw-1rem)] max-w-5xl max-h-[90vh] p-0 overflow-hidden flex flex-col">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-[96vw] max-h-[90vh] p-0 overflow-hidden flex flex-col">
           <div className="flex items-center justify-between border-b px-4 py-3">
             <DialogTitle className="text-base sm:text-lg">Histórico de Movimentações</DialogTitle>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto p-4">
+          <div className="flex-1 min-h-0 overflow-auto p-4">
             {historyYears.length > 0 && (
               <div className="flex justify-end mb-3">
                 <select
@@ -1092,18 +1092,18 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
                     </div>
                   ))}
                 </div>
-                <div className="hidden md:block overflow-x-auto pb-2">
+                <div className="hidden md:block w-full overflow-x-auto pb-2">
                   <Table className="min-w-[860px]">
-                    <TableHeader>
+                    <TableHeader className="sticky top-0 z-10 bg-background">
                       <TableRow>
-                        <TableHead className="min-w-[100px]">Data</TableHead>
-                        <TableHead className="min-w-[140px]">Item</TableHead>
-                        <TableHead className="min-w-[120px]">Tipo</TableHead>
-                        <TableHead className="min-w-[100px]">Quantidade</TableHead>
-                        <TableHead className="min-w-[110px]">Nº Pedido</TableHead>
-                        <TableHead className="min-w-[220px]">Empresa / Alterações</TableHead>
-                        <TableHead className="min-w-[120px]">Almoxarife</TableHead>
-                        <TableHead className="min-w-[120px]">Retirado por</TableHead>
+                        <TableHead className="min-w-[100px] bg-background">Data</TableHead>
+                        <TableHead className="min-w-[140px] bg-background">Item</TableHead>
+                        <TableHead className="min-w-[120px] bg-background">Tipo</TableHead>
+                        <TableHead className="min-w-[100px] bg-background">Quantidade</TableHead>
+                        <TableHead className="min-w-[120px] bg-background">Almoxarife</TableHead>
+                        <TableHead className="min-w-[120px] bg-background">Retirado por</TableHead>
+                        <TableHead className="min-w-[110px] bg-background">Nº Pedido</TableHead>
+                        <TableHead className="min-w-[220px] bg-background">Empresa / Alterações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1118,6 +1118,8 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
                             {getHistoricoMovimentoMeta(mov).label}
                           </TableCell>
                           <TableCell>{mov.observacao === 'item_editado' ? '-' : mov.quantidade}</TableCell>
+                          <TableCell className="max-w-[180px] whitespace-normal break-words">{getAlmoxarifeNome(mov.observacao)}</TableCell>
+                          <TableCell className="max-w-[180px] whitespace-normal break-words">{mov.retirado_por || '-'}</TableCell>
                           <TableCell className="break-words">{mov.numero_pedido || '-'}</TableCell>
                           <TableCell className="max-w-[320px] align-top" title={mov.observacao === 'item_editado' ? 'Alterações' : 'Empresa'}>
                             {mov.observacao === 'item_editado' ? (
@@ -1136,8 +1138,6 @@ const AlmoxarifadoPublic: React.FC<{ obraId: number; deviceId: string | number |
                               <div className="break-words">{mov.empresa_nome || '-'}</div>
                             )}
                           </TableCell>
-                          <TableCell className="max-w-[180px] break-words">{getAlmoxarifeNome(mov.observacao)}</TableCell>
-                          <TableCell className="max-w-[180px] break-words">{mov.retirado_por || '-'}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

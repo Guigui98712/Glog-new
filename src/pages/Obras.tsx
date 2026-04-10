@@ -21,7 +21,7 @@ import {
 import { Plus, MoreVertical, Pencil, Trash2, Upload, Image, Search, Building, AlertTriangle } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { 
-  listarObras, 
+  listarObrasComAcesso,
   criarObra, 
   atualizarObra, 
   excluirObraSegura, 
@@ -39,6 +39,9 @@ import { Textarea } from "@/components/ui/textarea";
 // Interface estendida para incluir o progresso calculado
 interface ObraComProgresso extends Obra {
   progressoCalculado?: number;
+  compartilhada?: boolean;
+  permissao_compartilhamento?: string | null;
+  obra_origem_id?: number;
 }
 
 // Função para capitalizar a primeira letra de cada frase
@@ -91,7 +94,7 @@ const Obras = () => {
       setError(null);
       console.log('[DEBUG] Carregando obras...');
 
-      const data = await listarObras();
+      const data = await listarObrasComAcesso();
       console.log('[DEBUG] Obras carregadas:', data);
       
       if (data && Array.isArray(data)) {
@@ -101,7 +104,8 @@ const Obras = () => {
         const obrasComProgresso = await Promise.all(
           data.map(async (obra) => {
             try {
-              const registros = await listarRegistrosDiario(obra.id);
+              const obraId = obra.obra_origem_id || obra.id;
+              const registros = await listarRegistrosDiario(obraId);
               const progresso = calcularProgresso(registros);
               return { ...obra, progressoCalculado: progresso };
             } catch (error) {
@@ -201,9 +205,7 @@ const Obras = () => {
       const obraCriada = await criarObra(novaObraData);
 
       // Forçar recarregamento completo das obras
-      const obrasAtualizadas = await listarObras();
-      console.log('[DEBUG] Obras recarregadas após criação:', obrasAtualizadas);
-      setObras(obrasAtualizadas || []);
+      await carregarObras();
       
       setNovaObraNome("");
       setNovaObraEndereco("");
@@ -279,9 +281,7 @@ const Obras = () => {
       console.log('[DEBUG] Obra atualizada com sucesso:', obraAtualizada);
 
       // Forçar recarregamento completo das obras
-      const obrasAtualizadas = await listarObras();
-      console.log('[DEBUG] Obras recarregadas após atualização:', obrasAtualizadas);
-      setObras(obrasAtualizadas || []);
+      await carregarObras();
       
       setObraEmEdicao(null);
       setLogoEditFile(null);
@@ -377,6 +377,93 @@ const Obras = () => {
     }
   };
 
+  const obrasProprias = obras.filter((obra) => !obra.compartilhada);
+  const obrasCompartilhadas = obras.filter((obra) => obra.compartilhada);
+
+  const renderObraCard = (obra: ObraComProgresso) => (
+    <Card key={`${obra.compartilhada ? 'compartilhada' : 'propria'}-${obra.id}`} className="p-6 hover:shadow-lg transition-shadow">
+      <div className="flex justify-between items-start mb-4">
+        <div className="flex items-center">
+          {obra.logo_url ? (
+            <div className="w-12 h-12 mr-3 rounded-md overflow-hidden">
+              <img
+                src={obra.logo_url}
+                alt={`Logo da obra ${obra.nome}`}
+                className="w-full h-full object-cover"
+              />
+            </div>
+          ) : (
+            <div className="w-12 h-12 mr-3 bg-gray-100 rounded-md flex items-center justify-center">
+              <Image className="w-6 h-6 text-gray-400" />
+            </div>
+          )}
+          <h2 className="text-lg font-semibold">{obra.nome}</h2>
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => handleVerDetalhes(obra.obra_origem_id || obra.id)}>
+              Ver Detalhes
+            </DropdownMenuItem>
+            {(!obra.compartilhada || obra.permissao_compartilhamento !== 'visualizar') && (
+              <DropdownMenuItem onClick={() => handleEditarObra(obra)}>
+                <Pencil className="w-4 h-4 mr-2" />
+                Editar
+              </DropdownMenuItem>
+            )}
+            {!obra.compartilhada && (
+              <DropdownMenuItem onClick={() => handleExcluirObra(obra.id)}>
+                <Trash2 className="w-4 h-4 mr-2" />
+                Excluir
+              </DropdownMenuItem>
+            )}
+            {!obra.compartilhada && (
+              <DropdownMenuItem onClick={() => abrirDialogCompartilhar(obra.id)}>
+                Compartilhar
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <div className="space-y-2">
+        {obra.compartilhada && (
+          <p className="text-xs font-medium text-blue-700 bg-blue-50 inline-block px-2 py-1 rounded">
+            Compartilhada com você
+          </p>
+        )}
+        <p className="text-sm text-gray-600">
+          <span className="font-medium">Endereço:</span> {obra.endereco}
+        </p>
+        <p className="text-sm text-gray-600">
+          <span className="font-medium">Progresso:</span> {obra.progressoCalculado || obra.progresso}%
+        </p>
+        <p className="text-sm text-gray-600">
+          <span className="font-medium">Status:</span>{" "}
+          {obra.status === 'em_andamento' ? 'Em andamento' :
+           obra.status === 'concluido' ? 'Concluído' :
+           obra.status === 'pendente' ? 'Pendente' :
+           String(obra.status)}
+        </p>
+        <div className="mt-2">
+          <Progress value={obra.progressoCalculado || obra.progresso} className="h-2" />
+        </div>
+      </div>
+      <div className="mt-4">
+        <Button
+          variant="outline"
+          className="w-full"
+          onClick={() => handleVerDetalhes(obra.obra_origem_id || obra.id)}
+        >
+          Ver Detalhes
+        </Button>
+      </div>
+    </Card>
+  );
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
@@ -389,7 +476,7 @@ const Obras = () => {
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-        <h1 className="text-3xl font-bold">Minhas Obras</h1>
+        <h1 className="text-3xl font-bold">Obras</h1>
         <div className="flex items-center gap-2">
           <Button onClick={() => setShowDialog(true)}>
             <Plus className="h-4 w-4 mr-2" /> Nova Obra
@@ -406,79 +493,24 @@ const Obras = () => {
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {obras.map((obra) => (
-            <Card key={obra.id} className="p-6 hover:shadow-lg transition-shadow">
-              <div className="flex justify-between items-start mb-4">
-                <div className="flex items-center">
-                  {obra.logo_url ? (
-                    <div className="w-12 h-12 mr-3 rounded-md overflow-hidden">
-                      <img
-                        src={obra.logo_url}
-                        alt={`Logo da obra ${obra.nome}`}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  ) : (
-                    <div className="w-12 h-12 mr-3 bg-gray-100 rounded-md flex items-center justify-center">
-                      <Image className="w-6 h-6 text-gray-400" />
-                    </div>
-                  )}
-                  <h2 className="text-lg font-semibold">{obra.nome}</h2>
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => handleVerDetalhes(obra.id)}>
-                      Ver Detalhes
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleEditarObra(obra)}>
-                      <Pencil className="w-4 h-4 mr-2" />
-                      Editar
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleExcluirObra(obra.id)}>
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Excluir
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => abrirDialogCompartilhar(obra.id)}>
-                      Compartilhar
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+        <div className="space-y-8">
+          {obrasProprias.length > 0 && (
+            <section className="space-y-4">
+              <h2 className="text-xl font-semibold">Obras</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {obrasProprias.map(renderObraCard)}
               </div>
-              <div className="space-y-2">
-                <p className="text-sm text-gray-600">
-                  <span className="font-medium">Endereço:</span> {obra.endereco}
-                </p>
-                <p className="text-sm text-gray-600">
-                  <span className="font-medium">Progresso:</span> {obra.progressoCalculado || obra.progresso}%
-                </p>
-                <p className="text-sm text-gray-600">
-                  <span className="font-medium">Status:</span>{" "}
-                  {obra.status === 'em_andamento' ? 'Em andamento' : 
-                   obra.status === 'concluido' ? 'Concluído' : 
-                   obra.status === 'pendente' ? 'Pendente' : 
-                   String(obra.status)}
-                </p>
-                <div className="mt-2">
-                  <Progress value={obra.progressoCalculado || obra.progresso} className="h-2" />
-                </div>
+            </section>
+          )}
+
+          {obrasCompartilhadas.length > 0 && (
+            <section className="space-y-4">
+              <h2 className="text-xl font-semibold">Compartilhadas com você</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {obrasCompartilhadas.map(renderObraCard)}
               </div>
-              <div className="mt-4">
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => handleVerDetalhes(obra.id)}
-                >
-                  Ver Detalhes
-                </Button>
-              </div>
-            </Card>
-          ))}
+            </section>
+          )}
         </div>
       )}
 

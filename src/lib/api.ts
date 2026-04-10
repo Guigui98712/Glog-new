@@ -14,6 +14,11 @@ export type Obra = Database['public']['Tables']['obras']['Row'];
 export type NovaObra = Database['public']['Tables']['obras']['Insert'];
 // Tipo personalizado sem o campo data_previsao_fim
 export type ObraParaEnvio = Omit<NovaObra, 'data_previsao_fim'> & { data_previsao_fim?: string | null };
+export type ObraComAcesso = Obra & {
+  compartilhada?: boolean;
+  permissao_compartilhamento?: string | null;
+  obra_origem_id?: number;
+};
 export type Etapa = Database['public']['Tables']['etapas']['Row'];
 type NovaEtapa = Database['public']['Tables']['etapas']['Insert'];
 type Orcamento = Database['public']['Tables']['orcamentos']['Row'];
@@ -2886,5 +2891,92 @@ export const revogarDispositivoAlmoxarife = async (id: number) => {
   } catch (err) {
     console.error('Erro revogarDispositivoAlmoxarife', err);
     throw err;
+  }
+};
+
+export const listarObrasComAcesso = async (): Promise<ObraComAcesso[]> => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    const userEmail = session?.user?.email;
+
+    if (!userId && !userEmail) {
+      return [];
+    }
+
+    let queryProprias = supabase
+      .from('obras')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (userId) {
+      queryProprias = queryProprias.eq('user_id', userId);
+    }
+
+    const { data: obrasProprias, error: obrasPropriasError } = await queryProprias;
+    if (obrasPropriasError) throw obrasPropriasError;
+
+    let queryCompartilhadas = supabase
+      .from('obras_compartilhadas')
+      .select('*')
+      .order('criado_em', { ascending: false });
+
+    if (userId && userEmail) {
+      queryCompartilhadas = queryCompartilhadas.or(`colaborador_id.eq.${userId},colaborador_email.eq.${userEmail}`);
+    } else if (userId) {
+      queryCompartilhadas = queryCompartilhadas.eq('colaborador_id', userId);
+    } else if (userEmail) {
+      queryCompartilhadas = queryCompartilhadas.eq('colaborador_email', userEmail);
+    }
+
+    const { data: obrasCompartilhadas, error: obrasCompartilhadasError } = await queryCompartilhadas;
+    if (obrasCompartilhadasError) throw obrasCompartilhadasError;
+
+    const propriasNormalizadas: ObraComAcesso[] = (obrasProprias || []).map((obra) => ({
+      ...obra,
+      compartilhada: false,
+      permissao_compartilhamento: null,
+      obra_origem_id: obra.id,
+    }));
+
+    const idsProprias = new Set(propriasNormalizadas.map((obra) => obra.id));
+
+    const compartilhadasNormalizadas: ObraComAcesso[] = (obrasCompartilhadas || [])
+      .map((obra: any) => {
+        const obraId = Number(obra.obra_id ?? obra.id);
+        return {
+          id: obraId,
+          nome: obra.nome,
+          endereco: obra.endereco,
+          custo_previsto: obra.custo_previsto ?? 0,
+          custo_real: obra.custo_real ?? 0,
+          progresso: obra.progresso ?? 0,
+          status: obra.status ?? 'pendente',
+          created_at: obra.created_at ?? obra.criado_em ?? new Date().toISOString(),
+          updated_at: obra.updated_at ?? obra.criado_em ?? new Date().toISOString(),
+          user_id: obra.user_id ?? null,
+          viagem_fora_cidade: obra.viagem_fora_cidade ?? false,
+          cliente: obra.cliente ?? null,
+          responsavel: obra.responsavel ?? null,
+          logo_url: obra.logo_url ?? null,
+          data_inicio: obra.data_inicio ?? null,
+          data_previsao_fim: obra.data_previsao_fim ?? null,
+          trello_board_id: obra.trello_board_id ?? null,
+          observacoes: obra.observacoes ?? null,
+          compartilhada: true,
+          permissao_compartilhamento: obra.permissao ?? null,
+          obra_origem_id: obraId,
+        } as ObraComAcesso;
+      })
+      .filter((obra) => obra.id && !idsProprias.has(obra.id));
+
+    return [...propriasNormalizadas, ...compartilhadasNormalizadas].sort((a, b) => {
+      const dataA = new Date(a.created_at || 0).getTime();
+      const dataB = new Date(b.created_at || 0).getTime();
+      return dataB - dataA;
+    });
+  } catch (error) {
+    console.error('Erro ao listar obras com acesso compartilhado:', error);
+    throw error;
   }
 };

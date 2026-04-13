@@ -303,22 +303,31 @@ const CronogramasObra: React.FC = () => {
   }, [cronogramas]);
 
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+    <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4 pb-28 md:pb-6">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
         <div className="flex items-center gap-3 w-full md:w-auto">
           <Button variant="ghost" onClick={() => navigate(-1)} className="!px-3">Voltar</Button>
           <h1 className="text-xl font-bold">Cronogramas</h1>
         </div>
-        <div className="flex w-full md:w-auto items-start md:items-center gap-2">
-          <Input className="w-full md:w-64" value={nomeNovo} onChange={(e) => setNomeNovo(e.target.value)} placeholder="Nome do cronograma" />
-          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+      </div>
+
+      <Card className="p-3 md:p-4">
+        <div className="flex flex-col md:flex-row gap-2 md:items-center">
+          <Input
+            className="w-full md:w-72"
+            value={nomeNovo}
+            onChange={(e) => setNomeNovo(e.target.value)}
+            placeholder="Nome do cronograma"
+          />
+          <div className="hidden md:flex flex-row gap-2 w-full md:w-auto">
             <Button className="w-full sm:w-auto" onClick={(e) => { e.preventDefault(); e.stopPropagation(); console.log('[UI] create button clicked: weeks'); criarCronograma('weeks'); }} disabled={loading}>{loading ? 'Criando...' : 'Criar Semanas'}</Button>
             <Button className="w-full sm:w-auto" onClick={(e) => { e.preventDefault(); e.stopPropagation(); console.log('[UI] create button clicked: months'); criarCronograma('months'); }} disabled={loading}>{loading ? 'Criando...' : 'Criar Mensal'}</Button>
           </div>
+          <p className="md:hidden text-xs text-slate-500">Use os botões fixos no rodapé para criar rápido.</p>
         </div>
-      </div>
+      </Card>
 
-          {cronogramas.length === 0 ? (
+      {cronogramas.length === 0 ? (
         <div className="mt-6">
           <Card className="p-6">
             <p className="text-gray-700">Nenhum cronograma cadastrado para esta obra ainda. Use o campo de criação no topo para adicionar o primeiro cronograma.</p>
@@ -327,15 +336,15 @@ const CronogramasObra: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4 items-stretch md:auto-rows-fr">
           {cronogramas.filter(c => c.id !== selectedId).map(c => (
-            <Card key={c.id} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between cursor-pointer gap-3 h-full min-h-[92px]" onClick={() => setSelectedId(c.id)}>
+            <Card key={c.id} className="p-4 flex flex-col items-start justify-between cursor-pointer gap-3 h-full min-h-[110px] active:scale-[0.99] transition-transform" onClick={() => setSelectedId(c.id)}>
               <div className="flex-1 min-w-0">
-                <h3 className="text-lg font-medium truncate">{c.nome}</h3>
+                <h3 className="text-base md:text-lg font-medium truncate">{c.nome}</h3>
                 <p className="text-sm text-gray-500 truncate">Criado em: {c.created_at ? format(new Date(c.created_at), "dd'/'MM/yyyy HH:mm") : '—'}</p>
                 <p className="text-sm text-gray-500 mt-1 truncate">{c.data.weeks ? `Semanas: ${c.data.weeks.length}` : c.data.months ? `Meses: ${c.data.months.length}` : `Colunas: ${ (c.data.weeks?.length || c.data.months?.length) || 0 }`} · Etapas: {c.data.etapas?.length || 0}</p>
               </div>
-              <div className="flex gap-2 flex-shrink-0">
-                <Button size="sm" onClick={(e) => { e.stopPropagation(); e.preventDefault(); navigate(`/obras/${obraId}/cronogramas/${c.id}`); }}>Abrir editor</Button>
-                <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); e.preventDefault(); console.log('[UI] list delete button clicked', c.id); excluirCronograma(c.id); }} disabled={loading}>Excluir</Button>
+              <div className="grid grid-cols-2 md:flex gap-2 w-full md:w-auto flex-shrink-0">
+                <Button size="sm" className="w-full" onClick={(e) => { e.stopPropagation(); e.preventDefault(); navigate(`/obras/${obraId}/cronogramas/${c.id}`); }}>Abrir editor</Button>
+                <Button size="sm" className="w-full" variant="destructive" onClick={(e) => { e.stopPropagation(); e.preventDefault(); console.log('[UI] list delete button clicked', c.id); excluirCronograma(c.id); }} disabled={loading}>Excluir</Button>
               </div>
             </Card>
           ))}
@@ -343,21 +352,41 @@ const CronogramasObra: React.FC = () => {
       )}
 
       {selected && (
-        <Card className="p-4 h-full min-h-[92px]">
+        <Card className="p-4 h-full min-h-[110px] border-primary/30">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between">
             <div className="flex-1 min-w-0">
-              <h3 className="text-lg font-medium truncate">{selected.nome}</h3>
+              <h3 className="text-base md:text-lg font-medium truncate">Selecionado: {selected.nome}</h3>
               <p className="text-sm text-gray-500 truncate">Criado em: {selected.created_at ? format(new Date(selected.created_at), "dd'/'MM/yyyy HH:mm") : '—'}</p>
               <p className="text-sm text-gray-500 mt-1 truncate">{selected.data.weeks ? `Semanas: ${selected.data.weeks.length}` : selected.data.months ? `Meses: ${selected.data.months.length}` : `Colunas: ${ (selected.data.weeks?.length || selected.data.months?.length) || 0 }`} · Etapas: {selected.data.etapas?.length || 0}</p>
             </div>
-            <div className="mt-3 md:mt-0 flex flex-col sm:flex-row gap-2">
-              {selectedDirty && <Button size="sm" onClick={() => salvarCronograma(selected)} disabled={loading}>Salvar alterações</Button>}
-              <Button size="sm" onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate(`/obras/${obraId}/cronogramas/${selected.id}`); }}>Abrir editor</Button>
-              <Button size="sm" variant="destructive" onClick={(e) => { e.preventDefault(); e.stopPropagation(); console.log('[UI] selected panel delete clicked', selected.id); excluirCronograma(selected.id); }} disabled={loading}>Excluir</Button>
+            <div className="mt-3 md:mt-0 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full md:w-auto">
+              {selectedDirty && <Button size="sm" className="w-full" onClick={() => salvarCronograma(selected)} disabled={loading}>Salvar alterações</Button>}
+              <Button size="sm" className="w-full" onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate(`/obras/${obraId}/cronogramas/${selected.id}`); }}>Abrir editor</Button>
+              <Button size="sm" className="w-full" variant="destructive" onClick={(e) => { e.preventDefault(); e.stopPropagation(); console.log('[UI] selected panel delete clicked', selected.id); excluirCronograma(selected.id); }} disabled={loading}>Excluir</Button>
             </div>
           </div>
         </Card>
       )}
+
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur px-3 py-3">
+        <div className="max-w-7xl mx-auto grid grid-cols-2 gap-2">
+          <Button
+            className="w-full"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); criarCronograma('weeks'); }}
+            disabled={loading}
+          >
+            {loading ? 'Criando...' : 'Criar Semanas'}
+          </Button>
+          <Button
+            className="w-full"
+            variant="secondary"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); criarCronograma('months'); }}
+            disabled={loading}
+          >
+            {loading ? 'Criando...' : 'Criar Mensal'}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 };

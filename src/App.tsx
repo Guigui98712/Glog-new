@@ -37,6 +37,7 @@ import Almoxarifado from './pages/Almoxarifado';
 import AlmoxarifadoAcesso from './pages/AlmoxarifadoAcesso';
 import Ferramentas from './pages/Ferramentas';
 import ProducaoObra from './pages/ProducaoObra';
+import AppUpdateChecker from './components/AppUpdateChecker';
 
 // Componente para capturar erros
 class ErrorBoundary extends React.Component {
@@ -265,6 +266,7 @@ function App() {
     <ErrorBoundary>
       <>
         <NavigationManager />
+        <AppUpdateChecker />
         <Routes>
           {/* Redirecionar a rota raiz com base no estado de autenticação */}
           <Route path="/" element={<RedirectBasedOnAuth />} />

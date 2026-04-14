@@ -1092,15 +1092,14 @@ const ProducaoObra = () => {
       bottom: { style: 'thin' },
     };
 
-    // Aba resumo para visao geral do mes
+    // Aba resumo para visão geral do mês
     const resumoLinhas: (string | number)[][] = [];
     resumoLinhas.push([
-      `RESUMO DE PRODUCAO ${format(tabelaMes, 'MMMM/yyyy', { locale: ptBR }).toUpperCase()} - ${obraNome.toUpperCase()}`,
+      `RESUMO DE PRODUÇÃO ${format(tabelaMes, 'MMMM/yyyy', { locale: ptBR }).toUpperCase()} - ${obraNome.toUpperCase()}`,
     ]);
     resumoLinhas.push([]);
-    resumoLinhas.push(['PEDREIRO', 'LANCAMENTOS', 'TOTAL METRAGEM', 'TOTAL A PAGAR (R$)']);
+    resumoLinhas.push(['PEDREIRO', 'TOTAL A PAGAR (R$)']);
 
-    let totalResumoMetragem = 0;
     let totalResumoPagar = 0;
 
     for (const pedreiro of pedreirosParaExportar) {
@@ -1109,7 +1108,6 @@ const ProducaoObra = () => {
         return d >= inicioMes && d <= fimMes && r.pedreiroId === pedreiro.id;
       });
 
-      const totalMetragem = registrosPedreiroMes.reduce((acc, r) => acc + r.quantidade, 0);
       const totalPagar = tarefas.reduce((acc, tarefa) => {
         const somaQuantidade = registrosPedreiroMes
           .filter((r) => r.tarefaId === tarefa.id)
@@ -1117,36 +1115,28 @@ const ProducaoObra = () => {
         return acc + somaQuantidade * tarefa.valor;
       }, 0);
 
-      totalResumoMetragem += totalMetragem;
       totalResumoPagar += totalPagar;
 
-      resumoLinhas.push([
-        pedreiro.nome,
-        registrosPedreiroMes.length,
-        totalMetragem,
-        totalPagar,
-      ]);
+      resumoLinhas.push([pedreiro.nome, totalPagar]);
     }
 
-    resumoLinhas.push(['TOTAL GERAL', '', totalResumoMetragem, totalResumoPagar]);
+    resumoLinhas.push(['TOTAL GERAL', totalResumoPagar]);
 
     const wsResumo = wb.addWorksheet('RESUMO');
     resumoLinhas.forEach((row) => wsResumo.addRow(row));
 
     wsResumo.columns = [
       { width: 28 },
-      { width: 14 },
-      { width: 18 },
       { width: 20 },
     ];
-    wsResumo.mergeCells(1, 1, 1, 4);
+    wsResumo.mergeCells(1, 1, 1, 2);
 
     const tituloResumo = wsResumo.getCell(1, 1);
     tituloResumo.font = { bold: true, size: 13, color: { argb: 'FFFFFFFF' } };
     tituloResumo.alignment = { horizontal: 'center', vertical: 'middle' };
     tituloResumo.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corCinzaEscuro } };
 
-    for (let c = 1; c <= 4; c += 1) {
+    for (let c = 1; c <= 2; c += 1) {
       const h = wsResumo.getCell(3, c);
       h.font = { bold: true, color: { argb: 'FFFFFFFF' } };
       h.alignment = { horizontal: 'center', vertical: 'middle' };
@@ -1155,19 +1145,18 @@ const ProducaoObra = () => {
     }
 
     for (let r = 4; r <= wsResumo.rowCount; r += 1) {
-      for (let c = 1; c <= 4; c += 1) {
+      for (let c = 1; c <= 2; c += 1) {
         const cell = wsResumo.getCell(r, c);
         cell.border = bordaFina;
         if (r % 2 === 0) {
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corCinzaClaro } };
         }
       }
-      wsResumo.getCell(r, 3).numFmt = '#,##0.00';
-      wsResumo.getCell(r, 4).numFmt = '#,##0.00';
+      wsResumo.getCell(r, 2).numFmt = '#,##0.00';
     }
 
     const ultimaResumo = wsResumo.rowCount;
-    for (let c = 1; c <= 4; c += 1) {
+    for (let c = 1; c <= 2; c += 1) {
       const cell = wsResumo.getCell(ultimaResumo, c);
       cell.font = { bold: true };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corVerdeClaro } };
@@ -1182,14 +1171,14 @@ const ProducaoObra = () => {
 
       const linhas: (string | number)[][] = [];
 
-      // Titulo principal e subtitulo
+      // Título principal e subtítulo
       linhas.push([
         `RELATÓRIO DE PRODUÇÃO EMPREITA ${format(tabelaMes, 'MMMM/yyyy', { locale: ptBR }).toUpperCase()} - ${obraNome.toUpperCase()}`,
       ]);
       linhas.push([pedreiro.nome.toUpperCase()]);
       linhas.push([]);
 
-      // Cabecalho no formato proximo ao seu Excel
+      // Cabeçalho no formato próximo ao seu Excel
       const headerBase = ['SERVIÇOS EXECUTADOS', 'VALOR COMBINADO'];
       const semanasHeader = semanas.map((s) => s.label.toUpperCase());
       linhas.push([...headerBase, ...semanasHeader, 'TOTAL METRAGEM', 'A PAGAR']);
@@ -1237,7 +1226,7 @@ const ProducaoObra = () => {
       }, 0);
 
       linhas.push([
-        'Pavimento',
+        'PAVIMENTOS',
         '',
         ...pavimentosSemana,
         'Total',
@@ -1387,23 +1376,23 @@ const ProducaoObra = () => {
   }
 
   return (
-    <div className="container mx-auto p-4 space-y-6">
+    <div className="container mx-auto p-3 sm:p-4 space-y-4 sm:space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Produção de Pedreiros</h1>
+          <h1 className="text-xl sm:text-2xl font-bold">Produção de Pedreiros</h1>
           <p className="text-sm text-muted-foreground">{obraNome}</p>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-2">
-          <Button variant="outline" onClick={() => navigate(`/obras/${obraId}`)}>
+          <Button className="w-full sm:w-auto" variant="outline" onClick={() => navigate(`/obras/${obraId}`)}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Voltar para obra
           </Button>
-          <Button variant="outline" onClick={() => setShowGerenciarPedreiros(true)}>
+          <Button className="w-full sm:w-auto" variant="outline" onClick={() => setShowGerenciarPedreiros(true)}>
             <Users className="h-4 w-4 mr-2" />
             Gerenciar pedreiros
           </Button>
-          <Button variant="outline" onClick={() => setShowGerenciarTarefas(true)}>
+          <Button className="w-full sm:w-auto" variant="outline" onClick={() => setShowGerenciarTarefas(true)}>
             <ClipboardList className="h-4 w-4 mr-2" />
             Gerenciar tarefas
           </Button>
@@ -1450,13 +1439,13 @@ const ProducaoObra = () => {
         </div>
 
         {/* Controles de navegação */}
-        <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 sm:items-center sm:justify-between lg:flex-row">
           {/* Mês */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between sm:justify-start gap-2">
             <Button variant="outline" size="icon" onClick={irMesAnterior}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="font-semibold text-sm min-w-[10rem] text-center capitalize">
+            <span className="font-semibold text-sm min-w-[8.5rem] sm:min-w-[10rem] text-center capitalize">
               {format(tabelaMes, "MMMM 'de' yyyy", { locale: ptBR })}
             </span>
             <Button variant="outline" size="icon" onClick={irProximoMes}>
@@ -1465,12 +1454,12 @@ const ProducaoObra = () => {
           </div>
 
           {/* Pedreiro */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             <Button variant="outline" size="icon" onClick={irPedreiroAnterior} disabled={pedreirosAtivos.length === 0}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <Select value={tabelaPedreiroId} onValueChange={setTabelaPedreiroId}>
-              <SelectTrigger className="w-52">
+              <SelectTrigger className="w-full sm:w-52">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1488,18 +1477,18 @@ const ProducaoObra = () => {
 
         {/* Tabela */}
         <div className="overflow-x-auto rounded-lg border">
-          <table className="w-full text-sm border-collapse">
+          <table className="w-full text-xs sm:text-sm border-collapse whitespace-nowrap">
             <thead>
               <tr className="bg-gray-600 text-white">
-                <th className="px-3 py-2 text-left font-bold uppercase text-xs min-w-[180px] border border-gray-500">Serviços executados</th>
-                <th className="px-3 py-2 text-center font-bold uppercase text-xs min-w-[110px] border border-gray-500">Valor combinado</th>
+                <th className="px-2 sm:px-3 py-2 text-left font-bold uppercase text-[11px] sm:text-xs min-w-[150px] sm:min-w-[180px] border border-gray-500">Serviços executados</th>
+                <th className="px-2 sm:px-3 py-2 text-center font-bold uppercase text-[11px] sm:text-xs min-w-[100px] sm:min-w-[110px] border border-gray-500">Valor combinado</th>
                 {semanasDoMes.map((semana) => (
-                  <th key={semana.id} className="px-3 py-2 text-center font-bold uppercase text-xs min-w-[100px] border border-gray-500">
+                  <th key={semana.id} className="px-2 sm:px-3 py-2 text-center font-bold uppercase text-[11px] sm:text-xs min-w-[90px] sm:min-w-[100px] border border-gray-500">
                     {semana.label}
                   </th>
                 ))}
-                <th className="px-3 py-2 text-center font-bold uppercase text-xs min-w-[120px] border border-gray-500">Total metragem</th>
-                <th className="px-3 py-2 text-center font-bold uppercase text-xs min-w-[120px] border border-gray-500">A pagar</th>
+                <th className="px-2 sm:px-3 py-2 text-center font-bold uppercase text-[11px] sm:text-xs min-w-[110px] sm:min-w-[120px] border border-gray-500">Total metragem</th>
+                <th className="px-2 sm:px-3 py-2 text-center font-bold uppercase text-[11px] sm:text-xs min-w-[110px] sm:min-w-[120px] border border-gray-500">A pagar</th>
               </tr>
             </thead>
             <tbody>
@@ -1515,24 +1504,24 @@ const ProducaoObra = () => {
                     key={item.tarefa.id}
                     className={rowIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
                   >
-                    <td className="px-3 py-2 font-semibold uppercase text-xs border border-gray-200">{item.tarefa.nome}</td>
-                    <td className="px-3 py-2 text-center text-xs border border-gray-200">
+                    <td className="px-2 sm:px-3 py-2 font-semibold uppercase text-[11px] sm:text-xs border border-gray-200">{item.tarefa.nome}</td>
+                    <td className="px-2 sm:px-3 py-2 text-center text-[11px] sm:text-xs border border-gray-200">
                       R$ {item.tarefa.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </td>
                     {item.valoresSemana.map((valor, index) => (
                       <td
                         key={`${item.tarefa.id}-semana-${index}`}
-                        className={`px-3 py-2 text-center font-semibold text-xs border border-gray-200 ${
+                        className={`px-2 sm:px-3 py-2 text-center font-semibold text-[11px] sm:text-xs border border-gray-200 ${
                           valor > 0 ? 'bg-green-50 text-green-800' : ''
                         }`}
                       >
                         {valor > 0 ? formatQuantidade(valor) : ''}
                       </td>
                     ))}
-                    <td className="px-3 py-2 text-center font-bold text-sm border border-gray-200 bg-gray-100">
+                    <td className="px-2 sm:px-3 py-2 text-center font-bold text-xs sm:text-sm border border-gray-200 bg-gray-100">
                       {item.totalQuantidade > 0 ? formatQuantidade(item.totalQuantidade) : '0'}
                     </td>
-                    <td className="px-3 py-2 text-center font-bold text-sm border border-gray-200 bg-gray-100">
+                    <td className="px-2 sm:px-3 py-2 text-center font-bold text-xs sm:text-sm border border-gray-200 bg-gray-100">
                       {item.totalPagar > 0 ? formatCurrency(item.totalPagar) : 'R$ -'}
                     </td>
                   </tr>
@@ -1542,15 +1531,15 @@ const ProducaoObra = () => {
             {resumoPorTarefa.length > 0 && (
               <tfoot>
                 <tr className="bg-gray-700 text-white">
-                  <td className="px-3 py-2 text-center font-bold uppercase text-xs border border-gray-500"></td>
-                  <td className="px-3 py-2 text-center font-bold uppercase text-xs border border-gray-500"></td>
+                  <td className="px-2 sm:px-3 py-2 text-center font-bold uppercase text-[11px] sm:text-xs border border-gray-500">Pavimentos</td>
+                  <td className="px-2 sm:px-3 py-2 text-center font-bold uppercase text-[11px] sm:text-xs border border-gray-500"></td>
                   {pavimentoPorSemana.map((pav, idx) => (
-                    <td key={idx} className="px-3 py-2 text-center font-bold uppercase text-xs border border-gray-500">
+                    <td key={idx} className="px-2 sm:px-3 py-2 text-center font-bold uppercase text-[11px] sm:text-xs border border-gray-500">
                       {pav || '-'}
                     </td>
                   ))}
-                  <td className="px-3 py-2 text-center font-bold text-sm border border-gray-500">Total</td>
-                  <td className="px-3 py-2 text-center font-bold text-sm border border-gray-500">{formatCurrency(totalGeralPagar)}</td>
+                  <td className="px-2 sm:px-3 py-2 text-center font-bold text-xs sm:text-sm border border-gray-500">Total</td>
+                  <td className="px-2 sm:px-3 py-2 text-center font-bold text-xs sm:text-sm border border-gray-500">{formatCurrency(totalGeralPagar)}</td>
                 </tr>
               </tfoot>
             )}
@@ -1558,7 +1547,7 @@ const ProducaoObra = () => {
         </div>
 
         <div className="flex justify-end pt-2">
-          <Button onClick={handleExportarExcelMensal}>
+          <Button className="w-full sm:w-auto" onClick={handleExportarExcelMensal}>
             <FileSpreadsheet className="h-4 w-4 mr-2" />
             Gerar Excel
           </Button>
@@ -1566,19 +1555,19 @@ const ProducaoObra = () => {
       </Card>
 
       <Dialog open={showGerenciarPedreiros} onOpenChange={setShowGerenciarPedreiros}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Gerenciar pedreiros</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-3">
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <Input
                 placeholder="Nome do pedreiro"
                 value={novoPedreiro}
                 onChange={(e) => setNovoPedreiro(e.target.value)}
               />
-              <Button type="button" onClick={handleAdicionarPedreiro}>
+              <Button className="w-full sm:w-auto" type="button" onClick={handleAdicionarPedreiro}>
                 <Plus className="h-4 w-4 mr-2" />
                 Adicionar
               </Button>
@@ -1606,8 +1595,8 @@ const ProducaoObra = () => {
                       </Button>
                     </div>
                   ) : (
-                    <div key={pedreiro.id} className="flex items-center justify-between border rounded-md px-3 py-2">
-                      <span>
+                    <div key={pedreiro.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border rounded-md px-3 py-2">
+                      <span className="break-words">
                         {pedreiro.nome}
                         {!pedreiro.ativo && <span className="ml-2 text-xs text-amber-600">(inativo)</span>}
                       </span>
@@ -1640,7 +1629,7 @@ const ProducaoObra = () => {
       </Dialog>
 
       <Dialog open={showGerenciarTarefas} onOpenChange={setShowGerenciarTarefas}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Gerenciar tarefas</DialogTitle>
           </DialogHeader>
@@ -1705,8 +1694,8 @@ const ProducaoObra = () => {
                       </Button>
                     </div>
                   ) : (
-                    <div key={tarefa.id} className="flex items-center justify-between border rounded-md px-3 py-2">
-                      <div className="flex items-center gap-2">
+                    <div key={tarefa.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border rounded-md px-3 py-2">
+                      <div className="flex items-center gap-2 min-w-0">
                         <div className="flex flex-col gap-1">
                           <Button
                             variant="ghost"
@@ -1728,14 +1717,14 @@ const ProducaoObra = () => {
                           </Button>
                         </div>
 
-                        <div>
+                        <div className="min-w-0">
                           <p className="text-xs text-muted-foreground">Posição {index + 1}</p>
-                          <p className="font-medium">{tarefa.nome}</p>
+                          <p className="font-medium break-words">{tarefa.nome}</p>
                           <p className="text-sm text-muted-foreground">{formatCurrency(tarefa.valor)}</p>
                         </div>
                       </div>
 
-                      <div className="flex gap-1">
+                      <div className="flex gap-1 self-end sm:self-auto">
                         <Button
                           variant="ghost"
                           size="icon"
@@ -1757,7 +1746,7 @@ const ProducaoObra = () => {
       </Dialog>
 
       <Dialog open={showLancarDialog} onOpenChange={setShowLancarDialog}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               Lançar produção - {selectedDate ? format(selectedDate, "EEEE, dd 'de' MMMM", { locale: ptBR }) : ''}
@@ -1851,7 +1840,7 @@ const ProducaoObra = () => {
               </div>
 
               <div className="flex justify-end">
-                <Button onClick={handleSalvarLancamento}>Salvar lançamento</Button>
+                <Button className="w-full sm:w-auto" onClick={handleSalvarLancamento}>Salvar lançamento</Button>
               </div>
 
               <div className="border-t pt-4">
@@ -1957,9 +1946,9 @@ const ProducaoObra = () => {
                       }
 
                       return (
-                        <div key={registro.id} className="flex items-center justify-between border rounded-md px-3 py-2">
-                          <div>
-                            <p className="font-medium">{pedreiro?.nome || 'Pedreiro removido'} - {tarefa?.nome || 'Tarefa removida'}</p>
+                        <div key={registro.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border rounded-md px-3 py-2">
+                          <div className="min-w-0">
+                            <p className="font-medium break-words">{pedreiro?.nome || 'Pedreiro removido'} - {tarefa?.nome || 'Tarefa removida'}</p>
                             <p className="text-sm text-muted-foreground">
                               Quantidade: {formatQuantidade(registro.quantidade)} | Pavimento: {registro.pavimento || '-'}
                             </p>
@@ -1970,7 +1959,7 @@ const ProducaoObra = () => {
                               <p className="text-xs text-muted-foreground">Obs: {registro.observacao}</p>
                             )}
                           </div>
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1 self-end sm:self-auto">
                             <Button variant="ghost" size="icon" onClick={() => handleIniciarEdicaoRegistro(registro)}>
                               <Pencil className="h-4 w-4 text-blue-500" />
                             </Button>

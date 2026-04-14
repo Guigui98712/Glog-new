@@ -128,14 +128,12 @@ export const criarObra = async (obra: ObraParaEnvio) => {
       user_id: userId
     };
     
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('obras')
-      .insert([obraComUserId])
-      .select()
-      .single();
+      .insert([obraComUserId]);
 
     if (error) throw error;
-    return data;
+    return obraComUserId;
   } catch (error) {
     console.error('Erro ao criar obra:', error);
     throw error;

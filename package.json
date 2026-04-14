@@ -91,6 +91,7 @@
     "date-fns-tz": "^3.2.0",
     "dictionary-pt": "^4.0.0",
     "embla-carousel-react": "^8.3.0",
+    "exceljs": "^4.4.0",
     "filepond": "^4.32.7",
     "filepond-plugin-image-exif-orientation": "^1.0.11",
     "filepond-plugin-image-preview": "^4.6.12",

@@ -318,3 +318,69 @@ textarea,
     font-size: 0.85rem;
   }
 }
+
+.producao-calendar .producao-dia abbr {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.producao-calendar .producao-dia:enabled:hover abbr,
+.producao-calendar .producao-dia:enabled:focus abbr,
+.producao-calendar .producao-dia.react-calendar__tile--active abbr {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.producao-calendar {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+}
+
+.producao-calendar .react-calendar__navigation {
+  margin-bottom: 0.75rem;
+}
+
+.producao-calendar .react-calendar__navigation button {
+  min-width: 2.5rem;
+  font-size: 1rem;
+}
+
+.producao-calendar .react-calendar__month-view__weekdays {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.producao-calendar .react-calendar__tile {
+  padding: 0.9rem 0.35rem;
+  font-size: 0.95rem;
+}
+
+@media (max-width: 640px) {
+  .producao-calendar {
+    max-width: 100%;
+    padding: 0.35rem;
+  }
+
+  .producao-calendar .react-calendar__navigation button {
+    min-width: 2rem;
+    font-size: 0.85rem;
+  }
+
+  .producao-calendar .react-calendar__tile {
+    padding: 0.55rem 0.2rem;
+    font-size: 0.8rem;
+  }
+}

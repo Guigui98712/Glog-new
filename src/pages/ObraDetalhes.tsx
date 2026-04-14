@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { ArrowLeft, Building2, Calendar as CalendarIcon, DollarSign, FileText, Plus, Pencil, CalendarDays, AlertCircle, FileUp, ListTodo, ShoppingCart, FolderKanban, Bus } from 'lucide-react';
+import { ArrowLeft, Building2, Calendar as CalendarIcon, DollarSign, FileText, Plus, Pencil, CalendarDays, AlertCircle, FileUp, ListTodo, ShoppingCart, FolderKanban, Bus, BarChart3 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis } from 'recharts';
 import Calendar from 'react-calendar';
@@ -858,6 +858,20 @@ const ObraDetalhes = () => {
                 </div>
                 <p className="text-xs md:text-sm text-gray-500 mt-1">
                   Controle de entrada e saída
+                </p>
+              </div>
+
+              <div
+                className="p-3 md:p-4 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
+                onClick={() => navigate(`/obras/${id}/producao`)}
+              >
+                <h3 className="text-xs md:text-sm font-medium text-gray-500">Produção</h3>
+                <div className="mt-1 flex items-center justify-between">
+                  <p className="text-base md:text-lg font-semibold">Pedreiros</p>
+                  <BarChart3 className="w-4 h-4 md:w-5 md:h-5 text-indigo-500" />
+                </div>
+                <p className="text-xs md:text-sm text-gray-500 mt-1">
+                  Controle de produção e pagamento
                 </p>
               </div>
 

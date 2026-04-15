@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Trash2 } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications, Weekday } from '@capacitor/local-notifications';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import {
   retirarFerramentaAlmox,
   devolverFerramentaAlmox,
   excluirFerramentaAlmox,
+  atualizarFerramentaAlmox,
   getFerramentasHistorico,
   getFerramentasHistoricoAnos,
 } from '@/lib/api';
@@ -50,6 +51,12 @@ const Ferramentas: React.FC = () => {
   const [ferramentaSelecionada, setFerramentaSelecionada] = useState<any | null>(null);
   const [nomeRetirada, setNomeRetirada] = useState('');
   const [savingAcao, setSavingAcao] = useState(false);
+
+  const [showEdicao, setShowEdicao] = useState(false);
+  const [ferramentaEdicao, setFerramentaEdicao] = useState<any | null>(null);
+  const [edicaoNome, setEdicaoNome] = useState('');
+  const [edicaoDescricao, setEdicaoDescricao] = useState('');
+  const [savingEdicao, setSavingEdicao] = useState(false);
 
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
@@ -293,6 +300,40 @@ const Ferramentas: React.FC = () => {
     }
   };
 
+  const abrirEdicaoFerramenta = (ferramenta: any) => {
+    setFerramentaEdicao(ferramenta);
+    setEdicaoNome(String(ferramenta?.nome || ''));
+    setEdicaoDescricao(String(ferramenta?.descricao || ''));
+    setShowEdicao(true);
+  };
+
+  const salvarEdicaoFerramenta = async () => {
+    if (!ferramentaEdicao) return;
+
+    const nome = edicaoNome.trim();
+    if (!nome) {
+      toast({ title: 'Erro', description: 'Informe o nome da ferramenta', variant: 'destructive' });
+      return;
+    }
+
+    setSavingEdicao(true);
+    try {
+      await atualizarFerramentaAlmox(ferramentaEdicao.id, {
+        nome,
+        descricao: edicaoDescricao.trim() || null,
+      });
+
+      toast({ title: 'Sucesso', description: 'Ferramenta atualizada com sucesso' });
+      setShowEdicao(false);
+      await carregarFerramentas();
+    } catch (err) {
+      console.error(err);
+      toast({ title: 'Erro', description: 'Não foi possível atualizar a ferramenta', variant: 'destructive' });
+    } finally {
+      setSavingEdicao(false);
+    }
+  };
+
   const historyFiltrado = useMemo(() => {
     const q = historyQuery.trim().toLowerCase();
     if (!q) return history;
@@ -339,12 +380,16 @@ const Ferramentas: React.FC = () => {
               : 'from-emerald-300 via-green-400 to-emerald-500';
 
             return (
-              <button
+              <div
                 key={ferramenta.id}
-                onClick={() => abrirAcaoFerramenta(ferramenta)}
-                className={`text-left rounded-xl p-[2px] bg-gradient-to-r ${gradient} transition-transform hover:scale-[1.01]`}
+                className={`rounded-xl p-[2px] bg-gradient-to-r ${gradient} transition-transform hover:scale-[1.01]`}
               >
                 <div className="bg-white rounded-[10px] p-3 h-full">
+                  <button
+                    type="button"
+                    onClick={() => abrirAcaoFerramenta(ferramenta)}
+                    className="w-full text-left"
+                  >
                   <div className="w-full h-40 bg-gray-100 rounded-lg overflow-hidden mb-3">
                     {ferramenta.foto_url ? (
                       <img src={ferramenta.foto_url} alt={ferramenta.nome} className="w-full h-full object-cover" />
@@ -360,8 +405,9 @@ const Ferramentas: React.FC = () => {
                       {retirada ? `Com: ${ferramenta.com_pessoa_nome}` : 'Em estoque'}
                     </p>
                   </div>
+                  </button>
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
@@ -448,6 +494,20 @@ const Ferramentas: React.FC = () => {
               <div className="pt-2 border-t">
                 <button
                   type="button"
+                  onClick={() => {
+                    if (!ferramentaSelecionada) return;
+                    setShowAcao(false);
+                    abrirEdicaoFerramenta(ferramentaSelecionada);
+                  }}
+                  disabled={savingAcao}
+                  className="w-full text-xs text-gray-600 hover:text-gray-700 disabled:opacity-50 flex items-center justify-center gap-1 mb-2"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Editar ferramenta
+                </button>
+
+                <button
+                  type="button"
                   onClick={excluirFerramenta}
                   disabled={savingAcao}
                   className="w-full text-xs text-red-600 hover:text-red-700 disabled:opacity-50 flex items-center justify-center gap-1"
@@ -458,6 +518,41 @@ const Ferramentas: React.FC = () => {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showEdicao} onOpenChange={setShowEdicao}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar ferramenta</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium mb-1">Nome</label>
+              <Input
+                value={edicaoNome}
+                onChange={(e) => setEdicaoNome(e.target.value)}
+                placeholder="Ex.: Furadeira"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Descrição</label>
+              <Textarea
+                value={edicaoDescricao}
+                onChange={(e) => setEdicaoDescricao(e.target.value)}
+                placeholder="Ex.: Furadeira de impacto 750W"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setShowEdicao(false)}>Cancelar</Button>
+              <Button onClick={salvarEdicaoFerramenta} disabled={savingEdicao}>
+                {savingEdicao ? 'Salvando...' : 'Salvar'}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

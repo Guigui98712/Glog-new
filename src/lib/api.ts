@@ -2614,6 +2614,35 @@ export const excluirFerramentaAlmox = async (toolId: number) => {
   }
 };
 
+export const atualizarFerramentaAlmox = async (
+  toolId: number,
+  payload: {
+    nome: string;
+    descricao?: string | null;
+  }
+) => {
+  if (DISABLE_GOOGLE_APIS) return null;
+
+  try {
+    const { data, error } = await (supabase as any)
+      .from('almox_tools')
+      .update({
+        nome: payload.nome,
+        descricao: payload.descricao || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', toolId)
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Erro atualizarFerramentaAlmox', err);
+    throw err;
+  }
+};
+
 export const getFerramentasHistorico = async (obraId: number, year?: number) => {
   if (DISABLE_GOOGLE_APIS) return [];
 

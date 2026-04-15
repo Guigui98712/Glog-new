@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowLeft, Plus, Trash2, Users, ClipboardList, ChevronLeft, ChevronRight, Pencil, Check, X, FileSpreadsheet, ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Users, ClipboardList, ChevronLeft, ChevronRight, Pencil, Check, X, FileSpreadsheet, ArrowUp, ArrowDown, FileText } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import {
   endOfMonth,
@@ -30,6 +30,7 @@ import {
 import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/lib/supabase';
 import ExcelJS from 'exceljs';
+import jsPDF from 'jspdf';
 
 interface Pedreiro {
   id: string;
@@ -880,6 +881,214 @@ const ProducaoObra = () => {
       title: 'Produção lançada',
       description: 'Registro salvo com sucesso.',
     });
+  };
+
+  const handleGerarPdfDiario = async () => {
+    if (!selectedDate) {
+      return;
+    }
+
+    if (registrosDataSelecionada.length === 0) {
+      toast({
+        title: 'Sem lançamentos',
+        description: 'Não há produção lançada nesta data para gerar PDF.',
+      });
+      return;
+    }
+
+    try {
+      const dataRef = format(selectedDate, 'dd/MM/yyyy');
+      const nomeObraSeguro = obraNome
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '') || 'obra';
+      const nomeArquivo = `producao_${nomeObraSeguro}_${format(selectedDate, 'dd-MM-yyyy')}.pdf`;
+
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+      const margemX = 12;
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const contentWidth = pageWidth - margemX * 2;
+      const labelWidth = 24;
+      let cursorY = 0;
+
+      const desenharCabecalho = (novaPagina: boolean) => {
+        if (novaPagina) {
+          pdf.addPage();
+        }
+
+        pdf.setFillColor(34, 63, 98);
+        pdf.rect(0, 0, pageWidth, 22, 'F');
+
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(13);
+        pdf.text('Relatório de Produção Diária', margemX, 10.5);
+
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(9);
+        pdf.text(`Data: ${dataRef}`, margemX, 16.5);
+
+        pdf.setFillColor(242, 246, 252);
+        pdf.setDrawColor(220, 228, 238);
+        pdf.roundedRect(margemX, 27, contentWidth, 12, 2, 2, 'FD');
+
+        pdf.setTextColor(34, 63, 98);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(10);
+        const obraTexto = pdf.splitTextToSize(`Obra: ${obraNome}`, contentWidth - 8);
+        pdf.text(obraTexto, margemX + 4, 32.5);
+
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(9);
+        pdf.text(`Lançamentos no dia: ${registrosDataSelecionada.length}`, margemX + 4, 36.7);
+
+        cursorY = 45;
+      };
+
+      desenharCabecalho(false);
+
+      const registrosOrdenados = [...registrosDataSelecionada].sort((a, b) => {
+        const pedreiroA = pedreiros.find((p) => p.id === a.pedreiroId)?.nome || '';
+        const pedreiroB = pedreiros.find((p) => p.id === b.pedreiroId)?.nome || '';
+        return pedreiroA.localeCompare(pedreiroB, 'pt-BR');
+      });
+
+      const gruposPorPedreiro = registrosOrdenados.reduce<
+        Record<string, { nome: string; registros: ProducaoRegistro[] }>
+      >((acc, registro) => {
+        const pedreiro = pedreiros.find((p) => p.id === registro.pedreiroId);
+        const key = registro.pedreiroId || pedreiro?.nome || 'sem_pedreiro';
+        if (!acc[key]) {
+          acc[key] = {
+            nome: pedreiro?.nome || 'Pedreiro não informado',
+            registros: [],
+          };
+        }
+        acc[key].registros.push(registro);
+        return acc;
+      }, {});
+
+      const gruposOrdenados = Object.values(gruposPorPedreiro).sort((a, b) =>
+        a.nome.localeCompare(b.nome, 'pt-BR')
+      );
+
+      for (const grupo of gruposOrdenados) {
+        const blocos = grupo.registros.map((registro) => {
+          const tarefa = tarefas.find((t) => t.id === registro.tarefaId);
+          const campos = [
+            { label: 'Serviço', value: tarefa?.nome || 'Não informado' },
+            { label: 'Quantidade', value: formatQuantidade(registro.quantidade) },
+            { label: 'Pavimento', value: registro.pavimento || '-' },
+            { label: 'Obs', value: registro.observacao || '-' },
+          ];
+
+          const linhasPorCampo = campos.map((campo) =>
+            pdf.splitTextToSize(String(campo.value), contentWidth - labelWidth - 10)
+          );
+
+          return { campos, linhasPorCampo };
+        });
+
+        const alturaBlocos = blocos.reduce((soma, bloco, idx) => {
+          const alturaCampos = bloco.linhasPorCampo.reduce(
+            (subTotal, linhas) => subTotal + linhas.length * 4.6 + 1.4,
+            0
+          );
+          const separador = idx < blocos.length - 1 ? 3.5 : 0;
+          return soma + alturaCampos + separador;
+        }, 0);
+
+        const alturaCard = 10 + alturaBlocos;
+
+        if (cursorY + alturaCard > pageHeight - 12) {
+          desenharCabecalho(true);
+        }
+
+        pdf.setFillColor(250, 252, 255);
+        pdf.setDrawColor(220, 228, 238);
+        pdf.roundedRect(margemX, cursorY, contentWidth, alturaCard, 2.2, 2.2, 'FD');
+
+        pdf.setTextColor(34, 63, 98);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(9.5);
+        pdf.text(grupo.nome, margemX + 4, cursorY + 5.4);
+
+        let linhaY = cursorY + 10;
+
+        for (let blocoIdx = 0; blocoIdx < blocos.length; blocoIdx += 1) {
+          const bloco = blocos[blocoIdx];
+
+          for (let idx = 0; idx < bloco.campos.length; idx += 1) {
+            const campo = bloco.campos[idx];
+            const linhasValor = bloco.linhasPorCampo[idx];
+
+            pdf.setTextColor(44, 62, 80);
+            pdf.setFont('helvetica', 'bold');
+            pdf.setFontSize(9);
+            pdf.text(`${campo.label}:`, margemX + 4, linhaY);
+
+            pdf.setTextColor(33, 33, 33);
+            pdf.setFont('helvetica', 'normal');
+            for (let j = 0; j < linhasValor.length; j += 1) {
+              pdf.text(linhasValor[j], margemX + 4 + labelWidth, linhaY + j * 4.6);
+            }
+
+            linhaY += linhasValor.length * 4.6 + 1.4;
+          }
+
+          if (blocoIdx < blocos.length - 1) {
+            pdf.setDrawColor(225, 233, 242);
+            pdf.line(margemX + 3, linhaY, margemX + contentWidth - 3, linhaY);
+            linhaY += 3.5;
+          }
+        }
+
+        cursorY += alturaCard + 4;
+      }
+
+      const { Capacitor } = await import('@capacitor/core');
+      if (Capacitor.isNativePlatform()) {
+        const { Filesystem, Directory } = await import('@capacitor/filesystem');
+        const { Share } = await import('@capacitor/share');
+        const pdfBase64 = pdf.output('datauristring').split(',')[1];
+
+        const result = await Filesystem.writeFile({
+          path: nomeArquivo,
+          data: pdfBase64,
+          directory: Directory.Cache,
+          recursive: true,
+        });
+
+        await Share.share({
+          title: `Produção diária - ${dataRef}`,
+          text: `Relatório de produção de ${dataRef} - ${obraNome}`,
+          url: result.uri,
+          dialogTitle: 'Compartilhar PDF de produção',
+        });
+
+        toast({
+          title: 'PDF pronto',
+          description: 'Compartilhamento iniciado com sucesso.',
+        });
+        return;
+      }
+
+      pdf.save(nomeArquivo);
+      toast({
+        title: 'PDF gerado',
+        description: `Arquivo ${nomeArquivo} gerado com sucesso.`,
+      });
+    } catch (error) {
+      console.error('Erro ao gerar PDF diário:', error);
+      toast({
+        title: 'Erro ao gerar PDF',
+        description: 'Não foi possível gerar/compartilhar o PDF desta data.',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleExcluirRegistro = async (registroId: string) => {
@@ -1748,9 +1957,21 @@ const ProducaoObra = () => {
       <Dialog open={showLancarDialog} onOpenChange={setShowLancarDialog}>
         <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
-              Lançar produção - {selectedDate ? format(selectedDate, "EEEE, dd 'de' MMMM", { locale: ptBR }) : ''}
-            </DialogTitle>
+            <div className="flex items-start justify-between gap-2">
+              <DialogTitle>
+                Lançar produção - {selectedDate ? format(selectedDate, "EEEE, dd 'de' MMMM", { locale: ptBR }) : ''}
+              </DialogTitle>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-[11px] text-muted-foreground"
+                onClick={handleGerarPdfDiario}
+              >
+                <FileText className="h-3.5 w-3.5 mr-1" />
+                PDF
+              </Button>
+            </div>
           </DialogHeader>
 
           {pedreirosAtivos.length === 0 || tarefas.length === 0 ? (

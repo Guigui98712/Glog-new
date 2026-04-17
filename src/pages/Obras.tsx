@@ -18,7 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, MoreVertical, Pencil, Trash2, Upload, Image, Search, Building, AlertTriangle } from "lucide-react";
+import { Plus, MoreVertical, Pencil, Trash2, Upload, Image, Search, Building, AlertTriangle, X } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { 
   listarObrasComAcesso,
@@ -72,11 +72,15 @@ const Obras = () => {
   const [novaObraResponsavel, setNovaObraResponsavel] = useState("");
   const [novaObraDataPrevisaoFim, setNovaObraDataPrevisaoFim] = useState("");
   const [novaObraViagem, setNovaObraViagem] = useState(false);
+  const [logoNovaObraFile, setLogoNovaObraFile] = useState<File | null>(null);
+  const [logoNovaObraPreview, setLogoNovaObraPreview] = useState<string | null>(null);
+  const [salvandoNovaObra, setSalvandoNovaObra] = useState(false);
 
   const [obraEmEdicao, setObraEmEdicao] = useState<Obra | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [logoEditFile, setLogoEditFile] = useState<File | null>(null);
   const [logoEditPreview, setLogoEditPreview] = useState<string | null>(null);
+  const [logoEditRemovido, setLogoEditRemovido] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
   const [compartilharObraId, setCompartilharObraId] = useState<number | null>(null);
@@ -184,6 +188,12 @@ const Obras = () => {
     }
 
     try {
+      setSalvandoNovaObra(true);
+      let logoNovaObraUrl: string | null = null;
+      if (logoNovaObraFile) {
+        logoNovaObraUrl = await uploadFoto(logoNovaObraFile);
+      }
+
       const novaObraData: ObraParaEnvio = {
         nome: novaObraNome,
         endereco: novaObraEndereco,
@@ -193,7 +203,7 @@ const Obras = () => {
         status: 'em_andamento' as const,
         cliente: novaObraCliente || null,
         responsavel: novaObraResponsavel || null,
-        logo_url: null,
+        logo_url: logoNovaObraUrl,
         data_inicio: null,
         data_previsao_fim: novaObraDataPrevisaoFim ? `${novaObraDataPrevisaoFim}-01` : null,
         user_id: null, // Será preenchido automaticamente pelo backend
@@ -215,6 +225,8 @@ const Obras = () => {
       setNovaObraResponsavel("");
       setNovaObraDataPrevisaoFim("");
       setNovaObraViagem(false);
+      setLogoNovaObraFile(null);
+      setLogoNovaObraPreview(null);
       setShowDialog(false);
       
       toast({
@@ -228,12 +240,16 @@ const Obras = () => {
         description: "Não foi possível criar a obra. Verifique os dados e tente novamente.",
         variant: "destructive"
       });
+    } finally {
+      setSalvandoNovaObra(false);
     }
   };
 
   const handleEditarObra = (obra: Obra) => {
     setObraEmEdicao(obra);
     setLogoEditPreview(obra.logo_url);
+    setLogoEditFile(null);
+    setLogoEditRemovido(false);
     setShowEditDialog(true);
   };
 
@@ -251,7 +267,7 @@ const Obras = () => {
       console.log('[DEBUG] Iniciando upload do logo (se houver)');
       
       // Upload do logo se existir
-      let logoUrl = obraEmEdicao.logo_url;
+      let logoUrl = logoEditRemovido ? null : obraEmEdicao.logo_url;
       if (logoEditFile) {
         console.log('[DEBUG] Enviando novo logo');
         const resultado = await uploadFoto(logoEditFile);
@@ -573,6 +589,7 @@ const Obras = () => {
                         if (e.target.files && e.target.files[0]) {
                           const file = e.target.files[0];
                           setLogoEditFile(file);
+                              setLogoEditRemovido(false);
                           const reader = new FileReader();
                           reader.onload = (event) => {
                             setLogoEditPreview(event.target?.result as string);
@@ -593,6 +610,18 @@ const Obras = () => {
                         alt="Preview do logo"
                         className="w-full h-full object-cover rounded-md"
                       />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLogoEditFile(null);
+                          setLogoEditPreview(null);
+                          setLogoEditRemovido(true);
+                        }}
+                        className="absolute -top-2 -right-2 bg-white border rounded-full p-0.5 text-red-600 hover:text-red-700"
+                        title="Remover logo"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   )}
                 </div>
@@ -693,10 +722,61 @@ const Obras = () => {
                 <span className="text-xs text-muted-foreground">Marque se a obra for fora da cidade</span>
               </div>
             </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Logo da Obra</label>
+              <div className="flex items-center space-x-4">
+                <label className="cursor-pointer border border-dashed border-gray-300 rounded-md p-4 hover:bg-gray-50 transition-colors">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        const file = e.target.files[0];
+                        setLogoNovaObraFile(file);
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                          setLogoNovaObraPreview(event.target?.result as string);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                  <div className="flex flex-col items-center">
+                    <Upload className="w-6 h-6 text-gray-400 mb-2" />
+                    <span className="text-sm text-gray-500">Selecionar imagem</span>
+                  </div>
+                </label>
+
+                {logoNovaObraPreview && (
+                  <div className="relative w-16 h-16">
+                    <img
+                      src={logoNovaObraPreview}
+                      alt="Preview do logo"
+                      className="w-full h-full object-cover rounded-md"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLogoNovaObraFile(null);
+                        setLogoNovaObraPreview(null);
+                      }}
+                      className="absolute -top-2 -right-2 bg-white border rounded-full p-0.5 text-red-600 hover:text-red-700"
+                      title="Remover logo"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDialog(false)}>Cancelar</Button>
-            <Button onClick={handleNovaObra}>Salvar Obra</Button>
+            <Button onClick={handleNovaObra} disabled={salvandoNovaObra}>
+              {salvandoNovaObra ? 'Salvando...' : 'Salvar Obra'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

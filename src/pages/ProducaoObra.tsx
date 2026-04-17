@@ -56,6 +56,25 @@ interface ProducaoRegistro {
   observacao?: string;
 }
 
+const FALTA_TAG = '[FALTOU]';
+
+const isRegistroFalta = (registro: ProducaoRegistro) => {
+  return (registro.observacao || '').startsWith(FALTA_TAG);
+};
+
+const getMotivoFalta = (registro: ProducaoRegistro) => {
+  const obs = registro.observacao || '';
+  if (!obs.startsWith(FALTA_TAG)) {
+    return obs;
+  }
+  return obs.replace(FALTA_TAG, '').trim();
+};
+
+const montarObservacaoFalta = (motivo: string) => {
+  const texto = motivo.trim();
+  return texto ? `${FALTA_TAG} ${texto}` : FALTA_TAG;
+};
+
 interface SemanaColuna {
   id: string;
   inicio: Date;
@@ -221,6 +240,7 @@ const ProducaoObra = () => {
   const [formQuantidadeFormula, setFormQuantidadeFormula] = useState<string | null>(null);
   const [formPavimento, setFormPavimento] = useState('');
   const [formObservacao, setFormObservacao] = useState('');
+  const [formPedreiroFaltou, setFormPedreiroFaltou] = useState(false);
   const [editandoRegistro, setEditandoRegistro] = useState<{
     id: string;
     pedreiroId: string;
@@ -228,6 +248,7 @@ const ProducaoObra = () => {
     quantidade: string;
     pavimento: string;
     observacao: string;
+    faltou: boolean;
   } | null>(null);
 
   const carregarDadosProducao = async () => {
@@ -424,6 +445,7 @@ const ProducaoObra = () => {
     setFormQuantidadeFormula(null);
     setFormPavimento('');
     setFormObservacao('');
+    setFormPedreiroFaltou(false);
     setShowLancarDialog(true);
   };
 
@@ -808,17 +830,19 @@ const ProducaoObra = () => {
       return;
     }
 
-    if (!formPedreiroId || !formTarefaId) {
+    if (!formPedreiroId || (!formPedreiroFaltou && !formTarefaId)) {
       toast({
         title: 'Campos obrigatórios',
-        description: 'Selecione pedreiro e serviço.',
+        description: formPedreiroFaltou
+          ? 'Selecione o pedreiro.'
+          : 'Selecione pedreiro e serviço.',
         variant: 'destructive',
       });
       return;
     }
 
-    const quantidade = resolverQuantidade(formQuantidade);
-    if (quantidade === null || quantidade <= 0) {
+    const quantidade = formPedreiroFaltou ? 0 : resolverQuantidade(formQuantidade);
+    if (!formPedreiroFaltou && (quantidade === null || quantidade <= 0)) {
       toast({
         title: 'Quantidade inválida',
         description: 'Informe uma quantidade maior que zero ou uma fórmula válida.',
@@ -827,12 +851,24 @@ const ProducaoObra = () => {
       return;
     }
 
-    const formulaDigitada = formQuantidade.trim().startsWith('=') ? formQuantidade.trim() : null;
-    const formulaParaSalvar = formulaDigitada || formQuantidadeFormula;
+    const formulaDigitada = !formPedreiroFaltou && formQuantidade.trim().startsWith('=') ? formQuantidade.trim() : null;
+    const formulaParaSalvar = formPedreiroFaltou ? null : (formulaDigitada || formQuantidadeFormula);
 
-    setFormQuantidade(formatQuantidade(quantidade));
+    if (!formPedreiroFaltou && quantidade !== null) {
+      setFormQuantidade(formatQuantidade(quantidade));
+    }
 
     if (!obraId) {
+      return;
+    }
+
+    const tarefaParaSalvar = formTarefaId || tarefas[0]?.id || null;
+    if (!tarefaParaSalvar) {
+      toast({
+        title: 'Serviço não encontrado',
+        description: 'Cadastre uma tarefa para continuar.',
+        variant: 'destructive',
+      });
       return;
     }
 
@@ -842,19 +878,22 @@ const ProducaoObra = () => {
         obra_id: Number(obraId),
         data: format(selectedDate, 'yyyy-MM-dd'),
         pedreiro_id: formPedreiroId,
-        tarefa_id: formTarefaId,
+        tarefa_id: tarefaParaSalvar,
         quantidade,
         quantidade_formula: formulaParaSalvar,
-        pavimento: formPavimento.trim() || null,
-        observacao: formObservacao.trim() || null,
+        pavimento: formPedreiroFaltou ? null : (formPavimento.trim() || null),
+        observacao: formPedreiroFaltou
+          ? montarObservacaoFalta(formObservacao)
+          : (formObservacao.trim() || null),
       })
       .select('id, data, pedreiro_id, tarefa_id, quantidade, quantidade_formula, pavimento, observacao')
       .single();
 
     if (error || !data) {
+      const detalheErro = error?.message ? ` (${error.message})` : '';
       toast({
         title: 'Erro ao salvar lançamento',
-        description: 'Não foi possível salvar no banco.',
+        description: `Não foi possível salvar no banco.${detalheErro}`,
         variant: 'destructive',
       });
       return;
@@ -877,9 +916,10 @@ const ProducaoObra = () => {
     setFormQuantidadeFormula(null);
     setFormPavimento('');
     setFormObservacao('');
+    setFormPedreiroFaltou(false);
     toast({
-      title: 'Produção lançada',
-      description: 'Registro salvo com sucesso.',
+      title: formPedreiroFaltou ? 'Falta registrada' : 'Produção lançada',
+      description: formPedreiroFaltou ? 'Falta do pedreiro registrada com sucesso.' : 'Registro salvo com sucesso.',
     });
   };
 
@@ -978,12 +1018,18 @@ const ProducaoObra = () => {
       for (const grupo of gruposOrdenados) {
         const blocos = grupo.registros.map((registro) => {
           const tarefa = tarefas.find((t) => t.id === registro.tarefaId);
-          const campos = [
-            { label: 'Serviço', value: tarefa?.nome || 'Não informado' },
-            { label: 'Quantidade', value: formatQuantidade(registro.quantidade) },
-            { label: 'Pavimento', value: registro.pavimento || '-' },
-            { label: 'Obs', value: registro.observacao || '-' },
-          ];
+          const faltou = isRegistroFalta(registro);
+          const campos = faltou
+            ? [
+                { label: 'Status', value: 'Faltou' },
+                { label: 'Motivo', value: getMotivoFalta(registro) || '-' },
+              ]
+            : [
+                { label: 'Serviço', value: tarefa?.nome || 'Não informado' },
+                { label: 'Quantidade', value: formatQuantidade(registro.quantidade) },
+                { label: 'Pavimento', value: registro.pavimento || '-' },
+                { label: 'Obs', value: registro.observacao || '-' },
+              ];
 
           const linhasPorCampo = campos.map((campo) =>
             pdf.splitTextToSize(String(campo.value), contentWidth - labelWidth - 10)
@@ -1115,13 +1161,15 @@ const ProducaoObra = () => {
   };
 
   const handleIniciarEdicaoRegistro = (registro: ProducaoRegistro) => {
+    const faltou = isRegistroFalta(registro);
     setEditandoRegistro({
       id: registro.id,
       pedreiroId: registro.pedreiroId,
       tarefaId: registro.tarefaId,
-      quantidade: registro.quantidadeFormula || formatQuantidade(registro.quantidade),
-      pavimento: registro.pavimento || '',
-      observacao: registro.observacao || '',
+      quantidade: faltou ? '0' : (registro.quantidadeFormula || formatQuantidade(registro.quantidade)),
+      pavimento: faltou ? '' : (registro.pavimento || ''),
+      observacao: faltou ? getMotivoFalta(registro) : (registro.observacao || ''),
+      faltou,
     });
   };
 
@@ -1168,17 +1216,19 @@ const ProducaoObra = () => {
       return;
     }
 
-    if (!editandoRegistro.pedreiroId || !editandoRegistro.tarefaId) {
+    if (!editandoRegistro.pedreiroId || (!editandoRegistro.faltou && !editandoRegistro.tarefaId)) {
       toast({
         title: 'Campos obrigatórios',
-        description: 'Selecione pedreiro e serviço.',
+        description: editandoRegistro.faltou
+          ? 'Selecione o pedreiro.'
+          : 'Selecione pedreiro e serviço.',
         variant: 'destructive',
       });
       return;
     }
 
-    const quantidade = resolverQuantidade(editandoRegistro.quantidade);
-    if (quantidade === null || quantidade <= 0) {
+    const quantidade = editandoRegistro.faltou ? 0 : resolverQuantidade(editandoRegistro.quantidade);
+    if (!editandoRegistro.faltou && (quantidade === null || quantidade <= 0)) {
       toast({
         title: 'Quantidade inválida',
         description: 'Informe uma quantidade maior que zero ou uma fórmula válida.',
@@ -1187,19 +1237,31 @@ const ProducaoObra = () => {
       return;
     }
 
-    const formulaDigitada = editandoRegistro.quantidade.trim().startsWith('=')
+    const formulaDigitada = !editandoRegistro.faltou && editandoRegistro.quantidade.trim().startsWith('=')
       ? editandoRegistro.quantidade.trim()
       : null;
+
+    const tarefaParaSalvar = editandoRegistro.tarefaId || tarefas[0]?.id || null;
+    if (!tarefaParaSalvar) {
+      toast({
+        title: 'Serviço não encontrado',
+        description: 'Cadastre uma tarefa para continuar.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     const { data, error } = await supabase
       .from('producao_registros')
       .update({
         pedreiro_id: editandoRegistro.pedreiroId,
-        tarefa_id: editandoRegistro.tarefaId,
+        tarefa_id: tarefaParaSalvar,
         quantidade,
-        quantidade_formula: formulaDigitada,
-        pavimento: editandoRegistro.pavimento.trim() || null,
-        observacao: editandoRegistro.observacao.trim() || null,
+        quantidade_formula: editandoRegistro.faltou ? null : formulaDigitada,
+        pavimento: editandoRegistro.faltou ? null : (editandoRegistro.pavimento.trim() || null),
+        observacao: editandoRegistro.faltou
+          ? montarObservacaoFalta(editandoRegistro.observacao)
+          : (editandoRegistro.observacao.trim() || null),
       })
       .eq('id', editandoRegistro.id)
       .eq('obra_id', Number(obraId))
@@ -1207,9 +1269,10 @@ const ProducaoObra = () => {
       .single();
 
     if (error || !data) {
+      const detalheErro = error?.message ? ` (${error.message})` : '';
       toast({
         title: 'Erro ao editar lançamento',
-        description: 'Não foi possível atualizar no banco.',
+        description: `Não foi possível atualizar no banco.${detalheErro}`,
         variant: 'destructive',
       });
       return;
@@ -2007,55 +2070,72 @@ const ProducaoObra = () => {
                   </Select>
                 </div>
 
-                <div>
-                  <Label>Serviço</Label>
-                  <Select value={formTarefaId} onValueChange={setFormTarefaId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {tarefas.map((tarefa) => (
-                        <SelectItem key={tarefa.id} value={tarefa.id}>
-                          {tarefa.nome}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="sm:col-span-2 flex items-center gap-2 rounded-md border p-2 bg-muted/30">
+                  <input
+                    id="faltou-pedreiro"
+                    type="checkbox"
+                    checked={formPedreiroFaltou}
+                    onChange={(e) => setFormPedreiroFaltou(e.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  <Label htmlFor="faltou-pedreiro" className="cursor-pointer">
+                    Falta
+                  </Label>
                 </div>
 
-                <div>
-                  <Label>Quantidade</Label>
-                  <Input
-                    type="text"
-                    inputMode="decimal"
-                    value={formQuantidade}
-                    onChange={(e) => setFormQuantidade(e.target.value)}
-                    onBlur={handleResolverFormulaQuantidadeForm}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleResolverFormulaQuantidadeForm();
-                      }
-                    }}
-                    placeholder="Ex.: 12,5 ou =2,3*6*2+8,6*2*5"
-                  />
-                </div>
+                {!formPedreiroFaltou && (
+                  <>
+                    <div>
+                      <Label>Serviço</Label>
+                      <Select value={formTarefaId} onValueChange={setFormTarefaId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {tarefas.map((tarefa) => (
+                            <SelectItem key={tarefa.id} value={tarefa.id}>
+                              {tarefa.nome}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                <div>
-                  <Label>Pavimento</Label>
-                  <Input
-                    value={formPavimento}
-                    onChange={(e) => setFormPavimento(e.target.value)}
-                    placeholder="Ex.: Térreo, S2, 1º andar"
-                  />
-                </div>
+                    <div>
+                      <Label>Quantidade</Label>
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        value={formQuantidade}
+                        onChange={(e) => setFormQuantidade(e.target.value)}
+                        onBlur={handleResolverFormulaQuantidadeForm}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleResolverFormulaQuantidadeForm();
+                          }
+                        }}
+                        placeholder="Ex.: 12,5 ou =2,3*6*2+8,6*2*5"
+                      />
+                    </div>
+
+                    <div>
+                      <Label>Pavimento</Label>
+                      <Input
+                        value={formPavimento}
+                        onChange={(e) => setFormPavimento(e.target.value)}
+                        placeholder="Ex.: Térreo, S2, 1º andar"
+                      />
+                    </div>
+                  </>
+                )}
 
                 <div className="sm:col-span-2">
-                  <Label>Observação</Label>
+                  <Label>{formPedreiroFaltou ? 'Motivo da falta (opcional)' : 'Observação'}</Label>
                   <Input
                     value={formObservacao}
                     onChange={(e) => setFormObservacao(e.target.value)}
-                    placeholder="Ex.: Chapisco parede externa bloco A"
+                    placeholder={formPedreiroFaltou ? 'Ex.: Atestado médico' : 'Ex.: Chapisco parede externa bloco A'}
                   />
                 </div>
               </div>
@@ -2105,6 +2185,7 @@ const ProducaoObra = () => {
                                 <Select
                                   value={editandoRegistro.tarefaId}
                                   onValueChange={(value) => setEditandoRegistro((prev) => prev ? { ...prev, tarefaId: value } : prev)}
+                                  disabled={editandoRegistro.faltou}
                                 >
                                   <SelectTrigger>
                                     <SelectValue placeholder="Selecione" />
@@ -2117,38 +2198,59 @@ const ProducaoObra = () => {
                                 </Select>
                               </div>
 
-                              <div>
-                                <Label className="text-xs">Quantidade</Label>
-                                <Input
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={editandoRegistro.quantidade}
-                                  onChange={(e) => setEditandoRegistro((prev) => prev ? { ...prev, quantidade: e.target.value } : prev)}
-                                  onBlur={handleResolverFormulaQuantidadeEdicao}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                      e.preventDefault();
-                                      handleResolverFormulaQuantidadeEdicao();
-                                    }
-                                  }}
-                                  placeholder="Ex.: 12,5 ou =2,3*6*2+8,6*2*5"
+                              <div className="sm:col-span-2 flex items-center gap-2 rounded-md border p-2 bg-muted/30">
+                                <input
+                                  id={`edit-faltou-${registro.id}`}
+                                  type="checkbox"
+                                  checked={editandoRegistro.faltou}
+                                  onChange={(e) =>
+                                    setEditandoRegistro((prev) =>
+                                      prev ? { ...prev, faltou: e.target.checked } : prev
+                                    )
+                                  }
+                                  className="h-4 w-4"
                                 />
+                                <Label htmlFor={`edit-faltou-${registro.id}`} className="cursor-pointer text-xs">
+                                  Falta
+                                </Label>
                               </div>
 
-                              <div>
-                                <Label className="text-xs">Pavimento</Label>
-                                <Input
-                                  value={editandoRegistro.pavimento}
-                                  onChange={(e) => setEditandoRegistro((prev) => prev ? { ...prev, pavimento: e.target.value } : prev)}
-                                />
-                              </div>
+                              {!editandoRegistro.faltou && (
+                                <>
+                                  <div>
+                                    <Label className="text-xs">Quantidade</Label>
+                                    <Input
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={editandoRegistro.quantidade}
+                                      onChange={(e) => setEditandoRegistro((prev) => prev ? { ...prev, quantidade: e.target.value } : prev)}
+                                      onBlur={handleResolverFormulaQuantidadeEdicao}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          e.preventDefault();
+                                          handleResolverFormulaQuantidadeEdicao();
+                                        }
+                                      }}
+                                      placeholder="Ex.: 12,5 ou =2,3*6*2+8,6*2*5"
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <Label className="text-xs">Pavimento</Label>
+                                    <Input
+                                      value={editandoRegistro.pavimento}
+                                      onChange={(e) => setEditandoRegistro((prev) => prev ? { ...prev, pavimento: e.target.value } : prev)}
+                                    />
+                                  </div>
+                                </>
+                              )}
 
                               <div className="sm:col-span-2">
-                                <Label className="text-xs">Observação</Label>
+                                <Label className="text-xs">{editandoRegistro.faltou ? 'Motivo da falta (opcional)' : 'Observação'}</Label>
                                 <Input
                                   value={editandoRegistro.observacao}
                                   onChange={(e) => setEditandoRegistro((prev) => prev ? { ...prev, observacao: e.target.value } : prev)}
-                                  placeholder="Descreva o serviço executado"
+                                  placeholder={editandoRegistro.faltou ? 'Ex.: Atestado médico' : 'Descreva o serviço executado'}
                                 />
                               </div>
                             </div>
@@ -2169,6 +2271,15 @@ const ProducaoObra = () => {
                       return (
                         <div key={registro.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border rounded-md px-3 py-2">
                           <div className="min-w-0">
+                            {isRegistroFalta(registro) ? (
+                              <>
+                                <p className="font-medium break-words">{pedreiro?.nome || 'Pedreiro removido'} - Faltou</p>
+                                <p className="text-sm text-muted-foreground">
+                                  Motivo: {getMotivoFalta(registro) || '-'}
+                                </p>
+                              </>
+                            ) : (
+                              <>
                             <p className="font-medium break-words">{pedreiro?.nome || 'Pedreiro removido'} - {tarefa?.nome || 'Tarefa removida'}</p>
                             <p className="text-sm text-muted-foreground">
                               Quantidade: {formatQuantidade(registro.quantidade)} | Pavimento: {registro.pavimento || '-'}
@@ -2178,6 +2289,8 @@ const ProducaoObra = () => {
                             )}
                             {registro.observacao && (
                               <p className="text-xs text-muted-foreground">Obs: {registro.observacao}</p>
+                            )}
+                              </>
                             )}
                           </div>
                           <div className="flex items-center gap-1 self-end sm:self-auto">

@@ -525,6 +525,7 @@ const Login = () => {
               <Input
                 id="email"
                 type="email"
+                data-keyboard-profile="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 inputMode="email"
@@ -650,6 +651,7 @@ const Login = () => {
                 <Input
                   id="reset-email"
                   type="email"
+                  data-keyboard-profile="email"
                   value={resetEmail}
                   onChange={(e) => setResetEmail(e.target.value)}
                   inputMode="email"

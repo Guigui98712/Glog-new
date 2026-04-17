@@ -758,11 +758,7 @@ const ObraDetalhes = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 mb-4 md:mb-6">
-              <div className="p-3 md:p-4 bg-gray-50 rounded-lg">
-                <h3 className="text-xs md:text-sm font-medium text-gray-500">Responsável</h3>
-                <p className="mt-1 text-base md:text-lg font-semibold truncate">{obra?.responsavel || 'Não informado'}</p>
-              </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 mb-4 md:mb-6">
               <div className="p-3 md:p-4 bg-gray-50 rounded-lg">
                 <h3 className="text-xs md:text-sm font-medium text-gray-500">Progresso Geral</h3>
                 <div className="mt-1">

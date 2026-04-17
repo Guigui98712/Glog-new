@@ -57,11 +57,17 @@ const shouldEnableTextAssistance = (input: HTMLInputElement | HTMLTextAreaElemen
   return !NON_CORRECTABLE_TYPES.has(type);
 };
 
+const setAttrIfChanged = (target: HTMLElement, name: string, value: string) => {
+  if (target.getAttribute(name) !== value) {
+    target.setAttribute(name, value);
+  }
+};
+
 const forceTextAttributes = (target: HTMLElement) => {
-  target.setAttribute('autocorrect', 'on');
-  target.setAttribute('autocapitalize', 'sentences');
-  target.setAttribute('spellcheck', 'true');
-  target.setAttribute('autocomplete', 'on');
+  setAttrIfChanged(target, 'autocorrect', 'on');
+  setAttrIfChanged(target, 'autocapitalize', 'sentences');
+  setAttrIfChanged(target, 'spellcheck', 'true');
+  setAttrIfChanged(target, 'autocomplete', 'on');
 
   if (!target.getAttribute('lang')) {
     target.setAttribute('lang', 'pt-BR');
@@ -69,9 +75,9 @@ const forceTextAttributes = (target: HTMLElement) => {
 };
 
 const forceSensitiveTextAttributes = (target: HTMLElement) => {
-  target.setAttribute('autocorrect', 'off');
-  target.setAttribute('autocapitalize', 'none');
-  target.setAttribute('spellcheck', 'false');
+  setAttrIfChanged(target, 'autocorrect', 'off');
+  setAttrIfChanged(target, 'autocapitalize', 'none');
+  setAttrIfChanged(target, 'spellcheck', 'false');
 };
 
 const applyProfile = (target: HTMLInputElement | HTMLTextAreaElement) => {
@@ -79,10 +85,12 @@ const applyProfile = (target: HTMLInputElement | HTMLTextAreaElement) => {
 
   if (profile === 'email') {
     if (target instanceof HTMLInputElement) {
-      target.type = 'email';
-      target.setAttribute('inputmode', 'email');
-      target.setAttribute('autocomplete', 'email');
-      target.setAttribute('enterkeyhint', 'next');
+      if (target.type !== 'email') {
+        target.type = 'email';
+      }
+      setAttrIfChanged(target, 'inputmode', 'email');
+      setAttrIfChanged(target, 'autocomplete', 'email');
+      setAttrIfChanged(target, 'enterkeyhint', 'next');
     }
     forceSensitiveTextAttributes(target);
     return;
@@ -90,10 +98,12 @@ const applyProfile = (target: HTMLInputElement | HTMLTextAreaElement) => {
 
   if (profile === 'password') {
     if (target instanceof HTMLInputElement) {
-      target.type = 'password';
-      target.setAttribute('autocomplete', target.getAttribute('autocomplete') || 'current-password');
-      target.setAttribute('enterkeyhint', 'done');
-      target.setAttribute('inputmode', 'text');
+      if (target.type !== 'password') {
+        target.type = 'password';
+      }
+      setAttrIfChanged(target, 'autocomplete', target.getAttribute('autocomplete') || 'current-password');
+      setAttrIfChanged(target, 'enterkeyhint', 'done');
+      setAttrIfChanged(target, 'inputmode', 'text');
     }
     forceSensitiveTextAttributes(target);
     return;
@@ -101,8 +111,8 @@ const applyProfile = (target: HTMLInputElement | HTMLTextAreaElement) => {
 
   if (profile === 'numeric') {
     if (target instanceof HTMLInputElement) {
-      target.setAttribute('inputmode', 'numeric');
-      target.setAttribute('enterkeyhint', 'next');
+      setAttrIfChanged(target, 'inputmode', 'numeric');
+      setAttrIfChanged(target, 'enterkeyhint', 'next');
     }
     forceSensitiveTextAttributes(target);
     return;
@@ -112,15 +122,15 @@ const applyProfile = (target: HTMLInputElement | HTMLTextAreaElement) => {
 
   if (target instanceof HTMLInputElement) {
     if (profile === 'name') {
-      target.setAttribute('autocapitalize', 'words');
-      target.setAttribute('autocomplete', target.getAttribute('autocomplete') || 'name');
+      setAttrIfChanged(target, 'autocapitalize', 'words');
+      setAttrIfChanged(target, 'autocomplete', target.getAttribute('autocomplete') || 'name');
     }
 
     if (!target.hasAttribute('inputmode') || target.getAttribute('inputmode') === 'none') {
-      target.setAttribute('inputmode', 'text');
+      setAttrIfChanged(target, 'inputmode', 'text');
     }
 
-    target.setAttribute('enterkeyhint', 'next');
+    setAttrIfChanged(target, 'enterkeyhint', 'next');
   }
 };
 
@@ -188,8 +198,7 @@ export async function setupMobileInputExperience(): Promise<() => void> {
   mutationObserver.observe(document.body, {
     childList: true,
     subtree: true,
-    attributes: true,
-    attributeFilter: ['type', 'inputmode', 'autocorrect', 'autocapitalize', 'spellcheck', KEYBOARD_ASSIST_DISABLE_ATTR, KEYBOARD_PROFILE_ATTR],
+    attributes: false,
   });
 
   const disposables: Disposable[] = [];

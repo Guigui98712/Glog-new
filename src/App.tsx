@@ -166,8 +166,14 @@ const NavigationManager = () => {
         const { Capacitor } = await import('@capacitor/core');
         if (Capacitor.isNativePlatform()) {
           const { App: CapacitorApp } = await import('@capacitor/app');
+          const { closeTopModal } = await import('@/lib/modalStack');
           backButtonListener = CapacitorApp.addListener('backButton', ({ canGoBack }) => {
             console.log("[DEBUG] Botão voltar pressionado no Android", { canGoBack });
+
+            // Se houver algum modal aberto, fecha o mais recente e NÃO navega.
+            if (closeTopModal()) {
+              return;
+            }
             
             // Obtém o histórico atualizado
             const currentHistory = JSON.parse(localStorage.getItem('navigationHistory') || '[]');

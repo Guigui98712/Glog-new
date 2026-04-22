@@ -3,8 +3,36 @@ import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
 
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
+import { pushModal, removeModal } from "@/lib/modalStack"
 
-const AlertDialog = AlertDialogPrimitive.Root
+/**
+ * AlertDialog wrapper with the same Android back-button support as Dialog.
+ */
+type AlertDialogRootProps = React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Root>;
+
+const AlertDialog = ({ open, onOpenChange, children, ...props }: AlertDialogRootProps) => {
+  const onOpenChangeRef = React.useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+
+  React.useEffect(() => {
+    if (!open) return;
+
+    const id = pushModal(() => {
+      onOpenChangeRef.current?.(false);
+    });
+
+    return () => {
+      removeModal(id);
+    };
+  }, [open]);
+
+  return (
+    <AlertDialogPrimitive.Root open={open} onOpenChange={onOpenChange} {...props}>
+      {children}
+    </AlertDialogPrimitive.Root>
+  );
+};
+AlertDialog.displayName = "AlertDialog";
 
 const AlertDialogTrigger = AlertDialogPrimitive.Trigger
 

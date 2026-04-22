@@ -427,6 +427,10 @@ const ProducaoObra = () => {
     return registros.filter((r) => r.data === dataSelecionada);
   }, [registros, selectedDate]);
 
+  const pedreirosComLancamentoNaData = useMemo(() => {
+    return new Set(registrosDataSelecionada.map((registro) => registro.pedreiroId));
+  }, [registrosDataSelecionada]);
+
   const tileClassName = ({ date, view }: { date: Date; view: string }) => {
     if (view !== 'month') {
       return '';
@@ -1827,12 +1831,12 @@ const ProducaoObra = () => {
       </Card>
 
       <Dialog open={showGerenciarPedreiros} onOpenChange={setShowGerenciarPedreiros}>
-        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[95vw] max-w-lg h-[86vh] sm:h-[88vh] max-h-[92vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Gerenciar pedreiros</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-3">
+          <div className="space-y-3 min-h-0 flex-1 flex flex-col">
             <div className="flex flex-col sm:flex-row gap-2">
               <Input
                 placeholder="Nome do pedreiro"
@@ -1845,7 +1849,7 @@ const ProducaoObra = () => {
               </Button>
             </div>
 
-            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+            <div className="space-y-2 overflow-y-auto pr-1 min-h-0 flex-1">
               {pedreiros.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhum pedreiro cadastrado.</p>
               ) : (
@@ -1901,12 +1905,12 @@ const ProducaoObra = () => {
       </Dialog>
 
       <Dialog open={showGerenciarTarefas} onOpenChange={setShowGerenciarTarefas}>
-        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[95vw] max-w-2xl h-[86vh] sm:h-[88vh] max-h-[92vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Gerenciar tarefas</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-3">
+          <div className="space-y-3 min-h-0 flex-1 flex flex-col">
             <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px_auto] gap-2">
               <Input
                 placeholder="Nome da tarefa"
@@ -1927,7 +1931,7 @@ const ProducaoObra = () => {
               </Button>
             </div>
 
-            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+            <div className="space-y-2 overflow-y-auto pr-1 min-h-0 flex-1">
               {tarefas.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhuma tarefa cadastrada.</p>
               ) : (
@@ -2062,12 +2066,21 @@ const ProducaoObra = () => {
                     </SelectTrigger>
                     <SelectContent>
                       {pedreirosAtivos.map((pedreiro) => (
-                        <SelectItem key={pedreiro.id} value={pedreiro.id}>
+                        <SelectItem
+                          key={pedreiro.id}
+                          value={pedreiro.id}
+                          className={pedreirosComLancamentoNaData.has(pedreiro.id)
+                            ? 'font-semibold text-green-600 focus:text-green-600'
+                            : ''}
+                        >
                           {pedreiro.nome}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Nomes em verde indicam pedreiros já lançados nesta data.
+                  </p>
                 </div>
 
                 <div className="sm:col-span-2 flex items-center gap-2 rounded-md border p-2 bg-muted/30">

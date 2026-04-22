@@ -72,7 +72,7 @@ import NotificationService from '@/services/NotificationService';
 // Importar React Query
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Device } from '@capacitor/device';
-import { App } from '@capacitor/app'; // Importar o App plugin
+
 import { LocalNotifications } from '@capacitor/local-notifications'; // Descomentando a importação
 
 const PendenciasObra = () => {
@@ -1884,42 +1884,8 @@ const PendenciasObra = () => {
 
   const isDraggingCardRef = useRef(false); // Ref para controlar se um card está sendo arrastado
 
-  // Efeito para lidar com o botão de voltar do Android
-  useEffect(() => {
-    const listener = App.addListener('backButton', (event) => {
-      if (showCardDetailsDialog) {
-        event.canGoBack = false; // Impede o comportamento padrão de voltar
-        setShowCardDetailsDialog(false); // Fecha o diálogo
-      } else if (showAddCardDialog) {
-        event.canGoBack = false;
-        setShowAddCardDialog(false);
-      } else if (showDeleteCardDialog) {
-        event.canGoBack = false;
-        setShowDeleteCardDialog(false);
-      } else if (showAddListDialog) {
-        event.canGoBack = false;
-        setShowAddListDialog(false);
-      } else if (showEditListDialog) {
-        event.canGoBack = false;
-        setShowEditListDialog(false);
-      } else if (showDeleteListDialog) {
-        event.canGoBack = false;
-        setShowDeleteListDialog(false);
-      }
-      // Se nenhum diálogo estiver aberto, o comportamento padrão de voltar ocorrerá
-    });
-
-    return () => {
-      listener.remove();
-    };
-  }, [
-    showCardDetailsDialog, 
-    showAddCardDialog, 
-    showDeleteCardDialog, 
-    showAddListDialog, 
-    showEditListDialog, 
-    showDeleteListDialog
-  ]);
+  // O botão de voltar dos modais é gerenciado globalmente pelo modalStack (src/lib/modalStack.ts)
+  // via o componente Dialog em src/components/ui/dialog.tsx — não é necessário listener local.
 
   // Renderização dos botões com estados de carregamento
   const renderizarBotaoNovaLista = () => (

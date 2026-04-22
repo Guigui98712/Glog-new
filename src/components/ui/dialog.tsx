@@ -3,8 +3,40 @@ import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { pushModal, removeModal } from "@/lib/modalStack"
 
-const Dialog = DialogPrimitive.Root
+/**
+ * Dialog wrapper that automatically registers itself in the global modal stack
+ * so the Android hardware back button closes the topmost open modal instead of
+ * navigating away from the page.
+ */
+type DialogRootProps = React.ComponentPropsWithoutRef<typeof DialogPrimitive.Root>;
+
+const Dialog = ({ open, onOpenChange, children, ...props }: DialogRootProps) => {
+  // Keep a stable ref to onOpenChange so the effect doesn't re-run on every
+  // render (inline arrow functions would cause that).
+  const onOpenChangeRef = React.useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+
+  React.useEffect(() => {
+    if (!open) return;
+
+    const id = pushModal(() => {
+      onOpenChangeRef.current?.(false);
+    });
+
+    return () => {
+      removeModal(id);
+    };
+  }, [open]);
+
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange} {...props}>
+      {children}
+    </DialogPrimitive.Root>
+  );
+};
+Dialog.displayName = "Dialog";
 
 const DialogTrigger = DialogPrimitive.Trigger
 

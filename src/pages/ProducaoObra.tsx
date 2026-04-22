@@ -2022,7 +2022,7 @@ const ProducaoObra = () => {
       </Dialog>
 
       <Dialog open={showLancarDialog} onOpenChange={setShowLancarDialog}>
-        <DialogContent className="w-[95vw] max-w-2xl h-[86vh] sm:h-[88vh] max-h-[92vh] overflow-hidden flex flex-col">
+        <DialogContent className="w-[95vw] max-w-2xl h-[86vh] sm:h-[88vh] max-h-[92vh] overflow-y-hidden flex flex-col">
           <DialogHeader className="pr-7">
             <div className="flex items-start justify-between gap-2">
               <DialogTitle>
@@ -2056,7 +2056,7 @@ const ProducaoObra = () => {
               </div>
             </div>
           ) : (
-            <div className="space-y-4 min-h-0 flex-1 overflow-y-auto pr-1">
+            <div className="space-y-4 min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <Label>Pedreiro</Label>

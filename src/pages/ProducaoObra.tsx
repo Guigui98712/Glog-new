@@ -2022,8 +2022,8 @@ const ProducaoObra = () => {
       </Dialog>
 
       <Dialog open={showLancarDialog} onOpenChange={setShowLancarDialog}>
-        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="w-[95vw] max-w-2xl h-[86vh] sm:h-[88vh] max-h-[92vh] overflow-hidden flex flex-col">
+          <DialogHeader className="pr-7">
             <div className="flex items-start justify-between gap-2">
               <DialogTitle>
                 Lançar produção - {selectedDate ? format(selectedDate, "EEEE, dd 'de' MMMM", { locale: ptBR }) : ''}
@@ -2042,7 +2042,7 @@ const ProducaoObra = () => {
           </DialogHeader>
 
           {pedreirosAtivos.length === 0 || tarefas.length === 0 ? (
-            <div className="space-y-3">
+            <div className="space-y-3 min-h-0 flex-1 overflow-y-auto pr-1">
               <p className="text-sm text-muted-foreground">
                 Para lançar produção, primeiro cadastre pelo menos 1 pedreiro e 1 tarefa.
               </p>
@@ -2056,7 +2056,7 @@ const ProducaoObra = () => {
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-4 min-h-0 flex-1 overflow-y-auto pr-1">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <Label>Pedreiro</Label>
@@ -2157,9 +2157,9 @@ const ProducaoObra = () => {
                 <Button className="w-full sm:w-auto" onClick={handleSalvarLancamento}>Salvar lançamento</Button>
               </div>
 
-              <div className="border-t pt-4">
+              <div className="border-t pt-4 min-h-0 flex flex-col">
                 <h3 className="font-semibold mb-3">Lançamentos do dia</h3>
-                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                <div className="space-y-2 min-h-0 max-h-56 overflow-y-auto pr-1">
                   {registrosDataSelecionada.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Nenhum lançamento nesta data.</p>
                   ) : (
@@ -2287,21 +2287,21 @@ const ProducaoObra = () => {
                             {isRegistroFalta(registro) ? (
                               <>
                                 <p className="font-medium break-words">{pedreiro?.nome || 'Pedreiro removido'} - Faltou</p>
-                                <p className="text-sm text-muted-foreground">
+                                <p className="text-sm text-muted-foreground break-words">
                                   Motivo: {getMotivoFalta(registro) || '-'}
                                 </p>
                               </>
                             ) : (
                               <>
                             <p className="font-medium break-words">{pedreiro?.nome || 'Pedreiro removido'} - {tarefa?.nome || 'Tarefa removida'}</p>
-                            <p className="text-sm text-muted-foreground">
+                            <p className="text-sm text-muted-foreground break-words">
                               Quantidade: {formatQuantidade(registro.quantidade)} | Pavimento: {registro.pavimento || '-'}
                             </p>
                             {registro.quantidadeFormula && (
-                              <p className="text-xs text-muted-foreground">Fórmula: {registro.quantidadeFormula}</p>
+                              <p className="text-xs text-muted-foreground break-all">Fórmula: {registro.quantidadeFormula}</p>
                             )}
                             {registro.observacao && (
-                              <p className="text-xs text-muted-foreground">Obs: {registro.observacao}</p>
+                              <p className="text-xs text-muted-foreground break-words">Obs: {registro.observacao}</p>
                             )}
                               </>
                             )}

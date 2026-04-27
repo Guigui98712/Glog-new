@@ -56,6 +56,12 @@ interface ProducaoRegistro {
   observacao?: string;
 }
 
+interface Feriado {
+  id: string;
+  data: string;
+  descricao?: string;
+}
+
 const FALTA_TAG = '[FALTOU]';
 
 const isRegistroFalta = (registro: ProducaoRegistro) => {
@@ -216,6 +222,7 @@ const ProducaoObra = () => {
   const [pedreiros, setPedreiros] = useState<Pedreiro[]>([]);
   const [tarefas, setTarefas] = useState<Tarefa[]>([]);
   const [registros, setRegistros] = useState<ProducaoRegistro[]>([]);
+  const [feriados, setFeriados] = useState<Feriado[]>([]);
 
   const [showGerenciarPedreiros, setShowGerenciarPedreiros] = useState(false);
   const [showGerenciarTarefas, setShowGerenciarTarefas] = useState(false);
@@ -241,6 +248,7 @@ const ProducaoObra = () => {
   const [formPavimento, setFormPavimento] = useState('');
   const [formObservacao, setFormObservacao] = useState('');
   const [formPedreiroFaltou, setFormPedreiroFaltou] = useState(false);
+  const [formEhFeriado, setFormEhFeriado] = useState(false);
   const [editandoRegistro, setEditandoRegistro] = useState<{
     id: string;
     pedreiroId: string;
@@ -283,6 +291,13 @@ const ProducaoObra = () => {
         throw pedreirosResp.error || tarefasResp.error || registrosResp.error;
       }
 
+      // Carrega feriados separadamente para não quebrar se a tabela não existir
+      const feriadosResp = await supabase
+        .from('feriados_producao')
+        .select('id, data, descricao')
+        .eq('obra_id', obraNumero)
+        .order('data', { ascending: true });
+
       setPedreiros(
         (pedreirosResp.data || []).map((p: any) => ({
           id: p.id,
@@ -309,6 +324,19 @@ const ProducaoObra = () => {
           observacao: r.observacao || '',
         }))
       );
+
+      // Carrega feriados se a tabela existir
+      if (!feriadosResp.error && feriadosResp.data) {
+        setFeriados(
+          (feriadosResp.data || []).map((f: any) => ({
+            id: f.id,
+            data: f.data,
+            descricao: f.descricao || '',
+          }))
+        );
+      } else {
+        setFeriados([]);
+      }
     } catch (error) {
       console.error('Erro ao carregar produção:', error);
       toast({
@@ -437,6 +465,11 @@ const ProducaoObra = () => {
     }
 
     const dataStr = format(date, 'yyyy-MM-dd');
+    const ehFeriado = feriados.some((f) => f.data === dataStr);
+    if (ehFeriado) {
+      return 'feriado-dia';
+    }
+
     const temRegistro = registros.some((r) => r.data === dataStr);
     return temRegistro ? 'producao-dia' : '';
   };
@@ -450,6 +483,7 @@ const ProducaoObra = () => {
     setFormPavimento('');
     setFormObservacao('');
     setFormPedreiroFaltou(false);
+    setFormEhFeriado(isFeriado(date));
     setShowLancarDialog(true);
   };
 
@@ -1162,6 +1196,80 @@ const ProducaoObra = () => {
     }
 
     setRegistros((prev) => prev.filter((r) => r.id !== registroId));
+  };
+
+  const isFeriado = (data: Date) => {
+    const dataStr = format(data, 'yyyy-MM-dd');
+    return feriados.some((f) => f.data === dataStr);
+  };
+
+  const handleSalvarFeriado = async () => {
+    if (!selectedDate || !obraId) {
+      return;
+    }
+
+    const dataStr = format(selectedDate, 'yyyy-MM-dd');
+    
+    // Se já é feriado, deletar
+    const feriadoExistente = feriados.find((f) => f.data === dataStr);
+    if (feriadoExistente) {
+      const { error } = await supabase
+        .from('feriados_producao')
+        .delete()
+        .eq('id', feriadoExistente.id)
+        .eq('obra_id', Number(obraId));
+
+      if (error) {
+        toast({
+          title: 'Erro ao remover feriado',
+          description: 'Não foi possível remover do banco.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      setFeriados((prev) => prev.filter((f) => f.id !== feriadoExistente.id));
+      setFormEhFeriado(false);
+      toast({
+        title: 'Feriado removido',
+        description: 'O dia foi removido da lista de feriados.',
+      });
+      return;
+    }
+
+    // Se não é feriado, criar
+    const { data, error } = await supabase
+      .from('feriados_producao')
+      .insert({
+        obra_id: Number(obraId),
+        data: dataStr,
+        descricao: formObservacao.trim() || null,
+      })
+      .select('id, data, descricao')
+      .single();
+
+    if (error || !data) {
+      toast({
+        title: 'Erro ao salvar feriado',
+        description: 'Não foi possível adicionar o feriado.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setFeriados((prev) => [
+      ...prev,
+      {
+        id: data.id,
+        data: data.data,
+        descricao: data.descricao || '',
+      },
+    ]);
+    setFormEhFeriado(true);
+    toast({
+      title: 'Feriado adicionado',
+      description: `${format(selectedDate, "dd 'de' MMMM", { locale: ptBR })} marcado como feriado.`,
+    });
   };
 
   const handleIniciarEdicaoRegistro = (registro: ProducaoRegistro) => {
@@ -2024,10 +2132,24 @@ const ProducaoObra = () => {
       <Dialog open={showLancarDialog} onOpenChange={setShowLancarDialog}>
         <DialogContent className="w-[95vw] max-w-2xl h-[86vh] sm:h-[88vh] max-h-[92vh] overflow-y-hidden flex flex-col">
           <DialogHeader className="pr-7">
-            <div className="flex items-start justify-between gap-2">
-              <DialogTitle>
-                Lançar produção - {selectedDate ? format(selectedDate, "EEEE, dd 'de' MMMM", { locale: ptBR }) : ''}
-              </DialogTitle>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-3">
+                <DialogTitle>
+                  Lançar produção - {selectedDate ? format(selectedDate, "EEEE, dd 'de' MMMM", { locale: ptBR }) : ''}
+                </DialogTitle>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="feriado-header"
+                    type="checkbox"
+                    checked={formEhFeriado}
+                    onChange={(e) => setFormEhFeriado(e.target.checked)}
+                    className="h-4 w-4 cursor-pointer"
+                  />
+                  <Label htmlFor="feriado-header" className="cursor-pointer text-xs font-medium">
+                    Feriado
+                  </Label>
+                </div>
+              </div>
               <Button
                 type="button"
                 variant="ghost"
@@ -2057,104 +2179,113 @@ const ProducaoObra = () => {
             </div>
           ) : (
             <div className="space-y-4 min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <Label>Pedreiro</Label>
-                  <Select value={formPedreiroId} onValueChange={setFormPedreiroId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {pedreirosAtivos.map((pedreiro) => (
-                        <SelectItem
-                          key={pedreiro.id}
-                          value={pedreiro.id}
-                          className={pedreirosComLancamentoNaData.has(pedreiro.id)
-                            ? 'font-semibold text-green-600 focus:text-green-600'
-                            : ''}
-                        >
-                          {pedreiro.nome}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Nomes em verde indicam pedreiros já lançados nesta data.
-                  </p>
+              {!formEhFeriado && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <Label>Pedreiro</Label>
+                    <Select value={formPedreiroId} onValueChange={setFormPedreiroId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {pedreirosAtivos.map((pedreiro) => (
+                          <SelectItem
+                            key={pedreiro.id}
+                            value={pedreiro.id}
+                            className={pedreirosComLancamentoNaData.has(pedreiro.id)
+                              ? 'font-semibold text-green-600 focus:text-green-600'
+                              : ''}
+                          >
+                            {pedreiro.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Nomes em verde indicam pedreiros já lançados nesta data.
+                    </p>
+                  </div>
+
+                  <div className="sm:col-span-2 flex items-center gap-2 rounded-md border p-2 bg-muted/30">
+                    <input
+                      id="faltou-pedreiro"
+                      type="checkbox"
+                      checked={formPedreiroFaltou}
+                      onChange={(e) => setFormPedreiroFaltou(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    <Label htmlFor="faltou-pedreiro" className="cursor-pointer">
+                      Falta
+                    </Label>
+                  </div>
+
+                  {!formPedreiroFaltou && (
+                    <>
+                      <div>
+                        <Label>Serviço</Label>
+                        <Select value={formTarefaId} onValueChange={setFormTarefaId}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {tarefas.map((tarefa) => (
+                              <SelectItem key={tarefa.id} value={tarefa.id}>
+                                {tarefa.nome}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Label>Quantidade</Label>
+                        <Input
+                          type="text"
+                          inputMode="decimal"
+                          value={formQuantidade}
+                          onChange={(e) => setFormQuantidade(e.target.value)}
+                          onBlur={handleResolverFormulaQuantidadeForm}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleResolverFormulaQuantidadeForm();
+                            }
+                          }}
+                          placeholder="Ex.: 12,5 ou =2,3*6*2+8,6*2*5"
+                        />
+                      </div>
+
+                      <div>
+                        <Label>Pavimento</Label>
+                        <Input
+                          value={formPavimento}
+                          onChange={(e) => setFormPavimento(e.target.value)}
+                          placeholder="Ex.: Térreo, S2, 1º andar"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  <div className="sm:col-span-2">
+                    <Label>{formPedreiroFaltou ? 'Motivo da falta (opcional)' : 'Observação'}</Label>
+                    <Input
+                      value={formObservacao}
+                      onChange={(e) => setFormObservacao(e.target.value)}
+                      placeholder={formPedreiroFaltou ? 'Ex.: Atestado médico' : 'Ex.: Chapisco parede externa bloco A'}
+                    />
+                  </div>
                 </div>
+              )}
 
-                <div className="sm:col-span-2 flex items-center gap-2 rounded-md border p-2 bg-muted/30">
-                  <input
-                    id="faltou-pedreiro"
-                    type="checkbox"
-                    checked={formPedreiroFaltou}
-                    onChange={(e) => setFormPedreiroFaltou(e.target.checked)}
-                    className="h-4 w-4"
-                  />
-                  <Label htmlFor="faltou-pedreiro" className="cursor-pointer">
-                    Falta
-                  </Label>
-                </div>
-
-                {!formPedreiroFaltou && (
-                  <>
-                    <div>
-                      <Label>Serviço</Label>
-                      <Select value={formTarefaId} onValueChange={setFormTarefaId}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {tarefas.map((tarefa) => (
-                            <SelectItem key={tarefa.id} value={tarefa.id}>
-                              {tarefa.nome}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <Label>Quantidade</Label>
-                      <Input
-                        type="text"
-                        inputMode="decimal"
-                        value={formQuantidade}
-                        onChange={(e) => setFormQuantidade(e.target.value)}
-                        onBlur={handleResolverFormulaQuantidadeForm}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleResolverFormulaQuantidadeForm();
-                          }
-                        }}
-                        placeholder="Ex.: 12,5 ou =2,3*6*2+8,6*2*5"
-                      />
-                    </div>
-
-                    <div>
-                      <Label>Pavimento</Label>
-                      <Input
-                        value={formPavimento}
-                        onChange={(e) => setFormPavimento(e.target.value)}
-                        placeholder="Ex.: Térreo, S2, 1º andar"
-                      />
-                    </div>
-                  </>
+              <div className="flex justify-end gap-2">
+                {formEhFeriado && (
+                  <Button className="w-full sm:w-auto" variant="outline" onClick={handleSalvarFeriado}>
+                    {isFeriado(selectedDate || new Date()) ? 'Remover feriado' : 'Marcar como feriado'}
+                  </Button>
                 )}
-
-                <div className="sm:col-span-2">
-                  <Label>{formPedreiroFaltou ? 'Motivo da falta (opcional)' : 'Observação'}</Label>
-                  <Input
-                    value={formObservacao}
-                    onChange={(e) => setFormObservacao(e.target.value)}
-                    placeholder={formPedreiroFaltou ? 'Ex.: Atestado médico' : 'Ex.: Chapisco parede externa bloco A'}
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end">
-                <Button className="w-full sm:w-auto" onClick={handleSalvarLancamento}>Salvar lançamento</Button>
+                {!formEhFeriado && (
+                  <Button className="w-full sm:w-auto" onClick={handleSalvarLancamento}>Salvar lançamento</Button>
+                )}
               </div>
 
               <div className="border-t pt-4 min-h-0 flex flex-col">

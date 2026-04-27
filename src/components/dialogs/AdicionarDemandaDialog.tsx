@@ -33,6 +33,7 @@ export function AdicionarDemandaDialog({
   onDemandaAdicionada,
   itemParaEditar
 }: AdicionarDemandaDialogProps) {
+  const [nomeLista, setNomeLista] = useState('');
   const [itens, setItens] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -115,6 +116,7 @@ Enviado via GLog App`;
       setLoading(true);
 
       const textoFinal = itens.trim();
+      const tituloFinal = nomeLista.trim() || 'Lista de Demanda';
 
       if (!textoFinal) {
         toast.error('Digite pelo menos um item para a lista');
@@ -126,7 +128,7 @@ Enviado via GLog App`;
         .from('demanda_itens')
         .insert({
           obra_id: obraId,
-          titulo: 'Lista de Demanda',
+          titulo: tituloFinal,
           descricao: textoFinal,
           status: 'demanda'
         })
@@ -146,6 +148,7 @@ Enviado via GLog App`;
       toast.success('Lista de demanda adicionada com sucesso');
       onDemandaAdicionada();
       onOpenChange(false);
+      setNomeLista('');
       setItens('');
     } catch (error) {
       console.error('Erro ao adicionar lista de demanda:', error);
@@ -160,6 +163,7 @@ Enviado via GLog App`;
       setLoading(true);
 
       const textoFinal = itens.trim();
+      const tituloFinal = nomeLista.trim() || 'Lista de Demanda';
 
       if (!textoFinal) {
         toast.error('Digite pelo menos um item para a lista');
@@ -179,7 +183,7 @@ Enviado via GLog App`;
         .from('demanda_itens')
         .insert({
           obra_id: obraId,
-          titulo: 'Lista de Demanda',
+          titulo: tituloFinal,
           descricao: textoFinal,
           status: 'demanda'
         })
@@ -202,6 +206,7 @@ Enviado via GLog App`;
       toast.success('Lista de demanda adicionada e compartilhada com sucesso');
       onDemandaAdicionada();
       onOpenChange(false);
+      setNomeLista('');
       setItens('');
     } catch (error) {
       console.error('Erro ao adicionar e compartilhar lista de demanda:', error);
@@ -221,6 +226,22 @@ Enviado via GLog App`;
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="demanda-nome">Nome da lista (opcional)</Label>
+            <input
+              id="demanda-nome"
+              value={nomeLista}
+              onChange={(e) => setNomeLista(e.target.value)}
+              placeholder="Ex.: Elétrica bloco A (vazio = Lista de Demanda)"
+              spellCheck={true}
+              autoCorrect="on"
+              autoCapitalize="sentences"
+              autoComplete="on"
+              inputMode="text"
+              lang="pt-BR"
+              className="w-full h-10 rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            />
+          </div>
           <div className="space-y-2">
             <Label htmlFor="demanda-itens">Itens da lista (um por linha)</Label>
             <textarea

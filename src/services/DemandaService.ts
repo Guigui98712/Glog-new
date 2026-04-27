@@ -27,6 +27,33 @@ class DemandaService {
     return this.loadingState.get(obraId) || false;
   }
 
+  private async registrarHistoricoPago(item: DemandaItem, dataPagamentoIso: string, origem: string = 'movido_para_pago') {
+    const payload = {
+      obra_id: item.obra_id,
+      demanda_item_id: item.id,
+      titulo: item.titulo,
+      descricao: item.descricao || null,
+      valor: item.valor ?? null,
+      data_pedido: item.data_pedido || null,
+      data_entrega: item.data_entrega || null,
+      data_pagamento: dataPagamentoIso,
+      tempo_entrega: item.tempo_entrega || null,
+      observacao_entrega: item.observacao_entrega || null,
+      nota_fiscal: Array.isArray(item.nota_fiscal) ? item.nota_fiscal : [],
+      origem,
+      entrou_em_pago_em: dataPagamentoIso,
+    };
+
+    const { error } = await supabase
+      .from('demanda_itens_historico_pago')
+      .upsert(payload, { onConflict: 'demanda_item_id,data_pagamento' });
+
+    if (error) {
+      console.error('[DEBUG] DemandaService - Erro ao registrar histórico pago:', error);
+      throw new Error('Erro ao registrar histórico de item pago: ' + error.message);
+    }
+  }
+
   public async carregarDemandas(obraId: number): Promise<{ items: DemandaItem[], obraNome: string }> {
     try {
       console.log('[DEBUG] DemandaService - Iniciando carregamento de demandas para obra:', obraId);
@@ -178,6 +205,10 @@ class DemandaService {
       if (updateError) {
         console.error('[DEBUG] DemandaService - Erro ao atualizar status:', updateError);
         throw new Error('Erro ao atualizar status do item: ' + updateError.message);
+      }
+
+      if (novoStatus === 'pago') {
+        await this.registrarHistoricoPago(item, updateData.data_pagamento, 'movido_para_pago');
       }
 
       // Atualiza o cache local

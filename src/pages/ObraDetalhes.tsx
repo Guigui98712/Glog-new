@@ -139,6 +139,7 @@ const ObraDetalhes = () => {
   const [pedreirosProducao, setPedreirosProducao] = useState<PedreiroProducao[]>([]);
   const [registrosProducao, setRegistrosProducao] = useState<RegistroProducaoResumo[]>([]);
   const [tarefasProducao, setTarefasProducao] = useState<TarefaProducaoResumo[]>([]);
+  const [feriadosProducao, setFeriadosProducao] = useState<Array<{ id: string; data: string; descricao?: string }>>([]);
   const [pedreiroProducaoSelecionadoId, setPedreiroProducaoSelecionadoId] = useState<string>('');
   const [dataSelecionadaProducao, setDataSelecionadaProducao] = useState<Date | null>(null);
   const [mesProducaoAtivo, setMesProducaoAtivo] = useState<Date>(() => {
@@ -639,6 +640,13 @@ const ObraDetalhes = () => {
         throw pedreirosResp.error || tarefasResp.error || registrosResp.error;
       }
 
+      // Carrega feriados separadamente para não quebrar se não existir
+      const feriadosResp = await supabase
+        .from('feriados_producao')
+        .select('id, data, descricao')
+        .eq('obra_id', obraNumero)
+        .order('data', { ascending: true });
+
       const pedreirosAtivos: PedreiroProducao[] = (pedreirosResp.data || [])
         .map((pedreiro: any) => ({
           id: pedreiro.id,
@@ -667,6 +675,19 @@ const ObraDetalhes = () => {
           observacao: registro.observacao || '',
         }))
       );
+
+      // Carrega feriados se a tabela existir
+      if (!feriadosResp.error && feriadosResp.data) {
+        setFeriadosProducao(
+          (feriadosResp.data || []).map((feriado: any) => ({
+            id: feriado.id,
+            data: feriado.data,
+            descricao: feriado.descricao || '',
+          }))
+        );
+      } else {
+        setFeriadosProducao([]);
+      }
 
       setPedreiroProducaoSelecionadoId((atual) => {
         if (atual && pedreirosAtivos.some((pedreiro) => pedreiro.id === atual)) {
@@ -731,12 +752,23 @@ const ObraDetalhes = () => {
   }, [registrosProducao, pedreiroProducaoSelecionadoId]);
 
   const tileClassNameProducao = ({ date, view }: { date: Date; view: string }) => {
-    if (view !== 'month' || !pedreiroProducaoSelecionadoId) {
+    if (view !== 'month') {
       return '';
     }
 
     const dataStr = format(date, 'yyyy-MM-dd');
-    return diasComProducaoDoPedreiro.has(dataStr) ? 'producao-dia' : '';
+    
+    // Verifica se é feriado
+    if (feriadosProducao.some((f) => f.data === dataStr)) {
+      return 'feriado-dia';
+    }
+
+    // Verifica se tem produção do pedreiro selecionado
+    if (pedreiroProducaoSelecionadoId && diasComProducaoDoPedreiro.has(dataStr)) {
+      return 'producao-dia';
+    }
+
+    return '';
   };
 
   const registrosProducaoDataSelecionada = useMemo(() => {

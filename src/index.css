@@ -332,11 +332,31 @@ textarea,
   text-decoration: none;
 }
 
+.producao-calendar .feriado-dia abbr {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  background: hsl(38 92% 50%);
+  color: #1a1a1a;
+  font-weight: 700;
+  text-decoration: none;
+}
+
 .producao-calendar .producao-dia:enabled:hover abbr,
 .producao-calendar .producao-dia:enabled:focus abbr,
 .producao-calendar .producao-dia.react-calendar__tile--active abbr {
   background: hsl(var(--primary));
   color: hsl(var(--primary-foreground));
+}
+
+.producao-calendar .feriado-dia:enabled:hover abbr,
+.producao-calendar .feriado-dia:enabled:focus abbr,
+.producao-calendar .feriado-dia.react-calendar__tile--active abbr {
+  background: hsl(38 92% 40%);
+  color: #ffffff;
 }
 
 .producao-calendar {

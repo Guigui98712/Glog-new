@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Plus, ArrowRight, ArrowLeft as ArrowLeftIcon, X, Image as ImageIcon, FileText, FolderOpen, Trash2, Pencil, Camera as CameraIcon, Share as ShareIcon } from 'lucide-react';
+import { ArrowLeft, Plus, ArrowRight, ArrowLeft as ArrowLeftIcon, X, Image as ImageIcon, FileText, FolderOpen, Trash2, Pencil, Camera as CameraIcon, Share as ShareIcon, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { DemandaItem } from '@/types/demanda';
@@ -34,11 +34,32 @@ import { Share } from '@capacitor/share';
 import { Device } from '@capacitor/device';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import ExcelJS from 'exceljs';
 
 interface DemandaObraProps {}
 
 interface ImageUrlsState {
   [key: string]: string;
+}
+
+const MARCADOR_RELATORIO_MENSAL = 'DEMANDA_MENSAL_EXCEL';
+
+interface HistoricoPagoItem {
+  id: number;
+  obra_id: number;
+  demanda_item_id: number | null;
+  titulo: string;
+  descricao: string | null;
+  valor: number | null;
+  data_pedido: string | null;
+  data_entrega: string | null;
+  data_pagamento: string | null;
+  tempo_entrega: string | null;
+  observacao_entrega: string | null;
+  nota_fiscal: string[] | null;
+  origem: string;
+  entrou_em_pago_em: string;
+  created_at: string;
 }
 
 // Componente ImagemMiniatura movido para fora
@@ -607,6 +628,318 @@ Enviado via GLog App`;
     `;
   };
 
+  const converterArrayBufferParaBase64 = (buffer: ArrayBuffer) => {
+    const bytes = new Uint8Array(buffer);
+    const chunkSize = 0x8000;
+    let binary = '';
+
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+
+    return btoa(binary);
+  };
+
+  const carregarUltimaGeracaoMensal = async () => {
+    if (!id) {
+      return null;
+    }
+
+    const { data, error } = await supabase
+      .from('relatorios')
+      .select('created_at')
+      .eq('obra_id', Number(id))
+      .eq('tipo', 'demanda')
+      .ilike('conteudo', `%${MARCADOR_RELATORIO_MENSAL}%`)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (error) {
+      console.error('Erro ao buscar último relatório mensal:', error);
+      return null;
+    }
+
+    if (!data || data.length === 0) {
+      return null;
+    }
+
+    return new Date(data[0].created_at);
+  };
+
+  const obterDataValida = (valor?: string) => {
+    if (!valor) return null;
+    const data = new Date(valor);
+    return Number.isNaN(data.getTime()) ? null : data;
+  };
+
+  const registrarHistoricoPagoItens = async (itensParaHistorico: DemandaItem[], origem: 'movido_para_pago' | 'gerado_relatorio_pdf') => {
+    if (!id || itensParaHistorico.length === 0) {
+      return;
+    }
+
+    const payload = itensParaHistorico.map((item) => {
+      const dataPagamento = item.data_pagamento || new Date().toISOString();
+      return {
+        obra_id: Number(id),
+        demanda_item_id: item.id,
+        titulo: item.titulo,
+        descricao: item.descricao || null,
+        valor: item.valor ?? null,
+        data_pedido: item.data_pedido || null,
+        data_entrega: item.data_entrega || null,
+        data_pagamento: dataPagamento,
+        tempo_entrega: item.tempo_entrega || null,
+        observacao_entrega: item.observacao_entrega || null,
+        nota_fiscal: Array.isArray(item.nota_fiscal) ? item.nota_fiscal : [],
+        origem,
+        entrou_em_pago_em: dataPagamento,
+      };
+    });
+
+    const { error } = await supabase
+      .from('demanda_itens_historico_pago')
+      .upsert(payload, { onConflict: 'demanda_item_id,data_pagamento' });
+
+    if (error) {
+      throw new Error(`Erro ao registrar histórico de itens pagos: ${error.message}`);
+    }
+  };
+
+  const carregarHistoricoPagoParaMensal = async (ultimaGeracao: Date | null) => {
+    if (!id) {
+      return [] as HistoricoPagoItem[];
+    }
+
+    let query = supabase
+      .from('demanda_itens_historico_pago')
+      .select('id, obra_id, demanda_item_id, titulo, descricao, valor, data_pedido, data_entrega, data_pagamento, tempo_entrega, observacao_entrega, nota_fiscal, origem, entrou_em_pago_em, created_at')
+      .eq('obra_id', Number(id))
+      .order('entrou_em_pago_em', { ascending: true });
+
+    if (ultimaGeracao) {
+      query = query.gt('entrou_em_pago_em', ultimaGeracao.toISOString());
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      throw new Error(`Erro ao carregar histórico mensal: ${error.message}`);
+    }
+
+    return (data || []) as HistoricoPagoItem[];
+  };
+
+  const gerarRelatorioMensalExcel = async () => {
+    if (!id) {
+      return;
+    }
+
+    try {
+      const ultimaGeracao = await carregarUltimaGeracaoMensal();
+
+      // Garante captura dos itens atualmente em pago antes de qualquer remoção futura.
+      const itensPagosAtuais = itens.filter((item) => item.status === 'pago');
+      await registrarHistoricoPagoItens(itensPagosAtuais, 'movido_para_pago');
+
+      const historicoMensal = await carregarHistoricoPagoParaMensal(ultimaGeracao);
+
+      if (historicoMensal.length === 0) {
+        toast.error('Não há itens para o relatório mensal desde a última geração.');
+        return;
+      }
+
+      const itensOrdenados = [...historicoMensal].sort((a, b) => {
+        const dataA = obterDataValida(a.entrou_em_pago_em) || obterDataValida(a.created_at) || new Date(0);
+        const dataB = obterDataValida(b.entrou_em_pago_em) || obterDataValida(b.created_at) || new Date(0);
+        return dataA.getTime() - dataB.getTime();
+      });
+
+      const valorTotal = itensOrdenados.reduce((acc, item) => acc + Number(item.valor ?? 0), 0);
+      const agora = new Date();
+      const inicioPeriodo = ultimaGeracao || (obterDataValida(itensOrdenados[0]?.entrou_em_pago_em) || obterDataValida(itensOrdenados[0]?.created_at) || agora);
+
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'GLog';
+      workbook.created = agora;
+
+      const worksheet = workbook.addWorksheet('Relatorio Mensal');
+
+      worksheet.columns = [
+        { key: 'nome', width: 28 },
+        { key: 'descricao', width: 44 },
+        { key: 'valor', width: 14 },
+        { key: 'observacoes', width: 30 },
+      ];
+
+      worksheet.getCell('A1').value = `Relatório de demandas - ${obraNome}`;
+      worksheet.mergeCells('A1:D1');
+      worksheet.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
+      worksheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } };
+      worksheet.getCell('A1').alignment = { horizontal: 'left', vertical: 'middle' };
+      worksheet.getRow(1).height = 24;
+
+      worksheet.getCell('A2').value = `Período: ${format(inicioPeriodo, 'dd/MM/yyyy')} até ${format(agora, 'dd/MM/yyyy')}`;
+      worksheet.mergeCells('A2:D2');
+      worksheet.getCell('A2').font = { italic: true, color: { argb: 'FF4B5563' } };
+      worksheet.getCell('A2').alignment = { horizontal: 'left', vertical: 'middle' };
+      worksheet.addRow([]);
+
+      const headerRow = worksheet.getRow(4);
+      headerRow.values = ['Nome', 'Descricao', 'Valor (R$)', 'Observacoes'];
+      headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      headerRow.alignment = { vertical: 'middle' };
+      headerRow.height = 22;
+
+      ['A4', 'B4', 'C4', 'D4'].forEach((cellRef) => {
+        worksheet.getCell(cellRef).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FF334155' },
+        };
+      });
+
+      itensOrdenados.forEach((item) => {
+        const row = worksheet.addRow({
+          nome: item.titulo || 'Lista de Demanda',
+          descricao: item.descricao || item.titulo || '',
+          valor: Number(item.valor ?? 0),
+          observacoes: item.observacao_entrega || '',
+        });
+
+        const isPar = row.number % 2 === 0;
+        const bgColor = isPar ? 'FFF8FAFC' : 'FFFFFFFF';
+        row.eachCell((cell) => {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+            left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+            bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+            right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          };
+        });
+      });
+
+      const linhaTotais = worksheet.addRow({
+        nome: 'TOTAL',
+        valor: valorTotal,
+      });
+      linhaTotais.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      linhaTotais.eachCell((cell) => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FF0F172A' } },
+          left: { style: 'thin', color: { argb: 'FF0F172A' } },
+          bottom: { style: 'thin', color: { argb: 'FF0F172A' } },
+          right: { style: 'thin', color: { argb: 'FF0F172A' } },
+        };
+      });
+
+      const firstDataRow = 5;
+      for (let i = firstDataRow; i <= worksheet.rowCount; i += 1) {
+        worksheet.getCell(`C${i}`).numFmt = 'R$ #,##0.00';
+        worksheet.getCell(`C${i}`).alignment = { horizontal: 'right', vertical: 'middle' };
+        worksheet.getCell(`D${i}`).alignment = { horizontal: 'left', vertical: 'middle' };
+      }
+
+      const bordaClara = {
+        top: { style: 'thin' as const, color: { argb: 'FFE5E7EB' } },
+        left: { style: 'thin' as const, color: { argb: 'FFE5E7EB' } },
+        bottom: { style: 'thin' as const, color: { argb: 'FFE5E7EB' } },
+        right: { style: 'thin' as const, color: { argb: 'FFE5E7EB' } },
+      };
+
+      // Bordas em toda a área útil da tabela (cabeçalho, período, títulos e linhas).
+      ['A1', 'B1', 'C1', 'D1', 'A2', 'B2', 'C2', 'D2'].forEach((cellRef) => {
+        worksheet.getCell(cellRef).border = bordaClara;
+      });
+
+      for (let row = 4; row <= worksheet.rowCount; row += 1) {
+        ['A', 'B', 'C', 'D'].forEach((col) => {
+          worksheet.getCell(`${col}${row}`).border = bordaClara;
+        });
+      }
+
+      worksheet.views = [{ state: 'frozen', ySplit: 4 }];
+      worksheet.autoFilter = 'A4:D4';
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const fileName = `relatorio_mensal_demanda_${obraNome.replace(/\s+/g, '_').toLowerCase()}_${format(agora, 'MM-yyyy')}.xlsx`;
+
+      const deviceInfo = await Device.getInfo();
+      const isMobile = deviceInfo.platform !== 'web';
+
+      if (isMobile) {
+        const base64 = converterArrayBufferParaBase64(buffer as ArrayBuffer);
+
+        const result = await Filesystem.writeFile({
+          path: fileName,
+          data: base64,
+          directory: Directory.Cache,
+        });
+
+        await Share.share({
+          title: `Relatorio Mensal - ${obraNome}`,
+          text: `Relatorio mensal de demandas (${format(inicioPeriodo, 'dd/MM/yyyy')} a ${format(agora, 'dd/MM/yyyy')})`,
+          url: result.uri,
+          dialogTitle: 'Compartilhar relatorio mensal',
+        });
+      } else {
+        const blob = new Blob([buffer], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = fileName;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      const resumoHtml = `
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+        <head>
+          <meta charset="UTF-8" />
+          <title>Resumo Relatório Mensal</title>
+        </head>
+        <body>
+          <!-- ${MARCADOR_RELATORIO_MENSAL} -->
+          <h1>Relatório Mensal de Demandas (Excel)</h1>
+          <p>Obra: ${obraNome}</p>
+          <p>Período: ${format(inicioPeriodo, 'dd/MM/yyyy')} até ${format(agora, 'dd/MM/yyyy')}</p>
+          <p>Itens incluídos: ${itensOrdenados.length}</p>
+          <p>Valor total: R$ ${valorTotal.toFixed(2)}</p>
+          <p>Gerado em: ${format(agora, 'dd/MM/yyyy HH:mm')}</p>
+        </body>
+        </html>
+      `;
+
+      const { error: saveError } = await supabase
+        .from('relatorios')
+        .insert({
+          obra_id: Number(id),
+          data_inicio: format(inicioPeriodo, 'yyyy-MM-dd'),
+          data_fim: format(agora, 'yyyy-MM-dd'),
+          tipo: 'demanda',
+          conteudo: resumoHtml,
+        });
+
+      if (saveError) {
+        console.error('Erro ao salvar marco do relatório mensal:', saveError);
+        toast.warning('Excel gerado, mas não foi possível salvar o marco da geração mensal.');
+      } else {
+        toast.success(`Relatório mensal gerado com ${itensOrdenados.length} item(ns).`);
+      }
+    } catch (error) {
+      console.error('Erro ao gerar relatório mensal:', error);
+      const message = error instanceof Error ? error.message : 'Erro desconhecido';
+      toast.error(`Erro ao gerar relatório mensal: ${message}`);
+    }
+  };
+
   const executarGeracaoRelatorio = async () => {
     try {
       const itensPagos = itens.filter(item => item.status === 'pago');
@@ -615,6 +948,9 @@ Enviado via GLog App`;
         toast.error('Não há itens pagos para gerar o relatório');
         return;
       }
+
+      // Registra no histórico antes de remover itens pagos do quadro.
+      await registrarHistoricoPagoItens(itensPagos, 'gerado_relatorio_pdf');
 
       const valorTotal = itensPagos.reduce((total, item) => total + (item.valor || 0), 0);
 
@@ -971,6 +1307,15 @@ Enviado via GLog App`;
               <FileText className="h-4 w-4" />
               <span className="xs:inline">Gerar Relatório</span>
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={gerarRelatorioMensalExcel}
+              className="flex items-center gap-2 grow sm:grow-0"
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              <span className="xs:inline">Relatório Mensal (Excel)</span>
+            </Button>
             <Button 
               variant="outline" 
               size="sm" 
@@ -1020,7 +1365,7 @@ Enviado via GLog App`;
                         >
                           <ShareIcon className="h-4 w-4" />
                         </Button>
-                        {status !== 'demanda' || item.titulo === 'Lista de Demanda' ? (
+                        {status !== 'demanda' || item.status === 'demanda' ? (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -1046,7 +1391,7 @@ Enviado via GLog App`;
                     <div className="flex-grow pr-24">
                       <h3 className="font-medium break-words">{item.titulo}</h3>
                       {item.descricao && (
-                        item.titulo === 'Lista de Demanda' ? (
+                        item.status === 'demanda' ? (
                           <div className="text-sm text-muted-foreground mt-1 whitespace-pre-line">
                             {item.descricao.split('\n').map((linha, index) => (
                               <p key={index} className="py-1 break-words">{linha.trim()}</p>
@@ -1084,7 +1429,7 @@ Enviado via GLog App`;
                                     >
                                       <ImageIcon className="h-4 w-4" />
                                     </Button>
-                                    {status === 'entregue' && item.titulo !== 'Lista de Demanda' && (
+                                    {status === 'entregue' && item.status !== 'demanda' && (
                                       <Button
                                         type="button"
                                         variant="ghost"
@@ -1305,14 +1650,14 @@ Enviado via GLog App`;
           <DialogHeader>
             <DialogTitle>Editar Item</DialogTitle>
             <DialogDescription>
-              {itemParaEditar?.titulo === 'Lista de Demanda' 
+              {itemParaEditar?.status === 'demanda' 
                 ? 'Faça as alterações necessárias nos itens da lista.' 
                 : 'Edite os detalhes do item.'}
             </DialogDescription>
           </DialogHeader>
           {itemParaEditar && (
             <div className="grid gap-4 py-4">
-              {itemParaEditar.titulo !== 'Lista de Demanda' && (
+              {itemParaEditar.status !== 'demanda' && (
                 <div className="flex flex-col gap-2">
                   <label htmlFor="edit-titulo" className="text-sm font-medium">
                     Título:
@@ -1332,14 +1677,14 @@ Enviado via GLog App`;
               )}
               <div className="flex flex-col gap-2">
                 <label htmlFor="edit-descricao" className="text-sm font-medium">
-                  {itemParaEditar.titulo === 'Lista de Demanda' ? 'Itens da lista (um por linha):' : 'Descrição:'}
+                  {itemParaEditar.status === 'demanda' ? 'Itens da lista (um por linha):' : 'Descrição:'}
                 </label>
                 <textarea
                   id="edit-descricao"
                   className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  placeholder={itemParaEditar.titulo === 'Lista de Demanda' ? 'Digite os itens...' : 'Digite a descrição...'}
+                  placeholder={itemParaEditar.status === 'demanda' ? 'Digite os itens...' : 'Digite a descrição...'}
                   defaultValue={itemParaEditar.descricao || ''}
-                  rows={itemParaEditar.titulo === 'Lista de Demanda' ? 5 : 3} 
+                  rows={itemParaEditar.status === 'demanda' ? 5 : 3} 
                   spellCheck={true}
                   autoCorrect="on"
                   autoCapitalize="sentences"

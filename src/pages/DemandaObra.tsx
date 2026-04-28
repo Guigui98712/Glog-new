@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Plus, ArrowRight, ArrowLeft as ArrowLeftIcon, X, Image as ImageIcon, FileText, FolderOpen, Trash2, Pencil, Camera as CameraIcon, Share as ShareIcon, FileSpreadsheet } from 'lucide-react';
+import { ArrowLeft, Plus, ArrowRight, ArrowLeft as ArrowLeftIcon, X, Image as ImageIcon, FileText, FolderOpen, Trash2, Pencil, Camera as CameraIcon, Share as ShareIcon, FileSpreadsheet, Check, Tags } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
-import { DemandaItem } from '@/types/demanda';
+import { DemandaCategoria, DemandaItem } from '@/types/demanda';
 import { AdicionarDemandaDialog } from '@/components/dialogs/AdicionarDemandaDialog';
 import { MoverParaPedidoDialog } from '@/components/dialogs/MoverParaPedidoDialog';
 import { MoverParaEntregueDialog } from '@/components/dialogs/MoverParaEntregueDialog';
@@ -29,6 +29,8 @@ import ImageCacheService from '@/services/ImageCacheService';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { Device } from '@capacitor/device';
@@ -36,19 +38,53 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import ExcelJS from 'exceljs';
 
-interface DemandaObraProps {}
-
 interface ImageUrlsState {
   [key: string]: string;
 }
 
+interface DemandaCategoriaRow {
+  id: number;
+  obra_id: number;
+  nome: string;
+  ativo: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
 const MARCADOR_RELATORIO_MENSAL = 'DEMANDA_MENSAL_EXCEL';
+const CATEGORIA_VAZIA = '__sem_categoria__';
+const CATEGORIA_SEM_NOME = 'Sem categoria';
+
+const obterNomeCategoria = (categoria?: string | null) => {
+  const nome = (categoria || '').trim();
+  return nome || CATEGORIA_SEM_NOME;
+};
+
+const agruparItensPorCategoria = <T extends { categoria?: string | null; valor?: number | null }>(lista: T[]) => {
+  const grupos = new Map<string, T[]>();
+
+  lista.forEach((item) => {
+    const categoria = obterNomeCategoria(item.categoria);
+    const grupoAtual = grupos.get(categoria) || [];
+    grupoAtual.push(item);
+    grupos.set(categoria, grupoAtual);
+  });
+
+  return Array.from(grupos.entries())
+    .map(([categoria, itens]) => ({
+      categoria,
+      itens,
+      total: itens.reduce((acc, item) => acc + Number(item.valor ?? 0), 0),
+    }))
+    .sort((a, b) => a.categoria.localeCompare(b.categoria, 'pt-BR'));
+};
 
 interface HistoricoPagoItem {
   id: number;
   obra_id: number;
   demanda_item_id: number | null;
   titulo: string;
+  categoria: string | null;
   descricao: string | null;
   valor: number | null;
   data_pedido: string | null;
@@ -172,7 +208,7 @@ const ImagemMiniatura: React.FC<ImagemMiniaturaProps> = ({
   );
 };
 
-const DemandaObra: React.FC<DemandaObraProps> = () => {
+const DemandaObra = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const demandaService = DemandaService.getInstance();
@@ -181,8 +217,10 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
   const [loading, setLoading] = useState(true);
   const [obraNome, setObraNome] = useState('');
   const [itens, setItens] = useState<DemandaItem[]>([]);
+  const [categorias, setCategorias] = useState<DemandaCategoria[]>([]);
   const [showAdicionarDialog, setShowAdicionarDialog] = useState(false);
   const [showEditarDialog, setShowEditarDialog] = useState(false);
+  const [showGerenciarCategorias, setShowGerenciarCategorias] = useState(false);
   const [itemSelecionado, setItemSelecionado] = useState<DemandaItem | null>(null);
   const [showMoverParaPedidoDialog, setShowMoverParaPedidoDialog] = useState(false);
   const [showMoverParaEntregueDialog, setShowMoverParaEntregueDialog] = useState(false);
@@ -197,27 +235,71 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
   const [showImagemDialog, setShowImagemDialog] = useState(false);
   const [imagemUrl, setImagemUrl] = useState<string[]>([]);
   const [itemParaEditar, setItemParaEditar] = useState<DemandaItem | null>(null);
+  const [novaCategoria, setNovaCategoria] = useState('');
+  const [editandoCategoria, setEditandoCategoria] = useState<{ id: number; nome: string } | null>(null);
+  const [editTitulo, setEditTitulo] = useState('');
+  const [editDescricao, setEditDescricao] = useState('');
+  const [editValor, setEditValor] = useState('');
+  const [editCategoria, setEditCategoria] = useState(CATEGORIA_VAZIA);
   const [showConfirmarRelatorioDialog, setShowConfirmarRelatorioDialog] = useState(false);
-  const [incluirDatasRelatorio, setIncluirDatasRelatorio] = useState(true);
+  const [incluirDatasRelatorio, setIncluirDatasRelatorio] = useState(false);
   const notificationService = NotificationService.getInstance();
   const [imageUrls, setImageUrls] = useState<ImageUrlsState>({});
 
+  const categoriasAtivas = categorias
+    .filter((categoria) => categoria.ativo)
+    .map((categoria) => categoria.nome)
+    .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+  const categoriasEdicao = Array.from(
+    new Map(
+      [...categoriasAtivas, itemParaEditar?.categoria || '']
+        .map((nome) => nome.trim())
+        .filter(Boolean)
+        .map((nome) => [nome.toLowerCase(), nome])
+    ).values()
+  ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
   useEffect(() => {
-    console.log('[DEBUG] DemandaObra - useEffect iniciado');
-    console.log('[DEBUG] DemandaObra - ID recebido:', id);
-    
-    if (!id || isNaN(Number(id))) {
-      console.log('[DEBUG] DemandaObra - ID inválido');
-      toast.error('ID da obra inválido');
-      navigate('/obras');
+    if (!showEditarDialog || !itemParaEditar) {
       return;
     }
-    
-    console.log('[DEBUG] DemandaObra - Iniciando carregamento de dados');
-    carregarDados();
-  }, [id, navigate]);
 
-  const carregarDados = async () => {
+    setEditTitulo(itemParaEditar.titulo || '');
+    setEditDescricao(itemParaEditar.descricao || '');
+    setEditValor(itemParaEditar.valor !== undefined && itemParaEditar.valor !== null ? String(itemParaEditar.valor) : '');
+    setEditCategoria(itemParaEditar.categoria?.trim() || CATEGORIA_VAZIA);
+  }, [itemParaEditar, showEditarDialog]);
+
+  const carregarCategorias = useCallback(async () => {
+    if (!id || isNaN(Number(id))) {
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('demanda_categorias')
+      .select('id, obra_id, nome, ativo, created_at, updated_at')
+      .eq('obra_id', Number(id))
+      .order('nome', { ascending: true });
+
+    if (error) {
+      console.error('[DEBUG] DemandaObra - Erro ao carregar categorias:', error);
+      throw error;
+    }
+
+    setCategorias(
+      (data as DemandaCategoriaRow[] | null || []).map((categoria) => ({
+        id: categoria.id,
+        obra_id: categoria.obra_id,
+        nome: categoria.nome,
+        ativo: categoria.ativo !== false,
+        created_at: categoria.created_at,
+        updated_at: categoria.updated_at,
+      }))
+    );
+  }, [id]);
+
+  const carregarDados = useCallback(async () => {
     console.log('[DEBUG] DemandaObra - carregarDados iniciado');
     try {
       setLoading(true);
@@ -237,6 +319,207 @@ const DemandaObra: React.FC<DemandaObraProps> = () => {
       setItens([]);
       setLoading(false);
     }
+  }, [demandaService, id]);
+
+  useEffect(() => {
+    console.log('[DEBUG] DemandaObra - useEffect iniciado');
+    console.log('[DEBUG] DemandaObra - ID recebido:', id);
+
+    if (!id || isNaN(Number(id))) {
+      console.log('[DEBUG] DemandaObra - ID inválido');
+      toast.error('ID da obra inválido');
+      navigate('/obras');
+      return;
+    }
+
+    console.log('[DEBUG] DemandaObra - Iniciando carregamento de dados');
+    const carregarPaginaInicial = async () => {
+      await carregarDados();
+
+      try {
+        await carregarCategorias();
+      } catch (error) {
+        console.error('[DEBUG] DemandaObra - Falha ao carregar categorias:', error);
+        setCategorias([]);
+      }
+    };
+
+    void carregarPaginaInicial();
+  }, [carregarCategorias, carregarDados, id, navigate]);
+
+  const handleAdicionarCategoria = async () => {
+    const nome = novaCategoria.trim();
+
+    if (!nome || !id) {
+      return;
+    }
+
+    const categoriaAtiva = categorias.find(
+      (categoria) => categoria.ativo && categoria.nome.toLowerCase() === nome.toLowerCase()
+    );
+    if (categoriaAtiva) {
+      toast.error('Categoria já cadastrada');
+      return;
+    }
+
+    const categoriaInativa = categorias.find(
+      (categoria) => !categoria.ativo && categoria.nome.toLowerCase() === nome.toLowerCase()
+    );
+
+    if (categoriaInativa) {
+      const { data, error } = await supabase
+        .from('demanda_categorias')
+        .update({ nome, ativo: true })
+        .eq('id', categoriaInativa.id)
+        .eq('obra_id', Number(id))
+        .select('id, obra_id, nome, ativo, created_at, updated_at')
+        .single();
+
+      if (error || !data) {
+        toast.error('Erro ao reativar categoria');
+        return;
+      }
+
+      setCategorias((prev) =>
+        prev.map((categoria) =>
+          categoria.id === data.id
+            ? {
+                id: data.id,
+                obra_id: data.obra_id,
+                nome: data.nome,
+                ativo: data.ativo !== false,
+                created_at: data.created_at,
+                updated_at: data.updated_at,
+              }
+            : categoria
+        )
+      );
+      setNovaCategoria('');
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('demanda_categorias')
+      .insert({ obra_id: Number(id), nome, ativo: true })
+      .select('id, obra_id, nome, ativo, created_at, updated_at')
+      .single();
+
+    if (error || !data) {
+      toast.error('Erro ao salvar categoria');
+      return;
+    }
+
+    setCategorias((prev) => [
+      ...prev,
+      {
+        id: data.id,
+        obra_id: data.obra_id,
+        nome: data.nome,
+        ativo: data.ativo !== false,
+        created_at: data.created_at,
+        updated_at: data.updated_at,
+      },
+    ]);
+    setNovaCategoria('');
+  };
+
+  const handleExcluirCategoria = async (categoriaId: number) => {
+    if (!id) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from('demanda_categorias')
+      .update({ ativo: false })
+      .eq('id', categoriaId)
+      .eq('obra_id', Number(id));
+
+    if (error) {
+      toast.error('Erro ao remover categoria');
+      return;
+    }
+
+    setCategorias((prev) => prev.map((categoria) => (
+      categoria.id === categoriaId ? { ...categoria, ativo: false } : categoria
+    )));
+  };
+
+  const handleReativarCategoria = async (categoriaId: number) => {
+    if (!id) {
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('demanda_categorias')
+      .update({ ativo: true })
+      .eq('id', categoriaId)
+      .eq('obra_id', Number(id))
+      .select('id, obra_id, nome, ativo, created_at, updated_at')
+      .single();
+
+    if (error || !data) {
+      toast.error('Erro ao reativar categoria');
+      return;
+    }
+
+    setCategorias((prev) => prev.map((categoria) => (
+      categoria.id === data.id
+        ? {
+            id: data.id,
+            obra_id: data.obra_id,
+            nome: data.nome,
+            ativo: data.ativo !== false,
+            created_at: data.created_at,
+            updated_at: data.updated_at,
+          }
+        : categoria
+    )));
+  };
+
+  const handleSalvarEdicaoCategoria = async () => {
+    if (!editandoCategoria || !id) {
+      return;
+    }
+
+    const nome = editandoCategoria.nome.trim();
+    if (!nome) {
+      return;
+    }
+
+    const jaExiste = categorias.some(
+      (categoria) => categoria.id !== editandoCategoria.id && categoria.ativo && categoria.nome.toLowerCase() === nome.toLowerCase()
+    );
+    if (jaExiste) {
+      toast.error('Já existe uma categoria com esse nome');
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('demanda_categorias')
+      .update({ nome })
+      .eq('id', editandoCategoria.id)
+      .eq('obra_id', Number(id))
+      .select('id, obra_id, nome, ativo, created_at, updated_at')
+      .single();
+
+    if (error || !data) {
+      toast.error('Erro ao editar categoria');
+      return;
+    }
+
+    setCategorias((prev) => prev.map((categoria) => (
+      categoria.id === data.id
+        ? {
+            id: data.id,
+            obra_id: data.obra_id,
+            nome: data.nome,
+            ativo: data.ativo !== false,
+            created_at: data.created_at,
+            updated_at: data.updated_at,
+          }
+        : categoria
+    )));
+    setEditandoCategoria(null);
   };
 
   const handleMoverParaEntregue = async (item: DemandaItem) => {
@@ -553,7 +836,7 @@ Enviado via GLog App`;
     pago: itens.filter(item => item.status === 'pago')
   };
 
-  const getImageUrl = async (path: string): Promise<string> => {
+  const getImageUrl = useCallback(async (path: string): Promise<string> => {
     if (!path) {
       console.error('Caminho da imagem não fornecido');
       throw new Error('Caminho da imagem não fornecido');
@@ -587,7 +870,7 @@ Enviado via GLog App`;
       console.error('Erro ao obter URL da imagem:', error);
       throw error;
     }
-  };
+  }, []);
 
   const renderNotasFiscais = async (notas: string | string[] | null | undefined) => {
     if (!notas) return '';
@@ -684,6 +967,7 @@ Enviado via GLog App`;
         obra_id: Number(id),
         demanda_item_id: item.id,
         titulo: item.titulo,
+        categoria: item.categoria || null,
         descricao: item.descricao || null,
         valor: item.valor ?? null,
         data_pedido: item.data_pedido || null,
@@ -713,7 +997,7 @@ Enviado via GLog App`;
 
     let query = supabase
       .from('demanda_itens_historico_pago')
-      .select('id, obra_id, demanda_item_id, titulo, descricao, valor, data_pedido, data_entrega, data_pagamento, tempo_entrega, observacao_entrega, nota_fiscal, origem, entrou_em_pago_em, created_at')
+      .select('id, obra_id, demanda_item_id, titulo, categoria, descricao, valor, data_pedido, data_entrega, data_pagamento, tempo_entrega, observacao_entrega, nota_fiscal, origem, entrou_em_pago_em, created_at')
       .eq('obra_id', Number(id))
       .order('entrou_em_pago_em', { ascending: true });
 
@@ -753,6 +1037,7 @@ Enviado via GLog App`;
         const dataB = obterDataValida(b.entrou_em_pago_em) || obterDataValida(b.created_at) || new Date(0);
         return dataA.getTime() - dataB.getTime();
       });
+      const itensAgrupados = agruparItensPorCategoria(itensOrdenados);
 
       const valorTotal = itensOrdenados.reduce((acc, item) => acc + Number(item.valor ?? 0), 0);
       const agora = new Date();
@@ -765,6 +1050,7 @@ Enviado via GLog App`;
       const worksheet = workbook.addWorksheet('Relatorio Mensal');
 
       worksheet.columns = [
+        { key: 'categoria', width: 22 },
         { key: 'nome', width: 28 },
         { key: 'descricao', width: 44 },
         { key: 'valor', width: 14 },
@@ -772,25 +1058,25 @@ Enviado via GLog App`;
       ];
 
       worksheet.getCell('A1').value = `Relatório de demandas - ${obraNome}`;
-      worksheet.mergeCells('A1:D1');
+      worksheet.mergeCells('A1:E1');
       worksheet.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
       worksheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } };
       worksheet.getCell('A1').alignment = { horizontal: 'left', vertical: 'middle' };
       worksheet.getRow(1).height = 24;
 
       worksheet.getCell('A2').value = `Período: ${format(inicioPeriodo, 'dd/MM/yyyy')} até ${format(agora, 'dd/MM/yyyy')}`;
-      worksheet.mergeCells('A2:D2');
+      worksheet.mergeCells('A2:E2');
       worksheet.getCell('A2').font = { italic: true, color: { argb: 'FF4B5563' } };
       worksheet.getCell('A2').alignment = { horizontal: 'left', vertical: 'middle' };
       worksheet.addRow([]);
 
       const headerRow = worksheet.getRow(4);
-      headerRow.values = ['Nome', 'Descricao', 'Valor (R$)', 'Observacoes'];
+      headerRow.values = ['Categoria', 'Nome', 'Descricao', 'Valor (R$)', 'Observacoes'];
       headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
       headerRow.alignment = { vertical: 'middle' };
       headerRow.height = 22;
 
-      ['A4', 'B4', 'C4', 'D4'].forEach((cellRef) => {
+      ['A4', 'B4', 'C4', 'D4', 'E4'].forEach((cellRef) => {
         worksheet.getCell(cellRef).fill = {
           type: 'pattern',
           pattern: 'solid',
@@ -798,29 +1084,52 @@ Enviado via GLog App`;
         };
       });
 
-      itensOrdenados.forEach((item) => {
-        const row = worksheet.addRow({
-          nome: item.titulo || 'Lista de Demanda',
-          descricao: item.descricao || item.titulo || '',
-          valor: Number(item.valor ?? 0),
-          observacoes: item.observacao_entrega || '',
+      itensAgrupados.forEach((grupo, indexGrupo) => {
+        const rowCategoria = worksheet.addRow({
+          categoria: grupo.categoria,
+          nome: `Subtotal da categoria`,
+          valor: grupo.total,
         });
-
-        const isPar = row.number % 2 === 0;
-        const bgColor = isPar ? 'FFF8FAFC' : 'FFFFFFFF';
-        row.eachCell((cell) => {
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+        rowCategoria.font = { bold: true, color: { argb: 'FF0F172A' } };
+        rowCategoria.eachCell((cell) => {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
           cell.border = {
-            top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
-            left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
-            bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
-            right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+            top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+            left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+            bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+            right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
           };
         });
+
+        grupo.itens.forEach((item) => {
+          const row = worksheet.addRow({
+            categoria: grupo.categoria,
+            nome: item.titulo || 'Lista de Demanda',
+            descricao: item.descricao || item.titulo || '',
+            valor: Number(item.valor ?? 0),
+            observacoes: item.observacao_entrega || '',
+          });
+
+          const isPar = row.number % 2 === 0;
+          const bgColor = isPar ? 'FFF8FAFC' : 'FFFFFFFF';
+          row.eachCell((cell) => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+              left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+              bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+              right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+            };
+          });
+        });
+
+        if (indexGrupo < itensAgrupados.length - 1) {
+          worksheet.addRow({});
+        }
       });
 
       const linhaTotais = worksheet.addRow({
-        nome: 'TOTAL',
+        categoria: 'TOTAL GERAL',
         valor: valorTotal,
       });
       linhaTotais.font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -836,9 +1145,9 @@ Enviado via GLog App`;
 
       const firstDataRow = 5;
       for (let i = firstDataRow; i <= worksheet.rowCount; i += 1) {
-        worksheet.getCell(`C${i}`).numFmt = 'R$ #,##0.00';
-        worksheet.getCell(`C${i}`).alignment = { horizontal: 'right', vertical: 'middle' };
-        worksheet.getCell(`D${i}`).alignment = { horizontal: 'left', vertical: 'middle' };
+        worksheet.getCell(`D${i}`).numFmt = 'R$ #,##0.00';
+        worksheet.getCell(`D${i}`).alignment = { horizontal: 'right', vertical: 'middle' };
+        worksheet.getCell(`E${i}`).alignment = { horizontal: 'left', vertical: 'middle' };
       }
 
       const bordaClara = {
@@ -849,18 +1158,18 @@ Enviado via GLog App`;
       };
 
       // Bordas em toda a área útil da tabela (cabeçalho, período, títulos e linhas).
-      ['A1', 'B1', 'C1', 'D1', 'A2', 'B2', 'C2', 'D2'].forEach((cellRef) => {
+      ['A1', 'B1', 'C1', 'D1', 'E1', 'A2', 'B2', 'C2', 'D2', 'E2'].forEach((cellRef) => {
         worksheet.getCell(cellRef).border = bordaClara;
       });
 
       for (let row = 4; row <= worksheet.rowCount; row += 1) {
-        ['A', 'B', 'C', 'D'].forEach((col) => {
+        ['A', 'B', 'C', 'D', 'E'].forEach((col) => {
           worksheet.getCell(`${col}${row}`).border = bordaClara;
         });
       }
 
       worksheet.views = [{ state: 'frozen', ySplit: 4 }];
-      worksheet.autoFilter = 'A4:D4';
+      worksheet.autoFilter = 'A4:E4';
 
       const buffer = await workbook.xlsx.writeBuffer();
       const fileName = `relatorio_mensal_demanda_${obraNome.replace(/\s+/g, '_').toLowerCase()}_${format(agora, 'MM-yyyy')}.xlsx`;
@@ -912,6 +1221,7 @@ Enviado via GLog App`;
           <p>Período: ${format(inicioPeriodo, 'dd/MM/yyyy')} até ${format(agora, 'dd/MM/yyyy')}</p>
           <p>Itens incluídos: ${itensOrdenados.length}</p>
           <p>Valor total: R$ ${valorTotal.toFixed(2)}</p>
+          <p>Categorias incluídas: ${itensAgrupados.length}</p>
           <p>Gerado em: ${format(agora, 'dd/MM/yyyy HH:mm')}</p>
         </body>
         </html>
@@ -953,42 +1263,61 @@ Enviado via GLog App`;
       await registrarHistoricoPagoItens(itensPagos, 'gerado_relatorio_pdf');
 
       const valorTotal = itensPagos.reduce((total, item) => total + (item.valor || 0), 0);
+      const itensAgrupados = agruparItensPorCategoria(itensPagos);
 
-      const itensHtml = await Promise.all(itensPagos.map(async item => {
-        const notasFiscaisHtml = await renderNotasFiscais(item.nota_fiscal);
-        const valorStr = item.valor ? `R$ ${item.valor.toFixed(2)}` : 'N/A';
-        
-        // Formatação condicional das datas e tempo
-        const dataPedidoHtml = incluirDatasRelatorio && item.data_pedido ? `
-          <div class="info-item">
-            <div class="info-label">Data do Pedido</div>
-            <div class="info-value">${format(new Date(item.data_pedido), 'dd/MM/yyyy')}</div>
-          </div>` : '';
-        const dataEntregaHtml = incluirDatasRelatorio && item.data_entrega ? `
-          <div class="info-item">
-            <div class="info-label">Data de Entrega</div>
-            <div class="info-value">${format(new Date(item.data_entrega), 'dd/MM/yyyy')}</div>
-          </div>` : '';
-        const tempoEntregaHtml = incluirDatasRelatorio && item.tempo_entrega ? `
-          <div class="info-item">
-            <div class="info-label">Tempo de Entrega</div>
-            <div class="info-value">${item.tempo_entrega}</div>
-          </div>` : '';
+      const itensHtmlPorCategoria = await Promise.all(itensAgrupados.map(async (grupo) => {
+        const cards = await Promise.all(grupo.itens.map(async item => {
+          const notasFiscaisHtml = await renderNotasFiscais(item.nota_fiscal);
+          const valorStr = item.valor ? `R$ ${item.valor.toFixed(2)}` : 'N/A';
+
+          const dataPedidoHtml = incluirDatasRelatorio && item.data_pedido ? `
+            <div class="info-item">
+              <div class="info-label">Data do Pedido</div>
+              <div class="info-value">${format(new Date(item.data_pedido), 'dd/MM/yyyy')}</div>
+            </div>` : '';
+          const dataEntregaHtml = incluirDatasRelatorio && item.data_entrega ? `
+            <div class="info-item">
+              <div class="info-label">Data de Entrega</div>
+              <div class="info-value">${format(new Date(item.data_entrega), 'dd/MM/yyyy')}</div>
+            </div>` : '';
+          const tempoEntregaHtml = incluirDatasRelatorio && item.tempo_entrega ? `
+            <div class="info-item">
+              <div class="info-label">Tempo de Entrega</div>
+              <div class="info-value">${item.tempo_entrega}</div>
+            </div>` : '';
+
+          return `
+            <div class="card">
+              <div class="category-badge">${grupo.categoria}</div>
+              <div class="card-title">${item.titulo}</div>
+              ${item.descricao ? `<div class="card-description">${item.descricao.replace(/\n/g, '<br>')}</div>` : ''}
+              <div class="info-grid">
+                ${dataPedidoHtml}
+                ${dataEntregaHtml}
+                <div class="info-item">
+                  <div class="info-label">Categoria</div>
+                  <div class="info-value">${grupo.categoria}</div>
+                </div>
+                <div class="info-item">
+                  <div class="info-label">Valor</div>
+                  <div class="info-value">${valorStr}</div>
+                </div>
+                ${tempoEntregaHtml}
+              </div>
+              ${notasFiscaisHtml}
+            </div>
+          `;
+        }));
 
         return `
-          <div class="card">
-            <div class="card-title">${item.titulo}</div>
-            ${item.descricao ? `<div class="card-description">${item.descricao.replace(/\n/g, '<br>')}</div>` : ''} 
-            <div class="info-grid">
-              ${dataPedidoHtml}
-              ${dataEntregaHtml}
-              <div class="info-item">
-                <div class="info-label">Valor</div>
-                <div class="info-value">${valorStr}</div>
-              </div>
-              ${tempoEntregaHtml}
+          <div class="category-section">
+            <div class="category-header">
+              <h2>${grupo.categoria}</h2>
+              <span>Total da categoria: R$ ${grupo.total.toFixed(2)}</span>
             </div>
-            ${notasFiscaisHtml}
+            <div class="items-container">
+              ${cards.join('')}
+            </div>
           </div>
         `;
       }));
@@ -1009,7 +1338,12 @@ Enviado via GLog App`;
             .header p { margin: 2px 0; font-size: 0.9em; color: #555; }
             .content { border-top: 1px solid #eee; padding-top: 20px; }
             .info-block h3 { border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 15px; }
+            .category-section { margin-bottom: 24px; }
+            .category-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #cbd5e1; }
+            .category-header h2 { margin: 0; font-size: 1.1em; }
+            .category-header span { font-size: 0.95em; font-weight: bold; color: #0f766e; }
             .card { border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 15px; background-color: #fff; page-break-inside: avoid; }
+            .category-badge { display: inline-block; padding: 4px 8px; margin-bottom: 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; font-size: 0.78em; font-weight: bold; text-transform: uppercase; }
             .card-title { font-size: 1.1em; font-weight: bold; margin-bottom: 10px; }
             .card-description { font-size: 0.9em; margin-bottom: 10px; white-space: pre-wrap; word-wrap: break-word; }
             .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 10px; font-size: 0.9em; }
@@ -1032,9 +1366,7 @@ Enviado via GLog App`;
 
             <div class="content">
               <div class="info-block">
-                <div class="items-container">
-                  ${itensHtml.join('')}
-                </div>
+                ${itensHtmlPorCategoria.join('')}
                 <div class="valor-total">
                   Valor Total: R$ ${valorTotal.toFixed(2)}
                 </div>
@@ -1182,6 +1514,127 @@ Enviado via GLog App`;
     setShowConfirmarRelatorioDialog(true);
   };
 
+  const gerarResumoCategoriasPdf = async () => {
+    try {
+      const itensComValor = itens.filter((item) => Number(item.valor ?? 0) > 0);
+      const categoriasBase = categorias.map((categoria) => categoria.nome);
+      const gruposMap = new Map<string, { categoria: string; itens: DemandaItem[]; total: number }>();
+
+      categoriasBase.forEach((categoria) => {
+        gruposMap.set(categoria, { categoria, itens: [], total: 0 });
+      });
+
+      agruparItensPorCategoria(itensComValor).forEach((grupo) => {
+        gruposMap.set(grupo.categoria, {
+          categoria: grupo.categoria,
+          itens: grupo.itens,
+          total: grupo.total,
+        });
+      });
+
+      const grupos = Array.from(gruposMap.values()).sort((a, b) => a.categoria.localeCompare(b.categoria, 'pt-BR'));
+      const totalGeral = grupos.reduce((acc, grupo) => acc + grupo.total, 0);
+
+      if (grupos.length === 0) {
+        toast.error('Não há categorias para gerar o resumo.');
+        return;
+      }
+
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const marginX = 14;
+      const maxWidth = pageWidth - marginX * 2;
+      let currentY = 18;
+
+      const adicionarNovaPaginaSeNecessario = (alturaNecessaria: number) => {
+        if (currentY + alturaNecessaria <= pageHeight - 15) {
+          return;
+        }
+
+        pdf.addPage();
+        currentY = 18;
+      };
+
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(16);
+      pdf.text('Resumo de gastos por categoria', marginX, currentY);
+      currentY += 8;
+
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      pdf.text(`Obra: ${obraNome}`, marginX, currentY);
+      currentY += 5;
+      pdf.text(`Gerado em: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, marginX, currentY);
+      currentY += 8;
+
+      grupos.forEach((grupo) => {
+        adicionarNovaPaginaSeNecessario(16);
+        pdf.setDrawColor(203, 213, 225);
+        pdf.setFillColor(241, 245, 249);
+        pdf.roundedRect(marginX, currentY - 4, maxWidth, 10, 2, 2, 'FD');
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(11);
+        pdf.text(grupo.categoria, marginX + 3, currentY + 2);
+        pdf.text(`R$ ${grupo.total.toFixed(2)}`, pageWidth - marginX - 3, currentY + 2, { align: 'right' });
+        currentY += 10;
+
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(9);
+
+        if (grupo.itens.length === 0) {
+          pdf.text('Nenhum item com valor registrado nesta categoria.', marginX + 3, currentY + 2);
+          currentY += 7;
+          return;
+        }
+
+        grupo.itens.forEach((item) => {
+          const linhas = pdf.splitTextToSize(
+            `${item.titulo} - ${item.descricao || 'Sem descrição'} - R$ ${Number(item.valor ?? 0).toFixed(2)}`,
+            maxWidth - 6
+          );
+          adicionarNovaPaginaSeNecessario(linhas.length * 4 + 3);
+          pdf.text(linhas, marginX + 3, currentY + 2);
+          currentY += linhas.length * 4 + 2;
+        });
+
+        currentY += 3;
+      });
+
+      adicionarNovaPaginaSeNecessario(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(12);
+      pdf.text(`Total geral: R$ ${totalGeral.toFixed(2)}`, pageWidth - marginX, currentY + 4, { align: 'right' });
+
+      const fileName = `resumo_categorias_${obraNome.replace(/\s+/g, '_').toLowerCase()}_${Date.now()}.pdf`;
+      const deviceInfo = await Device.getInfo();
+      const isMobile = deviceInfo.platform !== 'web';
+
+      if (isMobile) {
+        const pdfBase64 = pdf.output('datauristring').split(',')[1];
+        const result = await Filesystem.writeFile({
+          path: fileName,
+          data: pdfBase64,
+          directory: Directory.Cache,
+        });
+
+        await Share.share({
+          title: `Resumo por categoria - ${obraNome}`,
+          text: `Resumo de gastos por categoria da obra ${obraNome}.`,
+          url: result.uri,
+          dialogTitle: 'Compartilhar resumo por categoria',
+        });
+      } else {
+        pdf.save(fileName);
+      }
+
+      toast.success('Resumo de gastos por categoria gerado com sucesso.');
+    } catch (error) {
+      console.error('Erro ao gerar resumo por categoria:', error);
+      toast.error('Erro ao gerar resumo por categoria.');
+    }
+  };
+
   const handleTirarFoto = async () => {
     try {
       const image = await Camera.getPhoto({
@@ -1241,7 +1694,7 @@ Enviado via GLog App`;
     );
   };
 
-  const loadImageUrlsForItem = async (item: DemandaItem) => {
+  const loadImageUrlsForItem = useCallback(async (item: DemandaItem) => {
     const urls: ImageUrlsState = {};
     if (Array.isArray(item.nota_fiscal)) {
       for (const path of item.nota_fiscal) {
@@ -1257,14 +1710,14 @@ Enviado via GLog App`;
     }
     // Atualiza o estado de forma imutável
     setImageUrls(prevUrls => ({ ...prevUrls, ...urls }));
-  };
+  }, [getImageUrl, imageUrls]);
 
   // Otimização: Carregar URLs apenas quando o itemParaEditar muda ou quando itens são carregados
   useEffect(() => {
     if (itemParaEditar && itemParaEditar.nota_fiscal) {
       loadImageUrlsForItem(itemParaEditar);
     }
-  }, [itemParaEditar]);
+  }, [itemParaEditar, loadImageUrlsForItem]);
 
   useEffect(() => {
     itens.forEach(item => {
@@ -1272,7 +1725,7 @@ Enviado via GLog App`;
          loadImageUrlsForItem(item);
       }
     });
-  }, [itens]); // Dependência nos itens carregados
+  }, [itens, loadImageUrlsForItem]); // Dependência nos itens carregados
 
   return (
     <div className="container mx-auto py-6 px-2 sm:px-4">
@@ -1292,11 +1745,23 @@ Enviado via GLog App`;
             <Button 
               variant="outline" 
               size="sm" 
-              onClick={() => setShowAdicionarDialog(true)}
+              onClick={() => {
+                setItemParaEditar(null);
+                setShowAdicionarDialog(true);
+              }}
               className="flex items-center gap-2 grow sm:grow-0"
             >
               <Plus className="h-4 w-4" />
               <span className="xs:inline">Nova Demanda</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowGerenciarCategorias(true)}
+              className="flex items-center gap-2 grow sm:grow-0"
+            >
+              <Tags className="h-4 w-4" />
+              <span className="xs:inline">Categorias</span>
             </Button>
             <Button 
               variant="outline" 
@@ -1372,6 +1837,10 @@ Enviado via GLog App`;
                             className="h-7 w-7"
                             onClick={() => {
                               setItemParaEditar({ ...item, nota_fiscal: item.nota_fiscal || [] });
+                              if (item.status === 'demanda') {
+                                setShowAdicionarDialog(true);
+                                return;
+                              }
                               setShowEditarDialog(true);
                             }}
                           >
@@ -1390,6 +1859,11 @@ Enviado via GLog App`;
                     )}
                     <div className="flex-grow pr-24">
                       <h3 className="font-medium break-words">{item.titulo}</h3>
+                      {item.categoria && (
+                        <p className="text-xs font-medium uppercase tracking-wide text-blue-600 mt-1">
+                          Categoria: {item.categoria}
+                        </p>
+                      )}
                       {item.descricao && (
                         item.status === 'demanda' ? (
                           <div className="text-sm text-muted-foreground mt-1 whitespace-pre-line">
@@ -1522,9 +1996,99 @@ Enviado via GLog App`;
       <AdicionarDemandaDialog
         obraId={Number(id)}
         open={showAdicionarDialog}
-        onOpenChange={setShowAdicionarDialog}
+        onOpenChange={(open) => {
+          setShowAdicionarDialog(open);
+          if (!open) {
+            setItemParaEditar(null);
+          }
+        }}
         onDemandaAdicionada={carregarDados}
+        categorias={categoriasAtivas}
+        itemParaEditar={itemParaEditar?.status === 'demanda' ? itemParaEditar : undefined}
       />
+
+      <Dialog open={showGerenciarCategorias} onOpenChange={setShowGerenciarCategorias}>
+        <DialogContent className="w-[95vw] max-w-lg h-[86vh] sm:h-[88vh] max-h-[92vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Gerenciar categorias</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3 min-h-0 flex-1 flex flex-col">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Input
+                placeholder="Nome da categoria"
+                value={novaCategoria}
+                onChange={(e) => setNovaCategoria(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleAdicionarCategoria(); }}
+              />
+              <Button className="w-full sm:w-auto" type="button" onClick={handleAdicionarCategoria}>
+                <Plus className="h-4 w-4 mr-2" />
+                Adicionar
+              </Button>
+            </div>
+
+            <Button variant="outline" type="button" onClick={gerarResumoCategoriasPdf}>
+              <FileText className="h-4 w-4 mr-2" />
+              Resumo por categoria
+            </Button>
+
+            <div className="space-y-2 overflow-y-auto pr-1 min-h-0 flex-1">
+              {categorias.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhuma categoria cadastrada.</p>
+              ) : (
+                categorias.map((categoria) => (
+                  editandoCategoria?.id === categoria.id ? (
+                    <div key={categoria.id} className="flex items-center gap-2 border rounded-md px-3 py-2 bg-blue-50">
+                      <Input
+                        autoFocus
+                        value={editandoCategoria.nome}
+                        onChange={(e) => setEditandoCategoria({ ...editandoCategoria, nome: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSalvarEdicaoCategoria();
+                          if (e.key === 'Escape') setEditandoCategoria(null);
+                        }}
+                        className="h-8"
+                      />
+                      <Button variant="ghost" size="icon" onClick={handleSalvarEdicaoCategoria}>
+                        <Check className="h-4 w-4 text-green-600" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => setEditandoCategoria(null)}>
+                        <X className="h-4 w-4 text-gray-500" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div key={categoria.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border rounded-md px-3 py-2">
+                      <span className="break-words">
+                        {categoria.nome}
+                        {!categoria.ativo && <span className="ml-2 text-xs text-amber-600">(inativa)</span>}
+                      </span>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setEditandoCategoria({ id: categoria.id, nome: categoria.nome })}
+                          disabled={!categoria.ativo}
+                        >
+                          <Pencil className="h-4 w-4 text-blue-500" />
+                        </Button>
+                        {categoria.ativo ? (
+                          <Button variant="ghost" size="icon" onClick={() => handleExcluirCategoria(categoria.id)}>
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
+                        ) : (
+                          <Button variant="outline" size="sm" onClick={() => handleReativarCategoria(categoria.id)}>
+                            Reativar
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                ))
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {itemSelecionado && (
         <>
@@ -1665,7 +2229,8 @@ Enviado via GLog App`;
                   <input
                     id="edit-titulo"
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    defaultValue={itemParaEditar.titulo}
+                    value={editTitulo}
+                    onChange={(e) => setEditTitulo(e.target.value)}
                     spellCheck={true}
                     autoCorrect="on"
                     autoCapitalize="sentences"
@@ -1676,6 +2241,24 @@ Enviado via GLog App`;
                 </div>
               )}
               <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">
+                  Categoria:
+                </label>
+                <Select value={editCategoria} onValueChange={setEditCategoria}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione uma categoria" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={CATEGORIA_VAZIA}>Sem categoria</SelectItem>
+                    {categoriasEdicao.map((categoria) => (
+                      <SelectItem key={categoria} value={categoria}>
+                        {categoria}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-2">
                 <label htmlFor="edit-descricao" className="text-sm font-medium">
                   {itemParaEditar.status === 'demanda' ? 'Itens da lista (um por linha):' : 'Descrição:'}
                 </label>
@@ -1683,7 +2266,8 @@ Enviado via GLog App`;
                   id="edit-descricao"
                   className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   placeholder={itemParaEditar.status === 'demanda' ? 'Digite os itens...' : 'Digite a descrição...'}
-                  defaultValue={itemParaEditar.descricao || ''}
+                  value={editDescricao}
+                  onChange={(e) => setEditDescricao(e.target.value)}
                   rows={itemParaEditar.status === 'demanda' ? 5 : 3} 
                   spellCheck={true}
                   autoCorrect="on"
@@ -1705,7 +2289,8 @@ Enviado via GLog App`;
                     min="0"
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     placeholder="0,00"
-                    defaultValue={itemParaEditar.valor || ''}
+                    value={editValor}
+                    onChange={(e) => setEditValor(e.target.value)}
                   />
                 </div>
               )}
@@ -1793,15 +2378,12 @@ Enviado via GLog App`;
             </Button>
             <Button onClick={() => {
               if (itemParaEditar) {
-                const tituloInput = document.getElementById('edit-titulo') as HTMLInputElement;
-                const descricaoTextarea = document.getElementById('edit-descricao') as HTMLTextAreaElement;
-                const valorInput = document.getElementById('edit-valor') as HTMLInputElement;
-                
                 const itemAtualizado = {
                   ...itemParaEditar,
-                  titulo: tituloInput ? tituloInput.value : itemParaEditar.titulo, 
-                  descricao: descricaoTextarea.value,
-                  valor: valorInput ? parseFloat(valorInput.value) : itemParaEditar.valor 
+                  titulo: editTitulo || itemParaEditar.titulo,
+                  descricao: editDescricao,
+                  categoria: editCategoria === CATEGORIA_VAZIA ? null : editCategoria,
+                  valor: editValor ? parseFloat(editValor) : itemParaEditar.valor 
                 };
                 
                 handleEditarItemLista(itemAtualizado);

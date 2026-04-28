@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS demanda_itens_historico_pago (
   obra_id BIGINT NOT NULL REFERENCES obras(id) ON DELETE CASCADE,
   demanda_item_id BIGINT,
   titulo TEXT NOT NULL,
+  categoria TEXT,
   descricao TEXT,
   valor DECIMAL(10,2),
   data_pedido TIMESTAMP WITH TIME ZONE,
@@ -17,6 +18,9 @@ CREATE TABLE IF NOT EXISTS demanda_itens_historico_pago (
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE demanda_itens_historico_pago
+  ADD COLUMN IF NOT EXISTS categoria TEXT;
 
 -- Evita duplicar histórico da mesma entrada em pago para o mesmo item
 CREATE UNIQUE INDEX IF NOT EXISTS idx_demanda_historico_item_data_pagamento

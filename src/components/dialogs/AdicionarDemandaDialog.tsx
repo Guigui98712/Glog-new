@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { buscarObra } from '@/lib/api';
@@ -14,6 +15,7 @@ interface DemandaItem {
   id: number;
   obra_id: number;
   titulo: string;
+  categoria?: string | null;
   descricao?: string;
   status: 'demanda' | 'pedido' | 'entregue' | 'pago';
 }
@@ -23,6 +25,7 @@ interface AdicionarDemandaDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onDemandaAdicionada: () => void;
+  categorias: string[];
   itemParaEditar?: DemandaItem;
 }
 
@@ -31,11 +34,45 @@ export function AdicionarDemandaDialog({
   open,
   onOpenChange,
   onDemandaAdicionada,
+  categorias,
   itemParaEditar
 }: AdicionarDemandaDialogProps) {
   const [nomeLista, setNomeLista] = useState('');
+  const [categoria, setCategoria] = useState('__sem_categoria__');
   const [itens, setItens] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const categoriasDisponiveis = useMemo(() => {
+    const mapa = new Map<string, string>();
+
+    categorias.forEach((nome) => {
+      const nomeLimpo = nome.trim();
+      if (!nomeLimpo) {
+        return;
+      }
+      mapa.set(nomeLimpo.toLowerCase(), nomeLimpo);
+    });
+
+    const categoriaAtual = itemParaEditar?.categoria?.trim();
+    if (categoriaAtual) {
+      mapa.set(categoriaAtual.toLowerCase(), categoriaAtual);
+    }
+
+    return Array.from(mapa.values()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [categorias, itemParaEditar]);
+
+  useEffect(() => {
+    if (open) {
+      setNomeLista(itemParaEditar?.titulo || '');
+      setItens(itemParaEditar?.descricao || '');
+      setCategoria(itemParaEditar?.categoria?.trim() || '__sem_categoria__');
+      return;
+    }
+
+    setNomeLista('');
+    setItens('');
+    setCategoria('__sem_categoria__');
+  }, [itemParaEditar, open]);
 
   const enviarNotificacaoLocalNovaDemanda = async (titulo: string) => {
     try {
@@ -117,6 +154,7 @@ Enviado via GLog App`;
 
       const textoFinal = itens.trim();
       const tituloFinal = nomeLista.trim() || 'Lista de Demanda';
+      const categoriaFinal = categoria === '__sem_categoria__' ? null : categoria;
 
       if (!textoFinal) {
         toast.error('Digite pelo menos um item para a lista');
@@ -124,35 +162,50 @@ Enviado via GLog App`;
         return;
       }
 
-      const { data: novaDemanda, error: insertError } = await supabase
-        .from('demanda_itens')
-        .insert({
-          obra_id: obraId,
-          titulo: tituloFinal,
-          descricao: textoFinal,
-          status: 'demanda'
-        })
-        .select()
-        .single();
+      if (itemParaEditar) {
+        const { error: updateError } = await supabase
+          .from('demanda_itens')
+          .update({
+            titulo: tituloFinal,
+            descricao: textoFinal,
+            categoria: categoriaFinal,
+          })
+          .eq('id', itemParaEditar.id);
 
-      if (insertError) throw insertError;
+        if (updateError) throw updateError;
+      } else {
+        const { error: insertError } = await supabase
+          .from('demanda_itens')
+          .insert({
+            obra_id: obraId,
+            titulo: tituloFinal,
+            descricao: textoFinal,
+            categoria: categoriaFinal,
+            status: 'demanda'
+          });
 
-      const notificationService = NotificationService.getInstance();
-      await notificationService.notificarNovaDemanda(
-        obraId,
-        textoFinal
-      );
+        if (insertError) throw insertError;
+      }
 
-      await enviarNotificacaoLocalNovaDemanda(textoFinal);
+      if (!itemParaEditar) {
+        const notificationService = NotificationService.getInstance();
+        await notificationService.notificarNovaDemanda(
+          obraId,
+          textoFinal
+        );
 
-      toast.success('Lista de demanda adicionada com sucesso');
+        await enviarNotificacaoLocalNovaDemanda(textoFinal);
+      }
+
+      toast.success(itemParaEditar ? 'Demanda atualizada com sucesso' : 'Lista de demanda adicionada com sucesso');
       onDemandaAdicionada();
       onOpenChange(false);
       setNomeLista('');
       setItens('');
+      setCategoria('__sem_categoria__');
     } catch (error) {
-      console.error('Erro ao adicionar lista de demanda:', error);
-      toast.error('Erro ao adicionar lista de demanda');
+      console.error('Erro ao salvar lista de demanda:', error);
+      toast.error(itemParaEditar ? 'Erro ao atualizar lista de demanda' : 'Erro ao adicionar lista de demanda');
     } finally {
       setLoading(false);
     }
@@ -164,6 +217,7 @@ Enviado via GLog App`;
 
       const textoFinal = itens.trim();
       const tituloFinal = nomeLista.trim() || 'Lista de Demanda';
+      const categoriaFinal = categoria === '__sem_categoria__' ? null : categoria;
 
       if (!textoFinal) {
         toast.error('Digite pelo menos um item para a lista');
@@ -173,22 +227,22 @@ Enviado via GLog App`;
 
       let obraNome = `Obra ${obraId}`;
       try {
-        const obra: any = await buscarObra(obraId);
+        const obra = await buscarObra(obraId) as { nome?: string; obra_nome?: string } | null;
         obraNome = String(obra?.nome || obra?.obra_nome || obraNome);
       } catch (obraLookupError) {
         console.warn('[AdicionarDemandaDialog] Falha ao buscar nome da obra para compartilhamento:', obraLookupError);
       }
 
-      const { data: novaDemanda, error: insertError } = await supabase
+      const { error: insertError } = await supabase
         .from('demanda_itens')
         .insert({
           obra_id: obraId,
           titulo: tituloFinal,
           descricao: textoFinal,
+          categoria: categoriaFinal,
           status: 'demanda'
         })
-        .select()
-        .single();
+        .select();
 
       if (insertError) throw insertError;
 
@@ -208,6 +262,7 @@ Enviado via GLog App`;
       onOpenChange(false);
       setNomeLista('');
       setItens('');
+      setCategoria('__sem_categoria__');
     } catch (error) {
       console.error('Erro ao adicionar e compartilhar lista de demanda:', error);
       toast.error('Erro ao adicionar e compartilhar lista de demanda');
@@ -220,9 +275,9 @@ Enviado via GLog App`;
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Adicionar Lista de Demanda</DialogTitle>
+          <DialogTitle>{itemParaEditar ? 'Editar Lista de Demanda' : 'Adicionar Lista de Demanda'}</DialogTitle>
           <DialogDescription>
-            Adicione os itens da lista de demanda, um por linha.
+            {itemParaEditar ? 'Atualize a categoria e os itens da lista.' : 'Adicione os itens da lista de demanda, um por linha.'}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
@@ -241,6 +296,22 @@ Enviado via GLog App`;
               lang="pt-BR"
               className="w-full h-10 rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
             />
+          </div>
+          <div className="space-y-2">
+            <Label>Categoria</Label>
+            <Select value={categoria} onValueChange={setCategoria}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione uma categoria" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__sem_categoria__">Sem categoria</SelectItem>
+                {categoriasDisponiveis.map((nomeCategoria) => (
+                  <SelectItem key={nomeCategoria} value={nomeCategoria}>
+                    {nomeCategoria}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label htmlFor="demanda-itens">Itens da lista (um por linha)</Label>
@@ -273,17 +344,19 @@ Enviado via GLog App`;
             disabled={loading || !itens.trim()}
             type="button"
           >
-            {loading ? 'Adicionando...' : 'Adicionar'}
+            {loading ? (itemParaEditar ? 'Salvando...' : 'Adicionando...') : (itemParaEditar ? 'Salvar' : 'Adicionar')}
           </Button>
-          <Button
-            onClick={handleSubmitAndShare}
-            disabled={loading || !itens.trim()}
-            type="button"
-            variant="default"
-            className="bg-green-600 hover:bg-green-700"
-          >
-            {loading ? 'Adicionando...' : 'Adicionar e Compartilhar'}
-          </Button>
+          {!itemParaEditar && (
+            <Button
+              onClick={handleSubmitAndShare}
+              disabled={loading || !itens.trim()}
+              type="button"
+              variant="default"
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {loading ? 'Adicionando...' : 'Adicionar e Compartilhar'}
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

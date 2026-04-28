@@ -14,6 +14,7 @@ create table demanda_itens (
   id bigint primary key generated always as identity,
   obra_id bigint references obras(id) on delete cascade,
   titulo text not null,
+  categoria text,
   descricao text,
   status text not null check (status in ('demanda', 'pedido', 'entregue', 'pago')),
   data_criacao timestamp with time zone not null default now(),
@@ -29,13 +30,31 @@ create table demanda_itens (
   updated_at timestamp with time zone not null default now()
 );
 
+create table if not exists demanda_categorias (
+  id bigint primary key generated always as identity,
+  obra_id bigint not null references obras(id) on delete cascade,
+  nome text not null,
+  ativo boolean not null default true,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  unique (obra_id, nome)
+);
+
 -- Criar índices
 create index demanda_itens_obra_id_idx on demanda_itens(obra_id);
 create index demanda_itens_status_idx on demanda_itens(status);
+create index demanda_itens_categoria_idx on demanda_itens(categoria);
+create index demanda_categorias_obra_id_idx on demanda_categorias(obra_id);
+create index demanda_categorias_ativo_idx on demanda_categorias(ativo);
 
 -- Criar trigger para atualizar updated_at
 create trigger set_updated_at
   before update on demanda_itens
+  for each row
+  execute function update_updated_at_column();
+
+create trigger set_updated_at_demanda_categorias
+  before update on demanda_categorias
   for each row
   execute function update_updated_at_column();
 

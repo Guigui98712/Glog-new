@@ -879,8 +879,15 @@ const ProducaoObra = () => {
       return;
     }
 
-    const quantidade = formPedreiroFaltou ? 0 : resolverQuantidade(formQuantidade);
-    if (!formPedreiroFaltou && (quantidade === null || quantidade <= 0)) {
+    const quantidadeBruta = formQuantidade.trim();
+    const quantidadeCalculada = formPedreiroFaltou ? 0 : resolverQuantidade(formQuantidade);
+    const lancamentoSomenteObservacao =
+      !formPedreiroFaltou &&
+      formObservacao.trim().length > 0 &&
+      (quantidadeBruta === '' || quantidadeCalculada === 0);
+    const quantidade = formPedreiroFaltou || lancamentoSomenteObservacao ? 0 : quantidadeCalculada;
+
+    if (!formPedreiroFaltou && !lancamentoSomenteObservacao && (quantidade === null || quantidade <= 0)) {
       toast({
         title: 'Quantidade inválida',
         description: 'Informe uma quantidade maior que zero ou uma fórmula válida.',
@@ -889,10 +896,10 @@ const ProducaoObra = () => {
       return;
     }
 
-    const formulaDigitada = !formPedreiroFaltou && formQuantidade.trim().startsWith('=') ? formQuantidade.trim() : null;
-    const formulaParaSalvar = formPedreiroFaltou ? null : (formulaDigitada || formQuantidadeFormula);
+    const formulaDigitada = !formPedreiroFaltou && quantidadeBruta.startsWith('=') ? quantidadeBruta : null;
+    const formulaParaSalvar = formPedreiroFaltou || lancamentoSomenteObservacao ? null : (formulaDigitada || formQuantidadeFormula);
 
-    if (!formPedreiroFaltou && quantidade !== null) {
+    if (!formPedreiroFaltou && !lancamentoSomenteObservacao && quantidade !== null) {
       setFormQuantidade(formatQuantidade(quantidade));
     }
 
@@ -1339,8 +1346,15 @@ const ProducaoObra = () => {
       return;
     }
 
-    const quantidade = editandoRegistro.faltou ? 0 : resolverQuantidade(editandoRegistro.quantidade);
-    if (!editandoRegistro.faltou && (quantidade === null || quantidade <= 0)) {
+    const quantidadeBruta = editandoRegistro.quantidade.trim();
+    const quantidadeCalculada = editandoRegistro.faltou ? 0 : resolverQuantidade(editandoRegistro.quantidade);
+    const edicaoSomenteObservacao =
+      !editandoRegistro.faltou &&
+      editandoRegistro.observacao.trim().length > 0 &&
+      (quantidadeBruta === '' || quantidadeCalculada === 0);
+    const quantidade = editandoRegistro.faltou || edicaoSomenteObservacao ? 0 : quantidadeCalculada;
+
+    if (!editandoRegistro.faltou && !edicaoSomenteObservacao && (quantidade === null || quantidade <= 0)) {
       toast({
         title: 'Quantidade inválida',
         description: 'Informe uma quantidade maior que zero ou uma fórmula válida.',
@@ -1349,8 +1363,8 @@ const ProducaoObra = () => {
       return;
     }
 
-    const formulaDigitada = !editandoRegistro.faltou && editandoRegistro.quantidade.trim().startsWith('=')
-      ? editandoRegistro.quantidade.trim()
+    const formulaDigitada = !editandoRegistro.faltou && quantidadeBruta.startsWith('=')
+      ? quantidadeBruta
       : null;
 
     const tarefaParaSalvar = editandoRegistro.tarefaId || tarefas[0]?.id || null;
@@ -1369,7 +1383,7 @@ const ProducaoObra = () => {
         pedreiro_id: editandoRegistro.pedreiroId,
         tarefa_id: tarefaParaSalvar,
         quantidade,
-        quantidade_formula: editandoRegistro.faltou ? null : formulaDigitada,
+        quantidade_formula: editandoRegistro.faltou || edicaoSomenteObservacao ? null : formulaDigitada,
         pavimento: editandoRegistro.faltou ? null : (editandoRegistro.pavimento.trim() || null),
         observacao: editandoRegistro.faltou
           ? montarObservacaoFalta(editandoRegistro.observacao)

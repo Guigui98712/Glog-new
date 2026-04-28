@@ -935,7 +935,8 @@ const ProducaoObra = () => {
       .single();
 
     if (error || !data) {
-      const detalheErro = error?.message ? ` (${error.message})` : '';
+      const partesErro = [error?.message, error?.details, error?.hint].filter(Boolean);
+      const detalheErro = partesErro.length > 0 ? ` (${partesErro.join(' | ')})` : '';
       toast({
         title: 'Erro ao salvar lançamento',
         description: `Não foi possível salvar no banco.${detalheErro}`,
@@ -1395,7 +1396,8 @@ const ProducaoObra = () => {
       .single();
 
     if (error || !data) {
-      const detalheErro = error?.message ? ` (${error.message})` : '';
+      const partesErro = [error?.message, error?.details, error?.hint].filter(Boolean);
+      const detalheErro = partesErro.length > 0 ? ` (${partesErro.join(' | ')})` : '';
       toast({
         title: 'Erro ao editar lançamento',
         description: `Não foi possível atualizar no banco.${detalheErro}`,

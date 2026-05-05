@@ -426,6 +426,14 @@ const ProducaoObra = () => {
     return resumoPorTarefa.reduce((acc, item) => acc + item.totalPagar, 0);
   }, [resumoPorTarefa]);
 
+  const totaisPagarPorSemana = useMemo(() => {
+    return semanasDoMes.map((_, semanaIndex) => {
+      return resumoPorTarefa.reduce((acc, item) => {
+        return acc + item.valoresSemana[semanaIndex] * item.tarefa.valor;
+      }, 0);
+    });
+  }, [semanasDoMes, resumoPorTarefa]);
+
   // Pavimento mais frequente por semana (considerando filtro de pedreiro)
   const pavimentoPorSemana = useMemo(() => {
     return semanasDoMes.map((semana) => {
@@ -1940,6 +1948,19 @@ const ProducaoObra = () => {
                   ))}
                   <td className="px-2 sm:px-3 py-2 text-center font-bold text-xs sm:text-sm border border-gray-500">Total</td>
                   <td className="px-2 sm:px-3 py-2 text-center font-bold text-xs sm:text-sm border border-gray-500">{formatCurrency(totalGeralPagar)}</td>
+                </tr>
+                <tr className="bg-gray-100">
+                  <td className="px-2 sm:px-3 py-2 text-center font-bold uppercase text-[11px] sm:text-xs border border-gray-300">Totais semana (R$)</td>
+                  <td className="px-2 sm:px-3 py-2 text-center font-bold text-[11px] sm:text-xs border border-gray-300">-</td>
+                  {totaisPagarPorSemana.map((totalSemana, idx) => (
+                    <td key={`total-semana-${idx}`} className="px-2 sm:px-3 py-2 text-center font-bold text-[11px] sm:text-xs border border-gray-300">
+                      {totalSemana > 0 ? formatCurrency(totalSemana) : 'R$ -'}
+                    </td>
+                  ))}
+                  <td className="px-2 sm:px-3 py-2 text-center font-bold text-xs sm:text-sm border border-gray-300">-</td>
+                  <td className="px-2 sm:px-3 py-2 text-center font-bold text-xs sm:text-sm border border-gray-300">
+                    {totalGeralPagar > 0 ? formatCurrency(totalGeralPagar) : 'R$ -'}
+                  </td>
                 </tr>
               </tfoot>
             )}

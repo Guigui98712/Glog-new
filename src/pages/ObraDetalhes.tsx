@@ -751,12 +751,37 @@ const ObraDetalhes = () => {
     return dias;
   }, [registrosProducao, pedreiroProducaoSelecionadoId]);
 
+  const diasComFaltaDoPedreiro = useMemo(() => {
+    const dias = new Set<string>();
+    if (!pedreiroProducaoSelecionadoId) {
+      return dias;
+    }
+
+    registrosProducao.forEach((registro) => {
+      if (registro.pedreiroId !== pedreiroProducaoSelecionadoId) {
+        return;
+      }
+
+      const observacaoNormalizada = (registro.observacao || '').toUpperCase();
+      if (observacaoNormalizada.includes('[FALTOU]') || observacaoNormalizada.includes('FALTOU')) {
+        dias.add(registro.data);
+      }
+    });
+
+    return dias;
+  }, [registrosProducao, pedreiroProducaoSelecionadoId]);
+
   const tileClassNameProducao = ({ date, view }: { date: Date; view: string }) => {
     if (view !== 'month') {
       return '';
     }
 
     const dataStr = format(date, 'yyyy-MM-dd');
+
+    // Falta tem prioridade para evidenciar ausência do pedreiro.
+    if (pedreiroProducaoSelecionadoId && diasComFaltaDoPedreiro.has(dataStr)) {
+      return 'falta-dia';
+    }
     
     // Verifica se é feriado
     if (feriadosProducao.some((f) => f.data === dataStr)) {
@@ -1157,6 +1182,20 @@ const ObraDetalhes = () => {
               <p className="text-sm text-gray-500">
                 Selecione um pedreiro para visualizar os dias com produção e clique no dia para ver o resumo.
               </p>
+              <div className="flex flex-wrap items-center gap-4 text-xs text-gray-600">
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-primary" />
+                  Produção
+                </span>
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-orange-400" />
+                  Feriado
+                </span>
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
+                  Falta
+                </span>
+              </div>
             </div>
 
             {pedreirosProducao.length === 0 ? (

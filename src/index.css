@@ -345,6 +345,19 @@ textarea,
   text-decoration: none;
 }
 
+.producao-calendar .falta-dia abbr {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  background: hsl(0 72% 52%);
+  color: #ffffff;
+  font-weight: 700;
+  text-decoration: none;
+}
+
 .producao-calendar .producao-dia:enabled:hover abbr,
 .producao-calendar .producao-dia:enabled:focus abbr,
 .producao-calendar .producao-dia.react-calendar__tile--active abbr {
@@ -356,6 +369,13 @@ textarea,
 .producao-calendar .feriado-dia:enabled:focus abbr,
 .producao-calendar .feriado-dia.react-calendar__tile--active abbr {
   background: hsl(38 92% 40%);
+  color: #ffffff;
+}
+
+.producao-calendar .falta-dia:enabled:hover abbr,
+.producao-calendar .falta-dia:enabled:focus abbr,
+.producao-calendar .falta-dia.react-calendar__tile--active abbr {
+  background: hsl(0 72% 45%);
   color: #ffffff;
 }
 

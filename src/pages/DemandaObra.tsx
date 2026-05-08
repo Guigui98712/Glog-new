@@ -1439,7 +1439,6 @@ Enviado via GLog App`;
       }
 
       worksheet.views = [{ state: 'frozen', ySplit: 4 }];
-      worksheet.autoFilter = 'A4:E4';
 
       const worksheetEmpresas = workbook.addWorksheet('Resumo por Empresa');
 
@@ -1525,7 +1524,6 @@ Enviado via GLog App`;
       }
 
       worksheetEmpresas.views = [{ state: 'frozen', ySplit: 4 }];
-      worksheetEmpresas.autoFilter = 'A4:B4';
 
       const buffer = await workbook.xlsx.writeBuffer();
       const fileName = `relatorio_mensal_demanda_${obraNome.replace(/\s+/g, '_').toLowerCase()}_${format(agora, 'MM-yyyy')}.xlsx`;

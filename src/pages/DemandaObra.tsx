@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Plus, ArrowRight, ArrowLeft as ArrowLeftIcon, X, Image as ImageIcon, FileText, FolderOpen, Trash2, Pencil, Camera as CameraIcon, Share as ShareIcon, FileSpreadsheet, Check, Tags } from 'lucide-react';
+import { ArrowLeft, Plus, ArrowRight, ArrowLeft as ArrowLeftIcon, X, Image as ImageIcon, FileText, FolderOpen, Trash2, Pencil, Camera as CameraIcon, Share as ShareIcon, FileSpreadsheet, Check, Tags, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
-import { DemandaCategoria, DemandaItem } from '@/types/demanda';
+import { DemandaCategoria, DemandaEmpresa, DemandaItem } from '@/types/demanda';
 import { AdicionarDemandaDialog } from '@/components/dialogs/AdicionarDemandaDialog';
 import { MoverParaPedidoDialog } from '@/components/dialogs/MoverParaPedidoDialog';
 import { MoverParaEntregueDialog } from '@/components/dialogs/MoverParaEntregueDialog';
@@ -51,13 +51,29 @@ interface DemandaCategoriaRow {
   updated_at?: string;
 }
 
+interface DemandaEmpresaRow {
+  id: number;
+  obra_id: number;
+  nome: string;
+  ativo: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
 const MARCADOR_RELATORIO_MENSAL = 'DEMANDA_MENSAL_EXCEL';
 const CATEGORIA_VAZIA = '__sem_categoria__';
 const CATEGORIA_SEM_NOME = 'Sem categoria';
+const EMPRESA_VAZIA = '__sem_empresa__';
+const EMPRESA_SEM_NOME = 'Sem empresa';
 
 const obterNomeCategoria = (categoria?: string | null) => {
   const nome = (categoria || '').trim();
   return nome || CATEGORIA_SEM_NOME;
+};
+
+const obterNomeEmpresa = (empresa?: string | null) => {
+  const nome = (empresa || '').trim();
+  return nome || EMPRESA_SEM_NOME;
 };
 
 const agruparItensPorCategoria = <T extends { categoria?: string | null; valor?: number | null }>(lista: T[]) => {
@@ -79,12 +95,27 @@ const agruparItensPorCategoria = <T extends { categoria?: string | null; valor?:
     .sort((a, b) => a.categoria.localeCompare(b.categoria, 'pt-BR'));
 };
 
+const agruparValoresPorEmpresa = <T extends { empresa?: string | null; valor?: number | null }>(lista: T[]) => {
+  const grupos = new Map<string, number>();
+
+  lista.forEach((item) => {
+    const empresa = obterNomeEmpresa(item.empresa);
+    const totalAtual = grupos.get(empresa) || 0;
+    grupos.set(empresa, totalAtual + Number(item.valor ?? 0));
+  });
+
+  return Array.from(grupos.entries())
+    .map(([empresa, total]) => ({ empresa, total }))
+    .sort((a, b) => b.total - a.total || a.empresa.localeCompare(b.empresa, 'pt-BR'));
+};
+
 interface HistoricoPagoItem {
   id: number;
   obra_id: number;
   demanda_item_id: number | null;
   titulo: string;
   categoria: string | null;
+  empresa?: string | null;
   descricao: string | null;
   valor: number | null;
   data_pedido: string | null;
@@ -218,9 +249,11 @@ const DemandaObra = () => {
   const [obraNome, setObraNome] = useState('');
   const [itens, setItens] = useState<DemandaItem[]>([]);
   const [categorias, setCategorias] = useState<DemandaCategoria[]>([]);
+  const [empresas, setEmpresas] = useState<DemandaEmpresa[]>([]);
   const [showAdicionarDialog, setShowAdicionarDialog] = useState(false);
   const [showEditarDialog, setShowEditarDialog] = useState(false);
   const [showGerenciarCategorias, setShowGerenciarCategorias] = useState(false);
+  const [showGerenciarEmpresas, setShowGerenciarEmpresas] = useState(false);
   const [itemSelecionado, setItemSelecionado] = useState<DemandaItem | null>(null);
   const [showMoverParaPedidoDialog, setShowMoverParaPedidoDialog] = useState(false);
   const [showMoverParaEntregueDialog, setShowMoverParaEntregueDialog] = useState(false);
@@ -236,11 +269,14 @@ const DemandaObra = () => {
   const [imagemUrl, setImagemUrl] = useState<string[]>([]);
   const [itemParaEditar, setItemParaEditar] = useState<DemandaItem | null>(null);
   const [novaCategoria, setNovaCategoria] = useState('');
+  const [novaEmpresa, setNovaEmpresa] = useState('');
   const [editandoCategoria, setEditandoCategoria] = useState<{ id: number; nome: string } | null>(null);
+  const [editandoEmpresa, setEditandoEmpresa] = useState<{ id: number; nome: string } | null>(null);
   const [editTitulo, setEditTitulo] = useState('');
   const [editDescricao, setEditDescricao] = useState('');
   const [editValor, setEditValor] = useState('');
   const [editCategoria, setEditCategoria] = useState(CATEGORIA_VAZIA);
+  const [editEmpresa, setEditEmpresa] = useState(EMPRESA_VAZIA);
   const [showConfirmarRelatorioDialog, setShowConfirmarRelatorioDialog] = useState(false);
   const [incluirDatasRelatorio, setIncluirDatasRelatorio] = useState(false);
   const notificationService = NotificationService.getInstance();
@@ -260,6 +296,20 @@ const DemandaObra = () => {
     ).values()
   ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
+  const empresasAtivas = empresas
+    .filter((empresa) => empresa.ativo)
+    .map((empresa) => empresa.nome)
+    .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+  const empresasEdicao = Array.from(
+    new Map(
+      [...empresasAtivas, itemParaEditar?.empresa || '']
+        .map((nome) => nome.trim())
+        .filter(Boolean)
+        .map((nome) => [nome.toLowerCase(), nome])
+    ).values()
+  ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
   useEffect(() => {
     if (!showEditarDialog || !itemParaEditar) {
       return;
@@ -269,6 +319,7 @@ const DemandaObra = () => {
     setEditDescricao(itemParaEditar.descricao || '');
     setEditValor(itemParaEditar.valor !== undefined && itemParaEditar.valor !== null ? String(itemParaEditar.valor) : '');
     setEditCategoria(itemParaEditar.categoria?.trim() || CATEGORIA_VAZIA);
+    setEditEmpresa(itemParaEditar.empresa?.trim() || EMPRESA_VAZIA);
   }, [itemParaEditar, showEditarDialog]);
 
   const carregarCategorias = useCallback(async () => {
@@ -295,6 +346,34 @@ const DemandaObra = () => {
         ativo: categoria.ativo !== false,
         created_at: categoria.created_at,
         updated_at: categoria.updated_at,
+      }))
+    );
+  }, [id]);
+
+  const carregarEmpresas = useCallback(async () => {
+    if (!id || isNaN(Number(id))) {
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('demanda_empresas')
+      .select('id, obra_id, nome, ativo, created_at, updated_at')
+      .eq('obra_id', Number(id))
+      .order('nome', { ascending: true });
+
+    if (error) {
+      console.error('[DEBUG] DemandaObra - Erro ao carregar empresas:', error);
+      throw error;
+    }
+
+    setEmpresas(
+      (data as DemandaEmpresaRow[] | null || []).map((empresa) => ({
+        id: empresa.id,
+        obra_id: empresa.obra_id,
+        nome: empresa.nome,
+        ativo: empresa.ativo !== false,
+        created_at: empresa.created_at,
+        updated_at: empresa.updated_at,
       }))
     );
   }, [id]);
@@ -342,10 +421,17 @@ const DemandaObra = () => {
         console.error('[DEBUG] DemandaObra - Falha ao carregar categorias:', error);
         setCategorias([]);
       }
+
+      try {
+        await carregarEmpresas();
+      } catch (error) {
+        console.error('[DEBUG] DemandaObra - Falha ao carregar empresas:', error);
+        setEmpresas([]);
+      }
     };
 
     void carregarPaginaInicial();
-  }, [carregarCategorias, carregarDados, id, navigate]);
+  }, [carregarCategorias, carregarDados, carregarEmpresas, id, navigate]);
 
   const handleAdicionarCategoria = async () => {
     const nome = novaCategoria.trim();
@@ -520,6 +606,181 @@ const DemandaObra = () => {
         : categoria
     )));
     setEditandoCategoria(null);
+  };
+
+  const handleAdicionarEmpresa = async () => {
+    const nome = novaEmpresa.trim();
+
+    if (!nome || !id) {
+      return;
+    }
+
+    const empresaAtiva = empresas.find(
+      (empresa) => empresa.ativo && empresa.nome.toLowerCase() === nome.toLowerCase()
+    );
+    if (empresaAtiva) {
+      toast.error('Empresa já cadastrada');
+      return;
+    }
+
+    const empresaInativa = empresas.find(
+      (empresa) => !empresa.ativo && empresa.nome.toLowerCase() === nome.toLowerCase()
+    );
+
+    if (empresaInativa) {
+      const { data, error } = await supabase
+        .from('demanda_empresas')
+        .update({ nome, ativo: true })
+        .eq('id', empresaInativa.id)
+        .eq('obra_id', Number(id))
+        .select('id, obra_id, nome, ativo, created_at, updated_at')
+        .single();
+
+      if (error || !data) {
+        toast.error('Erro ao reativar empresa');
+        return;
+      }
+
+      setEmpresas((prev) =>
+        prev.map((empresa) =>
+          empresa.id === data.id
+            ? {
+                id: data.id,
+                obra_id: data.obra_id,
+                nome: data.nome,
+                ativo: data.ativo !== false,
+                created_at: data.created_at,
+                updated_at: data.updated_at,
+              }
+            : empresa
+        )
+      );
+      setNovaEmpresa('');
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('demanda_empresas')
+      .insert({ obra_id: Number(id), nome, ativo: true })
+      .select('id, obra_id, nome, ativo, created_at, updated_at')
+      .single();
+
+    if (error || !data) {
+      toast.error('Erro ao salvar empresa');
+      return;
+    }
+
+    setEmpresas((prev) => [
+      ...prev,
+      {
+        id: data.id,
+        obra_id: data.obra_id,
+        nome: data.nome,
+        ativo: data.ativo !== false,
+        created_at: data.created_at,
+        updated_at: data.updated_at,
+      },
+    ]);
+    setNovaEmpresa('');
+  };
+
+  const handleExcluirEmpresa = async (empresaId: number) => {
+    if (!id) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from('demanda_empresas')
+      .update({ ativo: false })
+      .eq('id', empresaId)
+      .eq('obra_id', Number(id));
+
+    if (error) {
+      toast.error('Erro ao remover empresa');
+      return;
+    }
+
+    setEmpresas((prev) => prev.map((empresa) => (
+      empresa.id === empresaId ? { ...empresa, ativo: false } : empresa
+    )));
+  };
+
+  const handleReativarEmpresa = async (empresaId: number) => {
+    if (!id) {
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('demanda_empresas')
+      .update({ ativo: true })
+      .eq('id', empresaId)
+      .eq('obra_id', Number(id))
+      .select('id, obra_id, nome, ativo, created_at, updated_at')
+      .single();
+
+    if (error || !data) {
+      toast.error('Erro ao reativar empresa');
+      return;
+    }
+
+    setEmpresas((prev) => prev.map((empresa) => (
+      empresa.id === data.id
+        ? {
+            id: data.id,
+            obra_id: data.obra_id,
+            nome: data.nome,
+            ativo: data.ativo !== false,
+            created_at: data.created_at,
+            updated_at: data.updated_at,
+          }
+        : empresa
+    )));
+  };
+
+  const handleSalvarEdicaoEmpresa = async () => {
+    if (!editandoEmpresa || !id) {
+      return;
+    }
+
+    const nome = editandoEmpresa.nome.trim();
+    if (!nome) {
+      return;
+    }
+
+    const jaExiste = empresas.some(
+      (empresa) => empresa.id !== editandoEmpresa.id && empresa.ativo && empresa.nome.toLowerCase() === nome.toLowerCase()
+    );
+    if (jaExiste) {
+      toast.error('Já existe uma empresa com esse nome');
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('demanda_empresas')
+      .update({ nome })
+      .eq('id', editandoEmpresa.id)
+      .eq('obra_id', Number(id))
+      .select('id, obra_id, nome, ativo, created_at, updated_at')
+      .single();
+
+    if (error || !data) {
+      toast.error('Erro ao editar empresa');
+      return;
+    }
+
+    setEmpresas((prev) => prev.map((empresa) => (
+      empresa.id === data.id
+        ? {
+            id: data.id,
+            obra_id: data.obra_id,
+            nome: data.nome,
+            ativo: data.ativo !== false,
+            created_at: data.created_at,
+            updated_at: data.updated_at,
+          }
+        : empresa
+    )));
+    setEditandoEmpresa(null);
   };
 
   const handleMoverParaEntregue = async (item: DemandaItem) => {
@@ -1038,6 +1299,15 @@ Enviado via GLog App`;
         return dataA.getTime() - dataB.getTime();
       });
       const itensAgrupados = agruparItensPorCategoria(itensOrdenados);
+      const mapaEmpresasPorItemId = new Map<number, string | null>();
+      itens.forEach((item) => {
+        mapaEmpresasPorItemId.set(item.id, item.empresa || null);
+      });
+      const itensComEmpresa = itensOrdenados.map((item) => ({
+        ...item,
+        empresa: item.empresa ?? (item.demanda_item_id ? mapaEmpresasPorItemId.get(item.demanda_item_id) || null : null),
+      }));
+      const totaisPorEmpresa = agruparValoresPorEmpresa(itensComEmpresa);
 
       const valorTotal = itensOrdenados.reduce((acc, item) => acc + Number(item.valor ?? 0), 0);
       const agora = new Date();
@@ -1170,6 +1440,92 @@ Enviado via GLog App`;
 
       worksheet.views = [{ state: 'frozen', ySplit: 4 }];
       worksheet.autoFilter = 'A4:E4';
+
+      const worksheetEmpresas = workbook.addWorksheet('Resumo por Empresa');
+
+      worksheetEmpresas.columns = [
+        { key: 'empresa', width: 32 },
+        { key: 'total', width: 20 },
+      ];
+
+      worksheetEmpresas.getCell('A1').value = `Resumo por empresa - ${obraNome}`;
+      worksheetEmpresas.mergeCells('A1:B1');
+      worksheetEmpresas.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
+      worksheetEmpresas.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } };
+      worksheetEmpresas.getCell('A1').alignment = { horizontal: 'left', vertical: 'middle' };
+      worksheetEmpresas.getRow(1).height = 24;
+
+      worksheetEmpresas.getCell('A2').value = `Período: ${format(inicioPeriodo, 'dd/MM/yyyy')} até ${format(agora, 'dd/MM/yyyy')}`;
+      worksheetEmpresas.mergeCells('A2:B2');
+      worksheetEmpresas.getCell('A2').font = { italic: true, color: { argb: 'FF4B5563' } };
+      worksheetEmpresas.getCell('A2').alignment = { horizontal: 'left', vertical: 'middle' };
+      worksheetEmpresas.addRow([]);
+
+      const headerEmpresas = worksheetEmpresas.getRow(4);
+      headerEmpresas.values = ['Empresa', 'Total (R$)'];
+      headerEmpresas.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      headerEmpresas.alignment = { vertical: 'middle' };
+      headerEmpresas.height = 22;
+
+      ['A4', 'B4'].forEach((cellRef) => {
+        worksheetEmpresas.getCell(cellRef).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FF334155' },
+        };
+      });
+
+      totaisPorEmpresa.forEach((registro) => {
+        const row = worksheetEmpresas.addRow({
+          empresa: registro.empresa,
+          total: registro.total,
+        });
+
+        const isPar = row.number % 2 === 0;
+        const bgColor = isPar ? 'FFF8FAFC' : 'FFFFFFFF';
+        row.eachCell((cell) => {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+            left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+            bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+            right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          };
+        });
+      });
+
+      const linhaTotalEmpresas = worksheetEmpresas.addRow({
+        empresa: 'TOTAL GERAL',
+        total: valorTotal,
+      });
+      linhaTotalEmpresas.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      linhaTotalEmpresas.eachCell((cell) => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FF0F172A' } },
+          left: { style: 'thin', color: { argb: 'FF0F172A' } },
+          bottom: { style: 'thin', color: { argb: 'FF0F172A' } },
+          right: { style: 'thin', color: { argb: 'FF0F172A' } },
+        };
+      });
+
+      for (let i = 5; i <= worksheetEmpresas.rowCount; i += 1) {
+        worksheetEmpresas.getCell(`B${i}`).numFmt = 'R$ #,##0.00';
+        worksheetEmpresas.getCell(`B${i}`).alignment = { horizontal: 'right', vertical: 'middle' };
+      }
+
+      ['A1', 'B1', 'A2', 'B2'].forEach((cellRef) => {
+        worksheetEmpresas.getCell(cellRef).border = bordaClara;
+      });
+
+      for (let row = 4; row <= worksheetEmpresas.rowCount; row += 1) {
+        ['A', 'B'].forEach((col) => {
+          worksheetEmpresas.getCell(`${col}${row}`).border = bordaClara;
+        });
+      }
+
+      worksheetEmpresas.views = [{ state: 'frozen', ySplit: 4 }];
+      worksheetEmpresas.autoFilter = 'A4:B4';
 
       const buffer = await workbook.xlsx.writeBuffer();
       const fileName = `relatorio_mensal_demanda_${obraNome.replace(/\s+/g, '_').toLowerCase()}_${format(agora, 'MM-yyyy')}.xlsx`;
@@ -1763,6 +2119,15 @@ Enviado via GLog App`;
               <Tags className="h-4 w-4" />
               <span className="xs:inline">Categorias</span>
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowGerenciarEmpresas(true)}
+              className="flex items-center gap-2 grow sm:grow-0"
+            >
+              <Building2 className="h-4 w-4" />
+              <span className="xs:inline">Empresas</span>
+            </Button>
             <Button 
               variant="outline" 
               size="sm" 
@@ -1862,6 +2227,11 @@ Enviado via GLog App`;
                       {item.categoria && (
                         <p className="text-xs font-medium uppercase tracking-wide text-blue-600 mt-1">
                           Categoria: {item.categoria}
+                        </p>
+                      )}
+                      {item.empresa && (
+                        <p className="text-xs font-medium uppercase tracking-wide text-emerald-600 mt-1">
+                          Empresa: {item.empresa}
                         </p>
                       )}
                       {item.descricao && (
@@ -2004,6 +2374,7 @@ Enviado via GLog App`;
         }}
         onDemandaAdicionada={carregarDados}
         categorias={categoriasAtivas}
+        empresas={empresasAtivas}
         itemParaEditar={itemParaEditar?.status === 'demanda' ? itemParaEditar : undefined}
       />
 
@@ -2077,6 +2448,84 @@ Enviado via GLog App`;
                           </Button>
                         ) : (
                           <Button variant="outline" size="sm" onClick={() => handleReativarCategoria(categoria.id)}>
+                            Reativar
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                ))
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showGerenciarEmpresas} onOpenChange={setShowGerenciarEmpresas}>
+        <DialogContent className="w-[95vw] max-w-lg h-[86vh] sm:h-[88vh] max-h-[92vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Gerenciar empresas</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3 min-h-0 flex-1 flex flex-col">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Input
+                placeholder="Nome da empresa"
+                value={novaEmpresa}
+                onChange={(e) => setNovaEmpresa(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleAdicionarEmpresa(); }}
+              />
+              <Button className="w-full sm:w-auto" type="button" onClick={handleAdicionarEmpresa}>
+                <Plus className="h-4 w-4 mr-2" />
+                Adicionar
+              </Button>
+            </div>
+
+            <div className="space-y-2 overflow-y-auto pr-1 min-h-0 flex-1">
+              {empresas.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhuma empresa cadastrada.</p>
+              ) : (
+                empresas.map((empresa) => (
+                  editandoEmpresa?.id === empresa.id ? (
+                    <div key={empresa.id} className="flex items-center gap-2 border rounded-md px-3 py-2 bg-blue-50">
+                      <Input
+                        autoFocus
+                        value={editandoEmpresa.nome}
+                        onChange={(e) => setEditandoEmpresa({ ...editandoEmpresa, nome: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSalvarEdicaoEmpresa();
+                          if (e.key === 'Escape') setEditandoEmpresa(null);
+                        }}
+                        className="h-8"
+                      />
+                      <Button variant="ghost" size="icon" onClick={handleSalvarEdicaoEmpresa}>
+                        <Check className="h-4 w-4 text-green-600" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => setEditandoEmpresa(null)}>
+                        <X className="h-4 w-4 text-gray-500" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div key={empresa.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border rounded-md px-3 py-2">
+                      <span className="break-words">
+                        {empresa.nome}
+                        {!empresa.ativo && <span className="ml-2 text-xs text-amber-600">(inativa)</span>}
+                      </span>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setEditandoEmpresa({ id: empresa.id, nome: empresa.nome })}
+                          disabled={!empresa.ativo}
+                        >
+                          <Pencil className="h-4 w-4 text-blue-500" />
+                        </Button>
+                        {empresa.ativo ? (
+                          <Button variant="ghost" size="icon" onClick={() => handleExcluirEmpresa(empresa.id)}>
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
+                        ) : (
+                          <Button variant="outline" size="sm" onClick={() => handleReativarEmpresa(empresa.id)}>
                             Reativar
                           </Button>
                         )}
@@ -2259,6 +2708,24 @@ Enviado via GLog App`;
                 </Select>
               </div>
               <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">
+                  Empresa:
+                </label>
+                <Select value={editEmpresa} onValueChange={setEditEmpresa}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione uma empresa" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={EMPRESA_VAZIA}>Sem empresa</SelectItem>
+                    {empresasEdicao.map((empresa) => (
+                      <SelectItem key={empresa} value={empresa}>
+                        {empresa}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-2">
                 <label htmlFor="edit-descricao" className="text-sm font-medium">
                   {itemParaEditar.status === 'demanda' ? 'Itens da lista (um por linha):' : 'Descrição:'}
                 </label>
@@ -2383,6 +2850,7 @@ Enviado via GLog App`;
                   titulo: editTitulo || itemParaEditar.titulo,
                   descricao: editDescricao,
                   categoria: editCategoria === CATEGORIA_VAZIA ? null : editCategoria,
+                  empresa: editEmpresa === EMPRESA_VAZIA ? null : editEmpresa,
                   valor: editValor ? parseFloat(editValor) : itemParaEditar.valor 
                 };
                 

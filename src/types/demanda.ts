@@ -3,6 +3,8 @@ export interface DemandaItem {
   obra_id: number;
   titulo: string;
   categoria?: string | null;
+  empresa?: string | null;
+  empresa_id?: number | null;
   descricao?: string;
   status: 'demanda' | 'pedido' | 'entregue' | 'pago';
   data_criacao: string;
@@ -26,6 +28,15 @@ export interface ListaDemanda {
 } 
 
 export interface DemandaCategoria {
+  id: number;
+  obra_id: number;
+  nome: string;
+  ativo: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface DemandaEmpresa {
   id: number;
   obra_id: number;
   nome: string;

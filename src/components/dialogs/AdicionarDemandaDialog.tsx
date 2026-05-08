@@ -16,6 +16,7 @@ interface DemandaItem {
   obra_id: number;
   titulo: string;
   categoria?: string | null;
+  empresa?: string | null;
   descricao?: string;
   status: 'demanda' | 'pedido' | 'entregue' | 'pago';
 }
@@ -26,6 +27,7 @@ interface AdicionarDemandaDialogProps {
   onOpenChange: (open: boolean) => void;
   onDemandaAdicionada: () => void;
   categorias: string[];
+  empresas: string[];
   itemParaEditar?: DemandaItem;
 }
 
@@ -35,10 +37,12 @@ export function AdicionarDemandaDialog({
   onOpenChange,
   onDemandaAdicionada,
   categorias,
+  empresas,
   itemParaEditar
 }: AdicionarDemandaDialogProps) {
   const [nomeLista, setNomeLista] = useState('');
   const [categoria, setCategoria] = useState('__sem_categoria__');
+  const [empresa, setEmpresa] = useState('__sem_empresa__');
   const [itens, setItens] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -61,17 +65,38 @@ export function AdicionarDemandaDialog({
     return Array.from(mapa.values()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [categorias, itemParaEditar]);
 
+  const empresasDisponiveis = useMemo(() => {
+    const mapa = new Map<string, string>();
+
+    empresas.forEach((nome) => {
+      const nomeLimpo = nome.trim();
+      if (!nomeLimpo) {
+        return;
+      }
+      mapa.set(nomeLimpo.toLowerCase(), nomeLimpo);
+    });
+
+    const empresaAtual = itemParaEditar?.empresa?.trim();
+    if (empresaAtual) {
+      mapa.set(empresaAtual.toLowerCase(), empresaAtual);
+    }
+
+    return Array.from(mapa.values()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [empresas, itemParaEditar]);
+
   useEffect(() => {
     if (open) {
       setNomeLista(itemParaEditar?.titulo || '');
       setItens(itemParaEditar?.descricao || '');
       setCategoria(itemParaEditar?.categoria?.trim() || '__sem_categoria__');
+      setEmpresa(itemParaEditar?.empresa?.trim() || '__sem_empresa__');
       return;
     }
 
     setNomeLista('');
     setItens('');
     setCategoria('__sem_categoria__');
+    setEmpresa('__sem_empresa__');
   }, [itemParaEditar, open]);
 
   const enviarNotificacaoLocalNovaDemanda = async (titulo: string) => {
@@ -155,6 +180,7 @@ Enviado via GLog App`;
       const textoFinal = itens.trim();
       const tituloFinal = nomeLista.trim() || 'Lista de Demanda';
       const categoriaFinal = categoria === '__sem_categoria__' ? null : categoria;
+      const empresaFinal = empresa === '__sem_empresa__' ? null : empresa;
 
       if (!textoFinal) {
         toast.error('Digite pelo menos um item para a lista');
@@ -169,6 +195,7 @@ Enviado via GLog App`;
             titulo: tituloFinal,
             descricao: textoFinal,
             categoria: categoriaFinal,
+            empresa: empresaFinal,
           })
           .eq('id', itemParaEditar.id);
 
@@ -181,6 +208,7 @@ Enviado via GLog App`;
             titulo: tituloFinal,
             descricao: textoFinal,
             categoria: categoriaFinal,
+            empresa: empresaFinal,
             status: 'demanda'
           });
 
@@ -203,6 +231,7 @@ Enviado via GLog App`;
       setNomeLista('');
       setItens('');
       setCategoria('__sem_categoria__');
+      setEmpresa('__sem_empresa__');
     } catch (error) {
       console.error('Erro ao salvar lista de demanda:', error);
       toast.error(itemParaEditar ? 'Erro ao atualizar lista de demanda' : 'Erro ao adicionar lista de demanda');
@@ -218,6 +247,7 @@ Enviado via GLog App`;
       const textoFinal = itens.trim();
       const tituloFinal = nomeLista.trim() || 'Lista de Demanda';
       const categoriaFinal = categoria === '__sem_categoria__' ? null : categoria;
+      const empresaFinal = empresa === '__sem_empresa__' ? null : empresa;
 
       if (!textoFinal) {
         toast.error('Digite pelo menos um item para a lista');
@@ -240,6 +270,7 @@ Enviado via GLog App`;
           titulo: tituloFinal,
           descricao: textoFinal,
           categoria: categoriaFinal,
+          empresa: empresaFinal,
           status: 'demanda'
         })
         .select();
@@ -263,6 +294,7 @@ Enviado via GLog App`;
       setNomeLista('');
       setItens('');
       setCategoria('__sem_categoria__');
+      setEmpresa('__sem_empresa__');
     } catch (error) {
       console.error('Erro ao adicionar e compartilhar lista de demanda:', error);
       toast.error('Erro ao adicionar e compartilhar lista de demanda');
@@ -308,6 +340,22 @@ Enviado via GLog App`;
                 {categoriasDisponiveis.map((nomeCategoria) => (
                   <SelectItem key={nomeCategoria} value={nomeCategoria}>
                     {nomeCategoria}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Empresa</Label>
+            <Select value={empresa} onValueChange={setEmpresa}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione uma empresa" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__sem_empresa__">Sem empresa</SelectItem>
+                {empresasDisponiveis.map((nomeEmpresa) => (
+                  <SelectItem key={nomeEmpresa} value={nomeEmpresa}>
+                    {nomeEmpresa}
                   </SelectItem>
                 ))}
               </SelectContent>

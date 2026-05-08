@@ -1229,6 +1229,7 @@ Enviado via GLog App`;
         demanda_item_id: item.id,
         titulo: item.titulo,
         categoria: item.categoria || null,
+        empresa: item.empresa || null,
         descricao: item.descricao || null,
         valor: item.valor ?? null,
         data_pedido: item.data_pedido || null,
@@ -1247,6 +1248,25 @@ Enviado via GLog App`;
       .upsert(payload, { onConflict: 'demanda_item_id,data_pagamento' });
 
     if (error) {
+      const erroColunaEmpresaAusente =
+        error.message.toLowerCase().includes("column")
+        && error.message.toLowerCase().includes("empresa")
+        && error.message.toLowerCase().includes("demanda_itens_historico_pago");
+
+      if (erroColunaEmpresaAusente) {
+        const payloadSemEmpresa = payload.map(({ empresa, ...restante }) => restante);
+
+        const { error: retryError } = await supabase
+          .from('demanda_itens_historico_pago')
+          .upsert(payloadSemEmpresa, { onConflict: 'demanda_item_id,data_pagamento' });
+
+        if (!retryError) {
+          return;
+        }
+
+        throw new Error(`Erro ao registrar histórico de itens pagos: ${retryError.message}`);
+      }
+
       throw new Error(`Erro ao registrar histórico de itens pagos: ${error.message}`);
     }
   };
@@ -1258,7 +1278,7 @@ Enviado via GLog App`;
 
     let query = supabase
       .from('demanda_itens_historico_pago')
-      .select('id, obra_id, demanda_item_id, titulo, categoria, descricao, valor, data_pedido, data_entrega, data_pagamento, tempo_entrega, observacao_entrega, nota_fiscal, origem, entrou_em_pago_em, created_at')
+      .select('id, obra_id, demanda_item_id, titulo, categoria, empresa, descricao, valor, data_pedido, data_entrega, data_pagamento, tempo_entrega, observacao_entrega, nota_fiscal, origem, entrou_em_pago_em, created_at')
       .eq('obra_id', Number(id))
       .order('entrou_em_pago_em', { ascending: true });
 
@@ -1267,11 +1287,38 @@ Enviado via GLog App`;
     }
 
     const { data, error } = await query;
-    if (error) {
+    if (!error) {
+      return (data || []) as HistoricoPagoItem[];
+    }
+
+    const erroColunaEmpresaAusente =
+      error.message.toLowerCase().includes("column")
+      && error.message.toLowerCase().includes("empresa")
+      && error.message.toLowerCase().includes("demanda_itens_historico_pago");
+
+    if (!erroColunaEmpresaAusente) {
       throw new Error(`Erro ao carregar histórico mensal: ${error.message}`);
     }
 
-    return (data || []) as HistoricoPagoItem[];
+    let querySemEmpresa = supabase
+      .from('demanda_itens_historico_pago')
+      .select('id, obra_id, demanda_item_id, titulo, categoria, descricao, valor, data_pedido, data_entrega, data_pagamento, tempo_entrega, observacao_entrega, nota_fiscal, origem, entrou_em_pago_em, created_at')
+      .eq('obra_id', Number(id))
+      .order('entrou_em_pago_em', { ascending: true });
+
+    if (ultimaGeracao) {
+      querySemEmpresa = querySemEmpresa.gt('entrou_em_pago_em', ultimaGeracao.toISOString());
+    }
+
+    const { data: dataSemEmpresa, error: errorSemEmpresa } = await querySemEmpresa;
+    if (errorSemEmpresa) {
+      throw new Error(`Erro ao carregar histórico mensal: ${errorSemEmpresa.message}`);
+    }
+
+    return ((dataSemEmpresa || []) as HistoricoPagoItem[]).map((item) => ({
+      ...item,
+      empresa: null,
+    }));
   };
 
   const gerarRelatorioMensalExcel = async () => {
@@ -1298,15 +1345,17 @@ Enviado via GLog App`;
         const dataB = obterDataValida(b.entrou_em_pago_em) || obterDataValida(b.created_at) || new Date(0);
         return dataA.getTime() - dataB.getTime();
       });
-      const itensAgrupados = agruparItensPorCategoria(itensOrdenados);
       const mapaEmpresasPorItemId = new Map<number, string | null>();
       itens.forEach((item) => {
         mapaEmpresasPorItemId.set(item.id, item.empresa || null);
       });
       const itensComEmpresa = itensOrdenados.map((item) => ({
         ...item,
-        empresa: item.empresa ?? (item.demanda_item_id ? mapaEmpresasPorItemId.get(item.demanda_item_id) || null : null),
+        empresa: item.empresa
+          ?? (item.demanda_item_id ? mapaEmpresasPorItemId.get(item.demanda_item_id) || null : null)
+          ?? null,
       }));
+      const itensAgrupados = agruparItensPorCategoria(itensComEmpresa);
       const totaisPorEmpresa = agruparValoresPorEmpresa(itensComEmpresa);
 
       const valorTotal = itensOrdenados.reduce((acc, item) => acc + Number(item.valor ?? 0), 0);
@@ -1321,6 +1370,7 @@ Enviado via GLog App`;
 
       worksheet.columns = [
         { key: 'categoria', width: 22 },
+        { key: 'empresa', width: 26 },
         { key: 'nome', width: 28 },
         { key: 'descricao', width: 44 },
         { key: 'valor', width: 14 },
@@ -1328,25 +1378,25 @@ Enviado via GLog App`;
       ];
 
       worksheet.getCell('A1').value = `Relatório de demandas - ${obraNome}`;
-      worksheet.mergeCells('A1:E1');
+      worksheet.mergeCells('A1:F1');
       worksheet.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
       worksheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } };
       worksheet.getCell('A1').alignment = { horizontal: 'left', vertical: 'middle' };
       worksheet.getRow(1).height = 24;
 
       worksheet.getCell('A2').value = `Período: ${format(inicioPeriodo, 'dd/MM/yyyy')} até ${format(agora, 'dd/MM/yyyy')}`;
-      worksheet.mergeCells('A2:E2');
+      worksheet.mergeCells('A2:F2');
       worksheet.getCell('A2').font = { italic: true, color: { argb: 'FF4B5563' } };
       worksheet.getCell('A2').alignment = { horizontal: 'left', vertical: 'middle' };
       worksheet.addRow([]);
 
       const headerRow = worksheet.getRow(4);
-      headerRow.values = ['Categoria', 'Nome', 'Descricao', 'Valor (R$)', 'Observacoes'];
+      headerRow.values = ['Categoria', 'Empresa', 'Nome', 'Descricao', 'Valor (R$)', 'Observacoes'];
       headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
       headerRow.alignment = { vertical: 'middle' };
       headerRow.height = 22;
 
-      ['A4', 'B4', 'C4', 'D4', 'E4'].forEach((cellRef) => {
+      ['A4', 'B4', 'C4', 'D4', 'E4', 'F4'].forEach((cellRef) => {
         worksheet.getCell(cellRef).fill = {
           type: 'pattern',
           pattern: 'solid',
@@ -1354,12 +1404,14 @@ Enviado via GLog App`;
         };
       });
 
+      const linhasSubtotalCategoria: number[] = [];
+
       itensAgrupados.forEach((grupo, indexGrupo) => {
         const rowCategoria = worksheet.addRow({
           categoria: grupo.categoria,
           nome: `Subtotal da categoria`,
-          valor: grupo.total,
         });
+        linhasSubtotalCategoria.push(rowCategoria.number);
         rowCategoria.font = { bold: true, color: { argb: 'FF0F172A' } };
         rowCategoria.eachCell((cell) => {
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
@@ -1374,6 +1426,7 @@ Enviado via GLog App`;
         grupo.itens.forEach((item) => {
           const row = worksheet.addRow({
             categoria: grupo.categoria,
+            empresa: obterNomeEmpresa(item.empresa),
             nome: item.titulo || 'Lista de Demanda',
             descricao: item.descricao || item.titulo || '',
             valor: Number(item.valor ?? 0),
@@ -1393,6 +1446,16 @@ Enviado via GLog App`;
           });
         });
 
+        const primeiraLinhaItensCategoria = rowCategoria.number + 1;
+        const ultimaLinhaItensCategoria = worksheet.rowCount;
+        if (ultimaLinhaItensCategoria >= primeiraLinhaItensCategoria) {
+          rowCategoria.getCell('E').value = {
+            formula: `SUM(E${primeiraLinhaItensCategoria}:E${ultimaLinhaItensCategoria})`,
+          };
+        } else {
+          rowCategoria.getCell('E').value = 0;
+        }
+
         if (indexGrupo < itensAgrupados.length - 1) {
           worksheet.addRow({});
         }
@@ -1400,8 +1463,17 @@ Enviado via GLog App`;
 
       const linhaTotais = worksheet.addRow({
         categoria: 'TOTAL GERAL',
-        valor: valorTotal,
       });
+
+      const ultimaLinhaItensPrincipal = Math.max(5, linhaTotais.number - 1);
+
+      if (linhasSubtotalCategoria.length > 0) {
+        linhaTotais.getCell('E').value = {
+          formula: `SUM(${linhasSubtotalCategoria.map((linha) => `E${linha}`).join(',')})`,
+        };
+      } else {
+        linhaTotais.getCell('E').value = 0;
+      }
       linhaTotais.font = { bold: true, color: { argb: 'FFFFFFFF' } };
       linhaTotais.eachCell((cell) => {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
@@ -1415,9 +1487,9 @@ Enviado via GLog App`;
 
       const firstDataRow = 5;
       for (let i = firstDataRow; i <= worksheet.rowCount; i += 1) {
-        worksheet.getCell(`D${i}`).numFmt = 'R$ #,##0.00';
-        worksheet.getCell(`D${i}`).alignment = { horizontal: 'right', vertical: 'middle' };
-        worksheet.getCell(`E${i}`).alignment = { horizontal: 'left', vertical: 'middle' };
+        worksheet.getCell(`E${i}`).numFmt = 'R$ #,##0.00';
+        worksheet.getCell(`E${i}`).alignment = { horizontal: 'right', vertical: 'middle' };
+        worksheet.getCell(`F${i}`).alignment = { horizontal: 'left', vertical: 'middle' };
       }
 
       const bordaClara = {
@@ -1428,12 +1500,12 @@ Enviado via GLog App`;
       };
 
       // Bordas em toda a área útil da tabela (cabeçalho, período, títulos e linhas).
-      ['A1', 'B1', 'C1', 'D1', 'E1', 'A2', 'B2', 'C2', 'D2', 'E2'].forEach((cellRef) => {
+      ['A1', 'B1', 'C1', 'D1', 'E1', 'F1', 'A2', 'B2', 'C2', 'D2', 'E2', 'F2'].forEach((cellRef) => {
         worksheet.getCell(cellRef).border = bordaClara;
       });
 
       for (let row = 4; row <= worksheet.rowCount; row += 1) {
-        ['A', 'B', 'C', 'D', 'E'].forEach((col) => {
+        ['A', 'B', 'C', 'D', 'E', 'F'].forEach((col) => {
           worksheet.getCell(`${col}${row}`).border = bordaClara;
         });
       }
@@ -1477,8 +1549,11 @@ Enviado via GLog App`;
       totaisPorEmpresa.forEach((registro) => {
         const row = worksheetEmpresas.addRow({
           empresa: registro.empresa,
-          total: registro.total,
         });
+
+        row.getCell('B').value = {
+          formula: `SUMIFS('Relatorio Mensal'!$E$5:$E$${ultimaLinhaItensPrincipal},'Relatorio Mensal'!$B$5:$B$${ultimaLinhaItensPrincipal},A${row.number},'Relatorio Mensal'!$C$5:$C$${ultimaLinhaItensPrincipal},"<>Subtotal da categoria")`,
+        };
 
         const isPar = row.number % 2 === 0;
         const bgColor = isPar ? 'FFF8FAFC' : 'FFFFFFFF';
@@ -1495,8 +1570,10 @@ Enviado via GLog App`;
 
       const linhaTotalEmpresas = worksheetEmpresas.addRow({
         empresa: 'TOTAL GERAL',
-        total: valorTotal,
       });
+      linhaTotalEmpresas.getCell('B').value = {
+        formula: `SUM(B5:B${Math.max(5, worksheetEmpresas.rowCount - 1)})`,
+      };
       linhaTotalEmpresas.font = { bold: true, color: { argb: 'FFFFFFFF' } };
       linhaTotalEmpresas.eachCell((cell) => {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };

@@ -76,6 +76,11 @@ const obterNomeEmpresa = (empresa?: string | null) => {
   return nome || EMPRESA_SEM_NOME;
 };
 
+const ehCategoriaAdministracao = (categoria?: string | null) => {
+  const nome = (categoria || '').trim().toLowerCase();
+  return nome === 'administração' || nome === 'administracao';
+};
+
 const agruparItensPorCategoria = <T extends { categoria?: string | null; valor?: number | null }>(lista: T[]) => {
   const grupos = new Map<string, T[]>();
 
@@ -1355,10 +1360,30 @@ Enviado via GLog App`;
           ?? (item.demanda_item_id ? mapaEmpresasPorItemId.get(item.demanda_item_id) || null : null)
           ?? null,
       }));
-      const itensAgrupados = agruparItensPorCategoria(itensComEmpresa);
-      const totaisPorEmpresa = agruparValoresPorEmpresa(itensComEmpresa);
+      const itensBaseSemAdministracao = itensComEmpresa.filter((item) => !ehCategoriaAdministracao(item.categoria));
+      const valorTotalSemAdministracao = itensBaseSemAdministracao.reduce((acc, item) => acc + Number(item.valor ?? 0), 0);
+      const valorAdministracao = Number((valorTotalSemAdministracao * 0.1).toFixed(2));
+      const itensComAdministracao = [
+        ...itensBaseSemAdministracao,
+        {
+          categoria: 'Administração',
+          empresa: 'empresa',
+          valor: valorAdministracao,
+          titulo: 'Taxa de administração',
+          descricao: 'Percentual configurável na célula F3',
+          observacao_entrega: '',
+        },
+      ];
+      const itensAgrupados = agruparItensPorCategoria(itensComAdministracao).sort((a, b) => {
+        const aAdmin = ehCategoriaAdministracao(a.categoria);
+        const bAdmin = ehCategoriaAdministracao(b.categoria);
+        if (aAdmin && !bAdmin) return 1;
+        if (!aAdmin && bAdmin) return -1;
+        return a.categoria.localeCompare(b.categoria, 'pt-BR');
+      });
+      const totaisPorEmpresa = agruparValoresPorEmpresa(itensComAdministracao);
 
-      const valorTotal = itensOrdenados.reduce((acc, item) => acc + Number(item.valor ?? 0), 0);
+      const valorTotal = valorTotalSemAdministracao + valorAdministracao;
       const agora = new Date();
       const inicioPeriodo = ultimaGeracao || (obterDataValida(itensOrdenados[0]?.entrou_em_pago_em) || obterDataValida(itensOrdenados[0]?.created_at) || agora);
 
@@ -1390,6 +1415,13 @@ Enviado via GLog App`;
       worksheet.getCell('A2').alignment = { horizontal: 'left', vertical: 'middle' };
       worksheet.addRow([]);
 
+      worksheet.getCell('D3').value = 'Administração (%)';
+      worksheet.getCell('D3').font = { bold: true, color: { argb: 'FF334155' } };
+      worksheet.getCell('D3').alignment = { horizontal: 'right', vertical: 'middle' };
+      worksheet.getCell('F3').value = 0.1;
+      worksheet.getCell('F3').numFmt = '0.00%';
+      worksheet.getCell('F3').alignment = { horizontal: 'right', vertical: 'middle' };
+
       const headerRow = worksheet.getRow(4);
       headerRow.values = ['Categoria', 'Empresa', 'Nome', 'Descricao', 'Valor (R$)', 'Observacoes'];
       headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -1405,6 +1437,7 @@ Enviado via GLog App`;
       });
 
       const linhasSubtotalCategoria: number[] = [];
+      let linhaItemAdministracao: number | null = null;
 
       itensAgrupados.forEach((grupo, indexGrupo) => {
         const rowCategoria = worksheet.addRow({
@@ -1432,6 +1465,11 @@ Enviado via GLog App`;
             valor: Number(item.valor ?? 0),
             observacoes: item.observacao_entrega || '',
           });
+
+          if (ehCategoriaAdministracao(grupo.categoria)) {
+            linhaItemAdministracao = row.number;
+            row.getCell('B').value = 'empresa';
+          }
 
           const isPar = row.number % 2 === 0;
           const bgColor = isPar ? 'FFF8FAFC' : 'FFFFFFFF';
@@ -1466,6 +1504,12 @@ Enviado via GLog App`;
       });
 
       const ultimaLinhaItensPrincipal = Math.max(5, linhaTotais.number - 1);
+
+      if (linhaItemAdministracao) {
+        worksheet.getCell(`E${linhaItemAdministracao}`).value = {
+          formula: `SUMIFS(E$5:E$${ultimaLinhaItensPrincipal},A$5:A$${ultimaLinhaItensPrincipal},"<>Administração",C$5:C$${ultimaLinhaItensPrincipal},"<>Subtotal da categoria")*$F$3`,
+        };
+      }
 
       if (linhasSubtotalCategoria.length > 0) {
         linhaTotais.getCell('E').value = {
@@ -1650,7 +1694,8 @@ Enviado via GLog App`;
           <h1>Relatório Mensal de Demandas (Excel)</h1>
           <p>Obra: ${obraNome}</p>
           <p>Período: ${format(inicioPeriodo, 'dd/MM/yyyy')} até ${format(agora, 'dd/MM/yyyy')}</p>
-          <p>Itens incluídos: ${itensOrdenados.length}</p>
+          <p>Itens incluídos: ${itensBaseSemAdministracao.length + 1}</p>
+          <p>Valor de administração (10%): R$ ${valorAdministracao.toFixed(2)}</p>
           <p>Valor total: R$ ${valorTotal.toFixed(2)}</p>
           <p>Categorias incluídas: ${itensAgrupados.length}</p>
           <p>Gerado em: ${format(agora, 'dd/MM/yyyy HH:mm')}</p>
@@ -2210,7 +2255,7 @@ Enviado via GLog App`;
               className="flex items-center gap-2 grow sm:grow-0"
             >
               <FileText className="h-4 w-4" />
-              <span className="xs:inline">Gerar Relatório</span>
+              <span className="xs:inline">Limpar pago (PDF)</span>
             </Button>
             <Button
               variant="outline"
@@ -2219,7 +2264,7 @@ Enviado via GLog App`;
               className="flex items-center gap-2 grow sm:grow-0"
             >
               <FileSpreadsheet className="h-4 w-4" />
-              <span className="xs:inline">Relatório Mensal (Excel)</span>
+              <span className="xs:inline">Relatório (Excel)</span>
             </Button>
             <Button 
               variant="outline" 

@@ -1,5 +1,8 @@
 -- Permite registros de producao sem quantidade (ex.: apenas observacao)
--- Este script remove checks antigos de quantidade > 0 e garante quantidade >= 0.
+-- Remove constraints antigas e aplica regra nova:
+-- 1) quantidade nunca negativa
+-- 2) quando quantidade = 0, observacao obrigatoria
+-- 3) quando observacao com tag [FALTOU], quantidade deve ser 0
 
 DO $$
 DECLARE
@@ -10,7 +13,7 @@ BEGIN
     RETURN;
   END IF;
 
-  -- Remove checks que exigem quantidade estritamente maior que zero.
+  -- Remove checks antigos de quantidade estritamente maior que zero.
   FOR c IN
     SELECT conname
     FROM pg_constraint
@@ -23,16 +26,52 @@ BEGIN
     EXECUTE format('ALTER TABLE public.producao_registros DROP CONSTRAINT %I', c.conname);
   END LOOP;
 
-  -- Garante que quantidade nao seja negativa.
+  -- Remove constraint antiga de falta/quantidade, se existir.
+  IF EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'public.producao_registros'::regclass
+      AND contype = 'c'
+      AND conname = 'producao_registros_falta_quantidade_chk'
+  ) THEN
+    ALTER TABLE public.producao_registros
+      DROP CONSTRAINT producao_registros_falta_quantidade_chk;
+  END IF;
+
+  -- Remove checks antigos equivalentes para evitar conflito com a regra nova.
+  FOR c IN
+    SELECT conname
+    FROM pg_constraint
+    WHERE conrelid = 'public.producao_registros'::regclass
+      AND contype = 'c'
+      AND conname IN (
+        'producao_registros_quantidade_non_negative_check',
+        'producao_registros_quantidade_observacao_check'
+      )
+  LOOP
+    EXECUTE format('ALTER TABLE public.producao_registros DROP CONSTRAINT %I', c.conname);
+  END LOOP;
+
+  -- Regra final consolidada.
   IF NOT EXISTS (
     SELECT 1
     FROM pg_constraint
     WHERE conrelid = 'public.producao_registros'::regclass
       AND contype = 'c'
-      AND conname = 'producao_registros_quantidade_non_negative_check'
+      AND conname = 'producao_registros_quantidade_observacao_check'
   ) THEN
     ALTER TABLE public.producao_registros
-      ADD CONSTRAINT producao_registros_quantidade_non_negative_check
-      CHECK (quantidade >= 0);
+      ADD CONSTRAINT producao_registros_quantidade_observacao_check
+      CHECK (
+        quantidade >= 0
+        AND (
+          quantidade > 0
+          OR nullif(trim(coalesce(observacao, '')), '') IS NOT NULL
+        )
+        AND (
+          coalesce(observacao, '') !~ '^\\[FALTOU\\]'
+          OR quantidade = 0
+        )
+      );
   END IF;
 END $$;

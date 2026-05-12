@@ -19,6 +19,11 @@ export function DemandaRelatorios() {
   const [relatorios, setRelatorios] = useState<any[]>([]);
   const { toast } = useToast();
 
+  const isRelatorioMensalExcel = (relatorio: any) => {
+    const conteudo = String(relatorio?.conteudo || '');
+    return conteudo.includes('DEMANDA_MENSAL_EXCEL') || conteudo.includes('Relatório Mensal de Demandas (Excel)');
+  };
+
   useEffect(() => {
     if (id) {
       carregarDados();
@@ -43,7 +48,8 @@ export function DemandaRelatorios() {
         .order('created_at', { ascending: false });
 
       if (relatoriosError) throw relatoriosError;
-      setRelatorios(relatoriosData);
+      const relatoriosPdf = (relatoriosData || []).filter((relatorio) => !isRelatorioMensalExcel(relatorio));
+      setRelatorios(relatoriosPdf);
 
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
@@ -189,7 +195,7 @@ export function DemandaRelatorios() {
         <Card className="p-6">
           <div className="space-y-4">
             {relatorios.length === 0 ? (
-              <p className="text-muted-foreground">Nenhum relatório encontrado</p>
+              <p className="text-muted-foreground">Nenhum relatório PDF encontrado</p>
             ) : (
               relatorios.map((relatorio) => (
                 <div

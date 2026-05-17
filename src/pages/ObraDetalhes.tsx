@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ArrowLeft, Building2, Calendar as CalendarIcon, DollarSign, FileText, Plus, Pencil, CalendarDays, AlertCircle, FileUp, ListTodo, ShoppingCart, FolderKanban, Bus, BarChart3 } from 'lucide-react';
+import { ArrowLeft, Building2, Calendar as CalendarIcon, DollarSign, FileText, Plus, Pencil, CalendarDays, AlertCircle, FileUp, ListTodo, ShoppingCart, FolderKanban, Bus, BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis } from 'recharts';
 import Calendar from 'react-calendar';
@@ -132,6 +132,7 @@ const ObraDetalhes = () => {
   const [etapasStatus, setEtapasStatus] = useState<{[key: string]: 'pendente' | 'em_andamento' | 'concluida'}>({});
   const [numeroPendencias, setNumeroPendencias] = useState(0);
   const [showEditarEtapas, setShowEditarEtapas] = useState(false);
+  const [expandEtapas, setExpandEtapas] = useState(false);
   const [etapasFluxograma, setEtapasFluxograma] = useState<{ id: string; nome: string }[]>([]);
   const [definicoesQuadro, setDefinicoesQuadro] = useState<DefinicaoQuadro | null>(null);
   const [numeroDefinicoes, setNumeroDefinicoes] = useState({ definir: 0, definido: 0 });
@@ -1106,7 +1107,15 @@ const ObraDetalhes = () => {
 
           <div className="bg-white rounded-lg shadow-sm p-4 md:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
-              <h3 className="text-base md:text-lg font-semibold">Etapas da Obra</h3>
+              <div 
+                className="flex items-center gap-2 cursor-pointer hover:opacity-70 transition"
+                onClick={() => setExpandEtapas(!expandEtapas)}
+              >
+                {expandEtapas ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                <h3 className="text-base md:text-lg font-semibold">
+                  {expandEtapas ? 'Etapas da Obra' : `Etapas da Obra (${etapasFluxograma.length} ${etapasFluxograma.length === 1 ? 'etapa' : 'etapas'})`}
+                </h3>
+              </div>
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -1117,26 +1126,28 @@ const ObraDetalhes = () => {
                 Editar etapas
               </Button>
             </div>
-            <div className="space-y-3">
-              {etapasFluxograma.length === 0 ? (
-                <p className="text-sm text-gray-500">
-                  Nenhuma etapa cadastrada. Clique em &quot;Editar etapas&quot; para adicionar as etapas da obra.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {etapasFluxograma.map((etapa) => (
-                    <div
-                      key={etapa.id}
-                      className="border rounded-md px-3 py-2 bg-white"
-                    >
-                      <span className="text-sm md:text-base truncate pr-2">
-                        {etapa.nome}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            {expandEtapas && (
+              <div className="space-y-3">
+                {etapasFluxograma.length === 0 ? (
+                  <p className="text-sm text-gray-500">
+                    Nenhuma etapa cadastrada. Clique em &quot;Editar etapas&quot; para adicionar as etapas da obra.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {etapasFluxograma.map((etapa) => (
+                      <div
+                        key={etapa.id}
+                        className="border rounded-md px-3 py-2 bg-white"
+                      >
+                        <span className="text-sm md:text-base truncate pr-2">
+                          {etapa.nome}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1178,7 +1189,13 @@ const ObraDetalhes = () => {
 
           <Card className="p-4 md:p-6">
             <div className="flex flex-col gap-3 mb-4">
-              <h3 className="text-base md:text-lg font-semibold">Calendário de Produção</h3>
+              <h3 
+                className="text-base md:text-lg font-semibold cursor-pointer hover:text-blue-600 transition"
+                onClick={() => navigate(`/obras/${id}/producao`)}
+                title="Clique para ver a página completa de produção"
+              >
+                Calendário de Produção
+              </h3>
               <p className="text-sm text-gray-500">
                 Selecione um pedreiro para visualizar os dias com produção e clique no dia para ver o resumo.
               </p>

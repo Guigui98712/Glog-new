@@ -2483,6 +2483,18 @@ Enviado via GLog App`;
         </div>
       )}
 
+      {!loading && (
+        <div className="mt-6 flex justify-end">
+          <Button
+            variant="default"
+            onClick={() => navigate(`/obras/${id}/demanda/total`)}
+            className="min-w-[120px]"
+          >
+            Total
+          </Button>
+        </div>
+      )}
+
       <AdicionarDemandaDialog
         obraId={Number(id)}
         open={showAdicionarDialog}

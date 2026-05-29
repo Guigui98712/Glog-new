@@ -23,6 +23,7 @@ import "./App.css";
 import { supabase } from "@/lib/supabase";
 import DemandaObra from './pages/DemandaObra';
 import { DemandaRelatorios } from "./pages/DemandaRelatorios";
+import DemandaTotais from './pages/DemandaTotais';
 import Projetos from "./pages/Projetos";
 import RelatorioViewer from "./pages/RelatorioViewer";
 import TestSpellChecker from "./pages/TestSpellChecker";
@@ -310,6 +311,7 @@ function App() {
             <Route path=":id/definicoes" element={<DefinicoesObra />} />
             <Route path=":id/demanda" element={<DemandaObra />} />
             <Route path=":id/demanda/relatorios" element={<DemandaRelatorios />} />
+            <Route path=":id/demanda/total" element={<DemandaTotais />} />
             <Route path=":id/producao" element={<ProducaoObra />} />
             <Route path=":id/projetos" element={<Projetos />} />
             <Route path=":id/viagens" element={<ViagensObra />} />

@@ -240,6 +240,12 @@ const ProducaoObra = () => {
     const hoje = new Date();
     return new Date(hoje.getFullYear(), hoje.getMonth(), 1);
   });
+  const [pedreiroResumoSelecionadoId, setPedreiroResumoSelecionadoId] = useState<string>('');
+  const [dataResumoSelecionada, setDataResumoSelecionada] = useState<Date | null>(null);
+  const [mesResumoAtivo, setMesResumoAtivo] = useState<Date>(() => {
+    const hoje = new Date();
+    return new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+  });
 
   const [formPedreiroId, setFormPedreiroId] = useState('');
   const [formTarefaId, setFormTarefaId] = useState('');
@@ -387,6 +393,21 @@ const ProducaoObra = () => {
     }
   }, [tabelaPedreiroId, pedreirosAtivos]);
 
+  useEffect(() => {
+    if (pedreirosAtivos.length === 0) {
+      if (pedreiroResumoSelecionadoId !== '') {
+        setPedreiroResumoSelecionadoId('');
+      }
+      return;
+    }
+
+    const selecionadoAtivo = pedreirosAtivos.some((p) => p.id === pedreiroResumoSelecionadoId);
+    if (!selecionadoAtivo) {
+      setPedreiroResumoSelecionadoId(pedreirosAtivos[0].id);
+      setDataResumoSelecionada(null);
+    }
+  }, [pedreiroResumoSelecionadoId, pedreirosAtivos]);
+
   const semanasDoMes = useMemo(() => montarSemanasDoMes(tabelaMes), [tabelaMes]);
 
   const registrosDoMes = useMemo(() => {
@@ -481,6 +502,88 @@ const ProducaoObra = () => {
     const temRegistro = registros.some((r) => r.data === dataStr);
     return temRegistro ? 'producao-dia' : '';
   };
+
+  const tarefasProducaoPorId = useMemo(() => {
+    return tarefas.reduce((acc, tarefa) => {
+      acc[tarefa.id] = tarefa.nome;
+      return acc;
+    }, {} as Record<string, string>);
+  }, [tarefas]);
+
+  const diasComProducaoResumoDoPedreiro = useMemo(() => {
+    const dias = new Set<string>();
+    if (!pedreiroResumoSelecionadoId) {
+      return dias;
+    }
+
+    registros.forEach((registro) => {
+      if (registro.pedreiroId === pedreiroResumoSelecionadoId) {
+        dias.add(registro.data);
+      }
+    });
+
+    return dias;
+  }, [registros, pedreiroResumoSelecionadoId]);
+
+  const diasComFaltaResumoDoPedreiro = useMemo(() => {
+    const dias = new Set<string>();
+    if (!pedreiroResumoSelecionadoId) {
+      return dias;
+    }
+
+    registros.forEach((registro) => {
+      if (registro.pedreiroId !== pedreiroResumoSelecionadoId) {
+        return;
+      }
+
+      if (isRegistroFalta(registro)) {
+        dias.add(registro.data);
+      }
+    });
+
+    return dias;
+  }, [registros, pedreiroResumoSelecionadoId]);
+
+  const tileClassNameResumoProducao = ({ date, view }: { date: Date; view: string }) => {
+    if (view !== 'month') {
+      return '';
+    }
+
+    const dataStr = format(date, 'yyyy-MM-dd');
+
+    if (pedreiroResumoSelecionadoId && diasComFaltaResumoDoPedreiro.has(dataStr)) {
+      return 'falta-dia';
+    }
+
+    if (feriados.some((f) => f.data === dataStr)) {
+      return 'feriado-dia';
+    }
+
+    if (pedreiroResumoSelecionadoId && diasComProducaoResumoDoPedreiro.has(dataStr)) {
+      return 'producao-dia';
+    }
+
+    return '';
+  };
+
+  const registrosResumoDataSelecionada = useMemo(() => {
+    if (!dataResumoSelecionada || !pedreiroResumoSelecionadoId) {
+      return [];
+    }
+
+    const dataStr = format(dataResumoSelecionada, 'yyyy-MM-dd');
+    return registros.filter((registro) => {
+      return registro.pedreiroId === pedreiroResumoSelecionadoId && registro.data === dataStr;
+    });
+  }, [registros, dataResumoSelecionada, pedreiroResumoSelecionadoId]);
+
+  const totalQuantidadeResumoDiaSelecionado = useMemo(() => {
+    return registrosResumoDataSelecionada.reduce((acc, registro) => acc + registro.quantidade, 0);
+  }, [registrosResumoDataSelecionada]);
+
+  const pedreiroResumoSelecionadoNome = useMemo(() => {
+    return pedreirosAtivos.find((pedreiro) => pedreiro.id === pedreiroResumoSelecionadoId)?.nome || '';
+  }, [pedreirosAtivos, pedreiroResumoSelecionadoId]);
 
   const handleAbrirLancamento = (date: Date) => {
     setSelectedDate(date);
@@ -1973,6 +2076,126 @@ const ProducaoObra = () => {
             Gerar Excel
           </Button>
         </div>
+      </Card>
+
+      <Card className="p-4 md:p-6">
+        <div className="flex flex-col gap-3 mb-4">
+          <h3 className="text-base md:text-lg font-semibold">
+            Calendário de Produção
+          </h3>
+          <p className="text-sm text-gray-500">
+            Selecione um pedreiro para visualizar os dias com produção e clique no dia para ver o resumo.
+          </p>
+          <div className="flex flex-wrap items-center gap-4 text-xs text-gray-600">
+            <span className="inline-flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-primary" />
+              Produção
+            </span>
+            <span className="inline-flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-orange-400" />
+              Feriado
+            </span>
+            <span className="inline-flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
+              Falta
+            </span>
+          </div>
+        </div>
+
+        {pedreirosAtivos.length === 0 ? (
+          <div className="text-sm text-gray-500 border rounded-lg p-4">
+            Nenhum pedreiro ativo cadastrado para esta obra.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="max-w-sm">
+              <Select
+                value={pedreiroResumoSelecionadoId}
+                onValueChange={(valor) => {
+                  setPedreiroResumoSelecionadoId(valor);
+                  setDataResumoSelecionada(null);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um pedreiro" />
+                </SelectTrigger>
+                <SelectContent>
+                  {pedreirosAtivos.map((pedreiro) => (
+                    <SelectItem key={pedreiro.id} value={pedreiro.id}>
+                      {pedreiro.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex justify-center overflow-x-auto">
+              <Calendar
+                locale="pt-BR"
+                value={dataResumoSelecionada}
+                className="producao-calendar"
+                onClickDay={setDataResumoSelecionada}
+                onActiveStartDateChange={({ activeStartDate }) => {
+                  if (!activeStartDate) {
+                    return;
+                  }
+
+                  setMesResumoAtivo(new Date(activeStartDate.getFullYear(), activeStartDate.getMonth(), 1));
+                }}
+                tileClassName={tileClassNameResumoProducao}
+              />
+            </div>
+
+            <div className="border rounded-lg p-4 space-y-3">
+              <p className="text-sm text-gray-600">
+                {pedreiroResumoSelecionadoNome
+                  ? `Pedreiro selecionado: ${pedreiroResumoSelecionadoNome}`
+                  : 'Selecione um pedreiro'}
+              </p>
+              <p className="text-sm text-gray-500 capitalize">
+                Mês exibido: {format(mesResumoAtivo, "MMMM 'de' yyyy", { locale: ptBR })}
+              </p>
+
+              {!dataResumoSelecionada ? (
+                <p className="text-sm text-gray-500">Clique em um dia do calendário para ver a produção.</p>
+              ) : registrosResumoDataSelecionada.length === 0 ? (
+                <p className="text-sm text-gray-500">
+                  Sem produção para {pedreiroResumoSelecionadoNome} em {format(dataResumoSelecionada, 'dd/MM/yyyy')}.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <p className="font-medium text-sm md:text-base">
+                      Produção de {format(dataResumoSelecionada, 'dd/MM/yyyy')}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      Total do dia: {totalQuantidadeResumoDiaSelecionado.toLocaleString('pt-BR')}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    {registrosResumoDataSelecionada.map((registro) => (
+                      <div key={registro.id} className="rounded-md border p-3 bg-gray-50">
+                        <p className="text-sm font-medium">
+                          {tarefasProducaoPorId[registro.tarefaId] || 'Serviço não identificado'}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          Quantidade: {registro.quantidade.toLocaleString('pt-BR')}
+                        </p>
+                        {registro.pavimento && (
+                          <p className="text-xs text-gray-500">Pavimento: {registro.pavimento}</p>
+                        )}
+                        {registro.observacao && (
+                          <p className="text-xs text-gray-500">Obs: {registro.observacao}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </Card>
 
       <Dialog open={showGerenciarPedreiros} onOpenChange={setShowGerenciarPedreiros}>

@@ -181,7 +181,7 @@ const consolidarBaseConfiavel = (
     .filter((item) => Number.isFinite(item.valor) && item.valor > 0);
 
   const baseArquivada = Array.from(historicoMaisRecentePorItemId.entries())
-    .filter(([, item]) => item.origem === 'gerado_relatorio_pdf')
+    .filter(([itemId, item]) => item.origem === 'gerado_relatorio_pdf' && !itensAtuaisPorId.has(itemId))
     .map(([, item]) => ({
       categoria: normalizarCategoria(item.categoria),
       empresa: normalizarEmpresa(item.empresa),
@@ -318,17 +318,40 @@ export default function DemandaTotais() {
       }
 
       const mapaEmpresaPorItemId = new Map<number, string | null>();
+      const mapaCategoriaPorItemId = new Map<number, string | null>();
       (itensEmpresaData as ItemEmpresaAtual[] | null || []).forEach((item) => {
         mapaEmpresaPorItemId.set(item.id, item.empresa || null);
+        mapaCategoriaPorItemId.set(item.id, item.categoria || null);
       });
       const itensAtuais = (itensEmpresaData as ItemEmpresaAtual[] | null) || [];
+
+      const mapaEmpresaHistoricoPorItemId = new Map<number, string>();
+      const mapaCategoriaHistoricoPorItemId = new Map<number, string>();
+      historico.forEach((item) => {
+        if (!item.demanda_item_id) return;
+
+        const empresa = String(item.empresa || '').trim();
+        if (empresa && !mapaEmpresaHistoricoPorItemId.has(item.demanda_item_id)) {
+          mapaEmpresaHistoricoPorItemId.set(item.demanda_item_id, empresa);
+        }
+
+        const categoria = String(item.categoria || '').trim();
+        if (categoria && !mapaCategoriaHistoricoPorItemId.has(item.demanda_item_id)) {
+          mapaCategoriaHistoricoPorItemId.set(item.demanda_item_id, categoria);
+        }
+      });
 
       const entradasCombinadas = historico
         .map((item) => ({
           demanda_item_id: item.demanda_item_id,
-          categoria: normalizarCategoria(item.categoria),
+          categoria: normalizarCategoria(
+            item.categoria
+            ?? (item.demanda_item_id ? mapaCategoriaHistoricoPorItemId.get(item.demanda_item_id) || null : null)
+            ?? (item.demanda_item_id ? mapaCategoriaPorItemId.get(item.demanda_item_id) || null : null)
+          ),
           empresa: normalizarEmpresa(
             item.empresa
+            ?? (item.demanda_item_id ? mapaEmpresaHistoricoPorItemId.get(item.demanda_item_id) || null : null)
             ?? (item.demanda_item_id ? mapaEmpresaPorItemId.get(item.demanda_item_id) || null : null)
           ),
           valor: Number(item.valor ?? 0),

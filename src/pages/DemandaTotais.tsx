@@ -13,21 +13,34 @@ import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
 interface HistoricoItem {
+  id?: number;
   demanda_item_id: number | null;
   categoria: string | null;
   empresa: string | null;
   valor: number | null;
+  origem?: string | null;
+  data_pagamento?: string | null;
+  entrou_em_pago_em?: string | null;
+  created_at?: string | null;
 }
 
 interface HistoricoItemSemEmpresa {
+  id?: number;
   demanda_item_id: number | null;
   categoria: string | null;
   valor: number | null;
+  origem?: string | null;
+  data_pagamento?: string | null;
+  entrou_em_pago_em?: string | null;
+  created_at?: string | null;
 }
 
 interface ItemEmpresaAtual {
   id: number;
+  status: 'demanda' | 'pedido' | 'entregue' | 'pago';
+  categoria: string | null;
   empresa: string | null;
+  valor: number | null;
 }
 
 interface TotalLinha {
@@ -35,7 +48,18 @@ interface TotalLinha {
   total: number;
 }
 
-const MARCADOR_RELATORIO_MENSAL = 'DEMANDA_MENSAL_EXCEL';
+interface HistoricoPagoParaTotais {
+  demanda_item_id: number | null;
+  categoria: string;
+  empresa: string;
+  valor: number;
+  origem?: string | null;
+  entrou_em_pago_em?: string | null;
+  data_pagamento?: string | null;
+  created_at?: string | null;
+  id?: number;
+}
+
 const CATEGORIA_SEM_NOME = 'Sem categoria';
 const EMPRESA_SEM_NOME = 'Sem empresa';
 
@@ -48,6 +72,140 @@ const normalizarEmpresa = (empresa?: string | null) => {
   const nome = (empresa || '').trim();
   return nome || EMPRESA_SEM_NOME;
 };
+
+const obterDataHistorico = (item: Pick<HistoricoPagoParaTotais, 'entrou_em_pago_em' | 'data_pagamento' | 'created_at'>) => {
+  const candidatos = [item.entrou_em_pago_em, item.data_pagamento, item.created_at];
+
+  for (const valor of candidatos) {
+    if (!valor) continue;
+    const data = new Date(valor);
+    if (!Number.isNaN(data.getTime())) {
+      return data;
+    }
+  }
+
+  return null;
+};
+
+const obterTimestampHistorico = (item: Pick<HistoricoPagoParaTotais, 'entrou_em_pago_em' | 'data_pagamento' | 'created_at' | 'id'>) => {
+  const data = obterDataHistorico(item);
+
+  if (data) {
+    return data.getTime();
+  }
+
+  return item.id ?? 0;
+};
+
+const gerarChaveHistorico = (item: HistoricoPagoParaTotais) => {
+  return [
+    item.demanda_item_id ?? 'sem-item',
+    item.data_pagamento || item.entrou_em_pago_em || item.created_at || '',
+    normalizarCategoria(item.categoria).toLowerCase(),
+    normalizarEmpresa(item.empresa).toLowerCase(),
+    Number(item.valor ?? 0).toFixed(2),
+  ].join('|');
+};
+
+const normalizarHistoricoPago = (itens: HistoricoPagoParaTotais[]) => {
+  const ordenados = [...itens].sort((a, b) => {
+    const dataA = obterTimestampHistorico(a);
+    const dataB = obterTimestampHistorico(b);
+    return dataB - dataA || (b.id ?? 0) - (a.id ?? 0);
+  });
+
+  const mapa = new Map<string, HistoricoPagoParaTotais>();
+  let descartados = 0;
+
+  ordenados.forEach((item) => {
+    const valor = Number(item.valor ?? 0);
+
+    if (!Number.isFinite(valor) || valor <= 0) {
+      descartados += 1;
+      return;
+    }
+
+    const chave = gerarChaveHistorico(item);
+    if (mapa.has(chave)) {
+      descartados += 1;
+      return;
+    }
+
+    mapa.set(chave, {
+      ...item,
+      categoria: normalizarCategoria(item.categoria),
+      empresa: normalizarEmpresa(item.empresa),
+      valor,
+    });
+  });
+
+  return {
+    registros: Array.from(mapa.values()),
+    descartados,
+    totalBruto: itens.length,
+  };
+};
+
+const consolidarBaseConfiavel = (
+  historico: HistoricoPagoParaTotais[],
+  itensAtuais: ItemEmpresaAtual[]
+) => {
+  const itensAtuaisPorId = new Map<number, ItemEmpresaAtual>();
+  itensAtuais.forEach((item) => {
+    itensAtuaisPorId.set(item.id, item);
+  });
+
+  const historicoMaisRecentePorItemId = new Map<number, HistoricoPagoParaTotais>();
+  const historicoSemItem: HistoricoPagoParaTotais[] = [];
+
+  [...historico]
+    .sort((a, b) => obterTimestampHistorico(b) - obterTimestampHistorico(a) || (b.id ?? 0) - (a.id ?? 0))
+    .forEach((item) => {
+      if (item.demanda_item_id === null || item.demanda_item_id === undefined) {
+        historicoSemItem.push(item);
+        return;
+      }
+
+      if (!historicoMaisRecentePorItemId.has(item.demanda_item_id)) {
+        historicoMaisRecentePorItemId.set(item.demanda_item_id, item);
+      }
+    });
+
+  const baseAtual = itensAtuais
+    .filter((item) => item.status === 'pago')
+    .map((item) => ({
+      categoria: normalizarCategoria(item.categoria),
+      empresa: normalizarEmpresa(item.empresa),
+      valor: Number(item.valor ?? 0),
+    }))
+    .filter((item) => Number.isFinite(item.valor) && item.valor > 0);
+
+  const baseArquivada = Array.from(historicoMaisRecentePorItemId.entries())
+    .filter(([, item]) => item.origem === 'gerado_relatorio_pdf')
+    .map(([, item]) => ({
+      categoria: normalizarCategoria(item.categoria),
+      empresa: normalizarEmpresa(item.empresa),
+      valor: Number(item.valor ?? 0),
+    }))
+    .filter((item) => Number.isFinite(item.valor) && item.valor > 0);
+
+  const baseLegada = historicoSemItem
+    .filter((item) => item.origem === 'gerado_relatorio_pdf')
+    .map((item) => ({
+      categoria: normalizarCategoria(item.categoria),
+      empresa: normalizarEmpresa(item.empresa),
+      valor: Number(item.valor ?? 0),
+    }))
+    .filter((item) => Number.isFinite(item.valor) && item.valor > 0);
+
+  return {
+    registros: [...baseAtual, ...baseArquivada, ...baseLegada],
+    itensPagosAtuais: baseAtual.length,
+    itensArquivados: baseArquivada.length,
+    itensLegados: baseLegada.length,
+  };
+};
+
 
 const erroColunaEmpresaAusente = (message: string) => {
   const mensagem = message.toLowerCase();
@@ -85,6 +243,7 @@ const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
   return btoa(binary);
 };
 
+
 export default function DemandaTotais() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -92,11 +251,14 @@ export default function DemandaTotais() {
   const [obraNome, setObraNome] = useState('');
   const [totaisCategoria, setTotaisCategoria] = useState<TotalLinha[]>([]);
   const [totaisEmpresa, setTotaisEmpresa] = useState<TotalLinha[]>([]);
-  const [dataUltimoFechamentoExcel, setDataUltimoFechamentoExcel] = useState<string | null>(null);
-
   const totalGeralCategoria = useMemo(
     () => totaisCategoria.reduce((acc, item) => acc + item.total, 0),
     [totaisCategoria]
+  );
+
+  const totalGeralEmpresa = useMemo(
+    () => totaisEmpresa.reduce((acc, item) => acc + item.total, 0),
+    [totaisEmpresa]
   );
 
   const carregarTotais = async () => {
@@ -115,47 +277,19 @@ export default function DemandaTotais() {
       }
       setObraNome(obra.nome || `Obra ${id}`);
 
-      const { data: fechamentoData, error: fechamentoError } = await supabase
-        .from('relatorios')
-        .select('created_at')
-        .eq('obra_id', Number(id))
-        .eq('tipo', 'demanda')
-        .ilike('conteudo', `%${MARCADOR_RELATORIO_MENSAL}%`)
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      if (fechamentoError) {
-        throw new Error(`Erro ao carregar fechamento Excel: ${fechamentoError.message}`);
-      }
-
-      const ultimoFechamentoExcel = fechamentoData && fechamentoData.length > 0
-        ? String(fechamentoData[0].created_at)
-        : null;
-
-      setDataUltimoFechamentoExcel(ultimoFechamentoExcel);
-
-      if (!ultimoFechamentoExcel) {
-        // Sem fechamento mensal em Excel ainda, o acumulado fechado deve ficar zerado.
-        setTotaisCategoria([]);
-        setTotaisEmpresa([]);
-        return;
-      }
-
       let historico: HistoricoItem[] = [];
 
       const { data: historicoData, error: historicoError } = await supabase
         .from('demanda_itens_historico_pago')
-        .select('demanda_item_id, categoria, empresa, valor')
-        .eq('obra_id', Number(id))
-        .lte('entrou_em_pago_em', ultimoFechamentoExcel);
+        .select('id, demanda_item_id, categoria, empresa, valor, origem, data_pagamento, entrou_em_pago_em, created_at')
+        .eq('obra_id', Number(id));
 
       if (historicoError) {
         if (erroColunaEmpresaAusente(historicoError.message)) {
           const { data: historicoSemEmpresaData, error: historicoSemEmpresaError } = await supabase
             .from('demanda_itens_historico_pago')
-            .select('demanda_item_id, categoria, valor')
-            .eq('obra_id', Number(id))
-            .lte('entrou_em_pago_em', ultimoFechamentoExcel);
+            .select('id, demanda_item_id, categoria, valor, origem, data_pagamento, entrou_em_pago_em, created_at')
+            .eq('obra_id', Number(id));
 
           if (historicoSemEmpresaError) {
             throw new Error(`Erro ao carregar historico: ${historicoSemEmpresaError.message}`);
@@ -166,7 +300,6 @@ export default function DemandaTotais() {
             empresa: null,
           }));
         } else if (erroTabelaHistoricoAusente(historicoError.message)) {
-          // Permite acompanhamento sem histórico legado; nesse caso considera apenas o status pago atual.
           historico = [];
         } else {
           throw new Error(`Erro ao carregar historico: ${historicoError.message}`);
@@ -177,7 +310,7 @@ export default function DemandaTotais() {
 
       const { data: itensEmpresaData, error: itensEmpresaError } = await supabase
         .from('demanda_itens')
-        .select('id, empresa')
+        .select('id, status, categoria, empresa, valor')
         .eq('obra_id', Number(id));
 
       if (itensEmpresaError) {
@@ -188,25 +321,34 @@ export default function DemandaTotais() {
       (itensEmpresaData as ItemEmpresaAtual[] | null || []).forEach((item) => {
         mapaEmpresaPorItemId.set(item.id, item.empresa || null);
       });
+      const itensAtuais = (itensEmpresaData as ItemEmpresaAtual[] | null) || [];
 
       const entradasCombinadas = historico
         .map((item) => ({
-          demandaItemId: item.demanda_item_id,
+          demanda_item_id: item.demanda_item_id,
           categoria: normalizarCategoria(item.categoria),
           empresa: normalizarEmpresa(
             item.empresa
             ?? (item.demanda_item_id ? mapaEmpresaPorItemId.get(item.demanda_item_id) || null : null)
           ),
           valor: Number(item.valor ?? 0),
+          origem: item.origem,
+          entrou_em_pago_em: item.entrou_em_pago_em,
+          data_pagamento: item.data_pagamento,
+          created_at: item.created_at,
+          id: item.id,
         }))
         .filter((item) => item.valor > 0);
 
+      const historicoNormalizado = normalizarHistoricoPago(entradasCombinadas);
+      const baseConfiavel = consolidarBaseConfiavel(historicoNormalizado.registros, itensAtuais);
+
       const totalPorCategoria = agregarTotais(
-        entradasCombinadas.map((item) => ({ nome: item.categoria, valor: item.valor }))
+        baseConfiavel.registros.map((item) => ({ nome: item.categoria, valor: item.valor }))
       );
 
       const totalPorEmpresa = agregarTotais(
-        entradasCombinadas.map((item) => ({ nome: item.empresa, valor: item.valor }))
+        baseConfiavel.registros.map((item) => ({ nome: item.empresa, valor: item.valor }))
       );
 
       setTotaisCategoria(totalPorCategoria);
@@ -252,7 +394,7 @@ export default function DemandaTotais() {
       totaisEmpresa.forEach((linha) => {
         abaEmpresas.addRow([linha.nome, linha.total]);
       });
-      abaEmpresas.addRow(['TOTAL GERAL', totalGeralCategoria]);
+      abaEmpresas.addRow(['TOTAL GERAL', totalGeralEmpresa]);
 
       for (let i = 2; i <= abaEmpresas.rowCount; i += 1) {
         abaEmpresas.getCell(`B${i}`).numFmt = 'R$ #,##0.00';
@@ -329,14 +471,6 @@ export default function DemandaTotais() {
         <div className="flex items-center justify-center h-48 text-sm text-muted-foreground">Carregando totais...</div>
       ) : (
         <>
-          <Card className="p-4 mb-4">
-            <p className="text-sm text-muted-foreground">
-              {dataUltimoFechamentoExcel
-                ? `Considerando apenas valores ja enviados para o Excel ate ${format(new Date(dataUltimoFechamentoExcel), 'dd/MM/yyyy HH:mm')}.`
-                : 'Nenhum fechamento de Excel encontrado ainda. Os totais serao exibidos apos o primeiro fechamento.'}
-            </p>
-          </Card>
-
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card className="p-4 overflow-x-auto">
               <h2 className="text-lg font-semibold mb-3">Total por Categoria</h2>
@@ -356,7 +490,7 @@ export default function DemandaTotais() {
                   ))}
                   <tr className="font-semibold">
                     <td className="py-2">TOTAL GERAL</td>
-                    <td className="py-2 text-right">R$ {totalGeralCategoria.toFixed(2)}</td>
+                    <td className="py-2 text-right">R$ {totalGeralEmpresa.toFixed(2)}</td>
                   </tr>
                 </tbody>
               </table>

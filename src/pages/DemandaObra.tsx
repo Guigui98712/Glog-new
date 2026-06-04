@@ -1227,14 +1227,110 @@ Enviado via GLog App`;
       return;
     }
 
+    const itemIds = itensParaHistorico
+      .map((item) => item.id)
+      .filter((valor): valor is number => Number.isFinite(valor));
+
+    const mapaCategoriaAtual = new Map<number, string>();
+    const mapaEmpresaAtual = new Map<number, string>();
+
+    if (itemIds.length > 0) {
+      const { data: itensAtuaisData, error: itensAtuaisError } = await supabase
+        .from('demanda_itens')
+        .select('id, categoria, empresa')
+        .in('id', itemIds);
+
+      if (itensAtuaisError) {
+        console.warn('[DemandaObra] Aviso ao complementar histórico com dados atuais:', itensAtuaisError);
+      } else {
+        (itensAtuaisData || []).forEach((itemAtual: any) => {
+          const categoria = String(itemAtual?.categoria || '').trim();
+          const empresa = String(itemAtual?.empresa || '').trim();
+
+          if (categoria) {
+            mapaCategoriaAtual.set(Number(itemAtual.id), categoria);
+          }
+
+          if (empresa) {
+            mapaEmpresaAtual.set(Number(itemAtual.id), empresa);
+          }
+        });
+      }
+    }
+
+    const mapaCategoriaHistorico = new Map<number, string>();
+    const mapaEmpresaHistorico = new Map<number, string>();
+
+    if (itemIds.length > 0) {
+      const { data: historicoReferenciaData, error: historicoReferenciaError } = await supabase
+        .from('demanda_itens_historico_pago')
+        .select('demanda_item_id, categoria, empresa, created_at')
+        .eq('obra_id', Number(id))
+        .in('demanda_item_id', itemIds)
+        .order('created_at', { ascending: false });
+
+      if (historicoReferenciaError) {
+        const erroColunaEmpresaAusente =
+          historicoReferenciaError.message.toLowerCase().includes('column')
+          && historicoReferenciaError.message.toLowerCase().includes('empresa')
+          && historicoReferenciaError.message.toLowerCase().includes('demanda_itens_historico_pago');
+
+        if (!erroColunaEmpresaAusente) {
+          console.warn('[DemandaObra] Aviso ao complementar histórico com dados históricos:', historicoReferenciaError);
+        } else {
+          const { data: historicoSemEmpresaData } = await supabase
+            .from('demanda_itens_historico_pago')
+            .select('demanda_item_id, categoria, created_at')
+            .eq('obra_id', Number(id))
+            .in('demanda_item_id', itemIds)
+            .order('created_at', { ascending: false });
+
+          (historicoSemEmpresaData || []).forEach((itemHistorico: any) => {
+            const itemId = Number(itemHistorico?.demanda_item_id);
+            if (!Number.isFinite(itemId)) return;
+
+            const categoria = String(itemHistorico?.categoria || '').trim();
+            if (categoria && !mapaCategoriaHistorico.has(itemId)) {
+              mapaCategoriaHistorico.set(itemId, categoria);
+            }
+          });
+        }
+      } else {
+        (historicoReferenciaData || []).forEach((itemHistorico: any) => {
+          const itemId = Number(itemHistorico?.demanda_item_id);
+          if (!Number.isFinite(itemId)) return;
+
+          const categoria = String(itemHistorico?.categoria || '').trim();
+          const empresa = String(itemHistorico?.empresa || '').trim();
+
+          if (categoria && !mapaCategoriaHistorico.has(itemId)) {
+            mapaCategoriaHistorico.set(itemId, categoria);
+          }
+
+          if (empresa && !mapaEmpresaHistorico.has(itemId)) {
+            mapaEmpresaHistorico.set(itemId, empresa);
+          }
+        });
+      }
+    }
+
     const payload = itensParaHistorico.map((item) => {
       const dataPagamento = item.data_pagamento || new Date().toISOString();
+      const categoria = String(item.categoria || '').trim()
+        || mapaCategoriaAtual.get(item.id)
+        || mapaCategoriaHistorico.get(item.id)
+        || null;
+      const empresa = String(item.empresa || '').trim()
+        || mapaEmpresaAtual.get(item.id)
+        || mapaEmpresaHistorico.get(item.id)
+        || null;
+
       return {
         obra_id: Number(id),
         demanda_item_id: item.id,
         titulo: item.titulo,
-        categoria: item.categoria || null,
-        empresa: item.empresa || null,
+        categoria,
+        empresa,
         descricao: item.descricao || null,
         valor: item.valor ?? null,
         data_pedido: item.data_pedido || null,

@@ -382,31 +382,55 @@ const ProducaoObra = () => {
 
   const pedreirosAtivos = useMemo(() => pedreiros.filter((p) => p.ativo), [pedreiros]);
 
+  const pedreirosTabelaDisponiveis = useMemo(() => {
+    const idsComProducaoNoMes = new Set(
+      registros
+        .filter((registro) => isSameMonth(parseISO(registro.data), tabelaMes))
+        .map((registro) => registro.pedreiroId)
+    );
+
+    return pedreiros
+      .filter((pedreiro) => pedreiro.ativo || idsComProducaoNoMes.has(pedreiro.id))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  }, [pedreiros, registros, tabelaMes]);
+
+  const pedreirosResumoDisponiveis = useMemo(() => {
+    const idsComProducaoNoMes = new Set(
+      registros
+        .filter((registro) => isSameMonth(parseISO(registro.data), mesResumoAtivo))
+        .map((registro) => registro.pedreiroId)
+    );
+
+    return pedreiros
+      .filter((pedreiro) => pedreiro.ativo || idsComProducaoNoMes.has(pedreiro.id))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  }, [pedreiros, registros, mesResumoAtivo]);
+
   useEffect(() => {
     if (tabelaPedreiroId === 'all') {
       return;
     }
 
-    const selecionadoAtivo = pedreirosAtivos.some((p) => p.id === tabelaPedreiroId);
-    if (!selecionadoAtivo) {
+    const selecionadoDisponivel = pedreirosTabelaDisponiveis.some((p) => p.id === tabelaPedreiroId);
+    if (!selecionadoDisponivel) {
       setTabelaPedreiroId('all');
     }
-  }, [tabelaPedreiroId, pedreirosAtivos]);
+  }, [tabelaPedreiroId, pedreirosTabelaDisponiveis]);
 
   useEffect(() => {
-    if (pedreirosAtivos.length === 0) {
+    if (pedreirosResumoDisponiveis.length === 0) {
       if (pedreiroResumoSelecionadoId !== '') {
         setPedreiroResumoSelecionadoId('');
       }
       return;
     }
 
-    const selecionadoAtivo = pedreirosAtivos.some((p) => p.id === pedreiroResumoSelecionadoId);
-    if (!selecionadoAtivo) {
-      setPedreiroResumoSelecionadoId(pedreirosAtivos[0].id);
+    const selecionadoDisponivel = pedreirosResumoDisponiveis.some((p) => p.id === pedreiroResumoSelecionadoId);
+    if (!selecionadoDisponivel) {
+      setPedreiroResumoSelecionadoId(pedreirosResumoDisponiveis[0].id);
       setDataResumoSelecionada(null);
     }
-  }, [pedreiroResumoSelecionadoId, pedreirosAtivos]);
+  }, [pedreiroResumoSelecionadoId, pedreirosResumoDisponiveis]);
 
   const semanasDoMes = useMemo(() => montarSemanasDoMes(tabelaMes), [tabelaMes]);
 
@@ -582,8 +606,8 @@ const ProducaoObra = () => {
   }, [registrosResumoDataSelecionada]);
 
   const pedreiroResumoSelecionadoNome = useMemo(() => {
-    return pedreirosAtivos.find((pedreiro) => pedreiro.id === pedreiroResumoSelecionadoId)?.nome || '';
-  }, [pedreirosAtivos, pedreiroResumoSelecionadoId]);
+    return pedreiros.find((pedreiro) => pedreiro.id === pedreiroResumoSelecionadoId)?.nome || '';
+  }, [pedreiros, pedreiroResumoSelecionadoId]);
 
   const handleAbrirLancamento = (date: Date) => {
     setSelectedDate(date);
@@ -675,6 +699,15 @@ const ProducaoObra = () => {
       return;
     }
 
+    const pedreiro = pedreiros.find((p) => p.id === pedreiroId);
+    const confirmou = window.confirm(
+      `Retirar ${pedreiro?.nome || 'este pedreiro'} da lista de ativos? O histórico de produção será mantido para relatórios.`
+    );
+
+    if (!confirmou) {
+      return;
+    }
+
     const { error } = await supabase
       .from('producao_pedreiros')
       .update({ ativo: false, data_inativacao: new Date().toISOString() })
@@ -683,14 +716,18 @@ const ProducaoObra = () => {
 
     if (error) {
       toast({
-        title: 'Erro ao excluir pedreiro',
-        description: 'Não foi possível remover no banco.',
+        title: 'Erro ao retirar pedreiro da lista',
+        description: 'Não foi possível atualizar no banco.',
         variant: 'destructive',
       });
       return;
     }
 
     setPedreiros((prev) => prev.map((p) => (p.id === pedreiroId ? { ...p, ativo: false } : p)));
+    toast({
+      title: 'Pedreiro retirado da lista',
+      description: 'O histórico de produção foi mantido e continuará disponível nos relatórios.',
+    });
   };
 
   const handleReativarPedreiro = async (pedreiroId: string) => {
@@ -1294,6 +1331,204 @@ const ProducaoObra = () => {
     }
   };
 
+  const handleGerarPdfMensalPedreiro = async () => {
+    if (!pedreiroResumoSelecionadoId) {
+      toast({
+        title: 'Selecione um pedreiro',
+        description: 'Escolha um pedreiro no calendário para gerar o PDF mensal.',
+      });
+      return;
+    }
+
+    const pedreiroSelecionado = pedreiros.find((p) => p.id === pedreiroResumoSelecionadoId);
+    const nomePedreiro = pedreiroSelecionado?.nome || 'Pedreiro';
+    const inicioMes = startOfMonth(mesResumoAtivo);
+    const fimMes = endOfMonth(mesResumoAtivo);
+
+    const registrosMes = registros
+      .filter((registro) => {
+        if (registro.pedreiroId !== pedreiroResumoSelecionadoId) {
+          return false;
+        }
+        const dataRegistro = parseISO(registro.data);
+        return dataRegistro >= inicioMes && dataRegistro <= fimMes;
+      })
+      .sort((a, b) => a.data.localeCompare(b.data));
+
+    if (registrosMes.length === 0) {
+      toast({
+        title: 'Sem produção no mês',
+        description: `${nomePedreiro} não possui lançamentos no mês exibido no calendário.`,
+      });
+      return;
+    }
+
+    try {
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margemX = 12;
+      const areaUtil = pageWidth - margemX * 2;
+      const alturaRodape = 12;
+      let cursorY = 14;
+
+      const mesLabel = format(mesResumoAtivo, "MMMM 'de' yyyy", { locale: ptBR });
+      const nomeObraSeguro = obraNome
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '') || 'obra';
+      const nomePedreiroSeguro = nomePedreiro
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '') || 'pedreiro';
+      const nomeArquivo = `producao_mensal_${nomeObraSeguro}_${nomePedreiroSeguro}_${format(mesResumoAtivo, 'MM-yyyy')}.pdf`;
+
+      const garantirEspaco = (alturaNecessaria: number) => {
+        if (cursorY + alturaNecessaria <= pageHeight - alturaRodape) {
+          return;
+        }
+        pdf.addPage();
+        cursorY = 14;
+      };
+
+      const escreverLinhas = (linhas: string[], tamanho = 9.5, cor: [number, number, number] = [33, 33, 33]) => {
+        pdf.setFontSize(tamanho);
+        pdf.setTextColor(cor[0], cor[1], cor[2]);
+        linhas.forEach((linha) => {
+          const quebradas = pdf.splitTextToSize(linha, areaUtil);
+          const alturaBloco = quebradas.length * 4.8;
+          garantirEspaco(alturaBloco + 1.5);
+          quebradas.forEach((q) => {
+            pdf.text(q, margemX, cursorY);
+            cursorY += 4.8;
+          });
+          cursorY += 1.5;
+        });
+      };
+
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(13);
+      pdf.setTextColor(34, 63, 98);
+      pdf.text('Relatório Mensal de Produção - Pedreiro', margemX, cursorY);
+      cursorY += 7;
+
+      pdf.setFont('helvetica', 'normal');
+      escreverLinhas([
+        `Obra: ${obraNome}`,
+        `Pedreiro: ${nomePedreiro}${pedreiroSelecionado?.ativo ? '' : ' (inativo)'}`,
+        `Mês de referência: ${mesLabel}`,
+      ]);
+
+      const gruposPorData = registrosMes.reduce<Record<string, ProducaoRegistro[]>>((acc, registro) => {
+        if (!acc[registro.data]) {
+          acc[registro.data] = [];
+        }
+        acc[registro.data].push(registro);
+        return acc;
+      }, {});
+
+      const datasOrdenadas = Object.keys(gruposPorData).sort();
+      let totalMensalPagar = 0;
+
+      for (const dataStr of datasOrdenadas) {
+        const registrosDia = gruposPorData[dataStr];
+        const dataObj = parseISO(dataStr);
+        const cabecalhoDia = format(dataObj, "EEEE, dd/MM/yyyy", { locale: ptBR });
+        const totalDiaQuantidade = registrosDia.reduce((acc, r) => acc + r.quantidade, 0);
+        const totalDiaPagar = registrosDia.reduce((acc, r) => {
+          const tarefa = tarefas.find((t) => t.id === r.tarefaId);
+          return acc + (tarefa ? r.quantidade * tarefa.valor : 0);
+        }, 0);
+
+        totalMensalPagar += totalDiaPagar;
+
+        garantirEspaco(10);
+        pdf.setDrawColor(220, 228, 238);
+        pdf.setFillColor(247, 250, 255);
+        pdf.roundedRect(margemX, cursorY - 3.7, areaUtil, 6.5, 1.8, 1.8, 'FD');
+
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(10);
+        pdf.setTextColor(34, 63, 98);
+        pdf.text(cabecalhoDia, margemX + 2.5, cursorY);
+        cursorY += 5.5;
+
+        for (const registro of registrosDia) {
+          const tarefa = tarefas.find((t) => t.id === registro.tarefaId);
+          const faltou = isRegistroFalta(registro);
+          const detalhe = faltou
+            ? `Falta${getMotivoFalta(registro) ? ` | Motivo: ${getMotivoFalta(registro)}` : ''}`
+            : `${tarefa?.nome || 'Serviço não identificado'} | Qtd: ${formatQuantidade(registro.quantidade)}${registro.pavimento ? ` | Pav.: ${registro.pavimento}` : ''}${registro.observacao ? ` | Obs: ${registro.observacao}` : ''}`;
+
+          pdf.setFont('helvetica', 'normal');
+          escreverLinhas([`- ${detalhe}`], 9);
+        }
+
+        pdf.setFont('helvetica', 'bold');
+        escreverLinhas(
+          [
+            `Total do dia: ${formatQuantidade(totalDiaQuantidade)} | A pagar: ${formatCurrency(totalDiaPagar)}`,
+          ],
+          9.2,
+          [45, 55, 72]
+        );
+
+        cursorY += 1;
+      }
+
+      garantirEspaco(12);
+      pdf.setDrawColor(200, 210, 224);
+      pdf.line(margemX, cursorY, margemX + areaUtil, cursorY);
+      cursorY += 4.5;
+      pdf.setFont('helvetica', 'bold');
+      escreverLinhas([`Total mensal a pagar: ${formatCurrency(totalMensalPagar)}`], 10, [34, 63, 98]);
+
+      const { Capacitor } = await import('@capacitor/core');
+      if (Capacitor.isNativePlatform()) {
+        const { Filesystem, Directory } = await import('@capacitor/filesystem');
+        const { Share } = await import('@capacitor/share');
+        const pdfBase64 = pdf.output('datauristring').split(',')[1];
+
+        const result = await Filesystem.writeFile({
+          path: nomeArquivo,
+          data: pdfBase64,
+          directory: Directory.Cache,
+          recursive: true,
+        });
+
+        await Share.share({
+          title: `Produção mensal - ${nomePedreiro}`,
+          text: `Produção mensal de ${nomePedreiro} (${mesLabel}) - ${obraNome}`,
+          url: result.uri,
+          dialogTitle: 'Compartilhar PDF de produção mensal',
+        });
+
+        toast({
+          title: 'PDF pronto',
+          description: 'Compartilhamento iniciado com sucesso.',
+        });
+        return;
+      }
+
+      pdf.save(nomeArquivo);
+      toast({
+        title: 'PDF gerado',
+        description: `Arquivo ${nomeArquivo} gerado com sucesso.`,
+      });
+    } catch (error) {
+      console.error('Erro ao gerar PDF mensal do pedreiro:', error);
+      toast({
+        title: 'Erro ao gerar PDF',
+        description: 'Não foi possível gerar o PDF mensal deste pedreiro.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const handleExcluirRegistro = async (registroId: string) => {
     if (!obraId) {
       return;
@@ -1543,7 +1778,7 @@ const ProducaoObra = () => {
   const irMesAnterior = () => setTabelaMes((prev) => subMonths(prev, 1));
   const irProximoMes = () => setTabelaMes((prev) => addMonths(prev, 1));
 
-  const todosNaTabelaIds = ['all', ...pedreirosAtivos.map((p) => p.id)];
+  const todosNaTabelaIds = ['all', ...pedreirosTabelaDisponiveis.map((p) => p.id)];
   const idxPedreiroAtual = todosNaTabelaIds.indexOf(tabelaPedreiroId);
 
   const irPedreiroAnterior = () => {
@@ -1556,7 +1791,7 @@ const ProducaoObra = () => {
     setTabelaPedreiroId(todosNaTabelaIds[nextIdx]);
   };
 
-  const pedreiroAtual = pedreirosAtivos.find((p) => p.id === tabelaPedreiroId);
+  const pedreiroAtual = pedreirosTabelaDisponiveis.find((p) => p.id === tabelaPedreiroId);
   const tabelaTitulo = tabelaPedreiroId === 'all'
     ? 'Toda a Equipe'
     : (pedreiroAtual?.nome || 'Pedreiro');
@@ -1966,7 +2201,7 @@ const ProducaoObra = () => {
 
           {/* Pedreiro */}
           <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Button variant="outline" size="icon" onClick={irPedreiroAnterior} disabled={pedreirosAtivos.length === 0}>
+            <Button variant="outline" size="icon" onClick={irPedreiroAnterior} disabled={pedreirosTabelaDisponiveis.length === 0}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <Select value={tabelaPedreiroId} onValueChange={setTabelaPedreiroId}>
@@ -1975,12 +2210,14 @@ const ProducaoObra = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Toda a equipe</SelectItem>
-                {pedreirosAtivos.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
+                {pedreirosTabelaDisponiveis.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.nome}{!p.ativo ? ' (histórico)' : ''}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" size="icon" onClick={irProximoPedreiro} disabled={pedreirosAtivos.length === 0}>
+            <Button variant="outline" size="icon" onClick={irProximoPedreiro} disabled={pedreirosTabelaDisponiveis.length === 0}>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
@@ -2102,100 +2339,114 @@ const ProducaoObra = () => {
           </div>
         </div>
 
-        {pedreirosAtivos.length === 0 ? (
-          <div className="text-sm text-gray-500 border rounded-lg p-4">
-            Nenhum pedreiro ativo cadastrado para esta obra.
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="max-w-sm">
+        <div className="space-y-4">
+          {pedreirosResumoDisponiveis.length === 0 && (
+            <div className="text-sm text-gray-500 border rounded-lg p-4">
+              Nenhum pedreiro com produção no mês exibido.
+            </div>
+          )}
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="w-full sm:max-w-sm">
               <Select
                 value={pedreiroResumoSelecionadoId}
                 onValueChange={(valor) => {
                   setPedreiroResumoSelecionadoId(valor);
                   setDataResumoSelecionada(null);
                 }}
+                disabled={pedreirosResumoDisponiveis.length === 0}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione um pedreiro" />
                 </SelectTrigger>
                 <SelectContent>
-                  {pedreirosAtivos.map((pedreiro) => (
+                  {pedreirosResumoDisponiveis.map((pedreiro) => (
                     <SelectItem key={pedreiro.id} value={pedreiro.id}>
-                      {pedreiro.nome}
+                      {pedreiro.nome}{!pedreiro.ativo ? ' (histórico)' : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            <div className="flex justify-center overflow-x-auto">
-              <Calendar
-                locale="pt-BR"
-                value={dataResumoSelecionada}
-                className="producao-calendar"
-                onClickDay={setDataResumoSelecionada}
-                onActiveStartDateChange={({ activeStartDate }) => {
-                  if (!activeStartDate) {
-                    return;
-                  }
-
-                  setMesResumoAtivo(new Date(activeStartDate.getFullYear(), activeStartDate.getMonth(), 1));
-                }}
-                tileClassName={tileClassNameResumoProducao}
-              />
-            </div>
-
-            <div className="border rounded-lg p-4 space-y-3">
-              <p className="text-sm text-gray-600">
-                {pedreiroResumoSelecionadoNome
-                  ? `Pedreiro selecionado: ${pedreiroResumoSelecionadoNome}`
-                  : 'Selecione um pedreiro'}
-              </p>
-              <p className="text-sm text-gray-500 capitalize">
-                Mês exibido: {format(mesResumoAtivo, "MMMM 'de' yyyy", { locale: ptBR })}
-              </p>
-
-              {!dataResumoSelecionada ? (
-                <p className="text-sm text-gray-500">Clique em um dia do calendário para ver a produção.</p>
-              ) : registrosResumoDataSelecionada.length === 0 ? (
-                <p className="text-sm text-gray-500">
-                  Sem produção para {pedreiroResumoSelecionadoNome} em {format(dataResumoSelecionada, 'dd/MM/yyyy')}.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                    <p className="font-medium text-sm md:text-base">
-                      Produção de {format(dataResumoSelecionada, 'dd/MM/yyyy')}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      Total do dia: {totalQuantidadeResumoDiaSelecionado.toLocaleString('pt-BR')}
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    {registrosResumoDataSelecionada.map((registro) => (
-                      <div key={registro.id} className="rounded-md border p-3 bg-gray-50">
-                        <p className="text-sm font-medium">
-                          {tarefasProducaoPorId[registro.tarefaId] || 'Serviço não identificado'}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          Quantidade: {registro.quantidade.toLocaleString('pt-BR')}
-                        </p>
-                        {registro.pavimento && (
-                          <p className="text-xs text-gray-500">Pavimento: {registro.pavimento}</p>
-                        )}
-                        {registro.observacao && (
-                          <p className="text-xs text-gray-500">Obs: {registro.observacao}</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+            <Button
+              variant="outline"
+              onClick={handleGerarPdfMensalPedreiro}
+              disabled={!pedreiroResumoSelecionadoId || pedreirosResumoDisponiveis.length === 0}
+              className="w-full sm:w-auto"
+              title={pedreirosResumoDisponiveis.length === 0 ? 'Sem produção no mês para gerar PDF' : 'Gerar PDF mensal'}
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              {pedreirosResumoDisponiveis.length === 0 ? 'PDF indisponível' : 'PDF'}
+            </Button>
           </div>
-        )}
+
+          <div className="flex justify-center overflow-x-auto">
+            <Calendar
+              locale="pt-BR"
+              value={dataResumoSelecionada}
+              className="producao-calendar"
+              onClickDay={setDataResumoSelecionada}
+              onActiveStartDateChange={({ activeStartDate }) => {
+                if (!activeStartDate) {
+                  return;
+                }
+
+                setMesResumoAtivo(new Date(activeStartDate.getFullYear(), activeStartDate.getMonth(), 1));
+              }}
+              tileClassName={tileClassNameResumoProducao}
+            />
+          </div>
+
+          <div className="border rounded-lg p-4 space-y-3">
+            <p className="text-sm text-gray-600">
+              {pedreiroResumoSelecionadoNome
+                ? `Pedreiro selecionado: ${pedreiroResumoSelecionadoNome}`
+                : 'Selecione um pedreiro'}
+            </p>
+            <p className="text-sm text-gray-500 capitalize">
+              Mês exibido: {format(mesResumoAtivo, "MMMM 'de' yyyy", { locale: ptBR })}
+            </p>
+
+            {!dataResumoSelecionada ? (
+              <p className="text-sm text-gray-500">Clique em um dia do calendário para ver a produção.</p>
+            ) : registrosResumoDataSelecionada.length === 0 ? (
+              <p className="text-sm text-gray-500">
+                Sem produção para {pedreiroResumoSelecionadoNome} em {format(dataResumoSelecionada, 'dd/MM/yyyy')}.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <p className="font-medium text-sm md:text-base">
+                    Produção de {format(dataResumoSelecionada, 'dd/MM/yyyy')}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    Total do dia: {totalQuantidadeResumoDiaSelecionado.toLocaleString('pt-BR')}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  {registrosResumoDataSelecionada.map((registro) => (
+                    <div key={registro.id} className="rounded-md border p-3 bg-gray-50">
+                      <p className="text-sm font-medium">
+                        {tarefasProducaoPorId[registro.tarefaId] || 'Serviço não identificado'}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        Quantidade: {registro.quantidade.toLocaleString('pt-BR')}
+                      </p>
+                      {registro.pavimento && (
+                        <p className="text-xs text-gray-500">Pavimento: {registro.pavimento}</p>
+                      )}
+                      {registro.observacao && (
+                        <p className="text-xs text-gray-500">Obs: {registro.observacao}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </Card>
 
       <Dialog open={showGerenciarPedreiros} onOpenChange={setShowGerenciarPedreiros}>
@@ -2218,10 +2469,10 @@ const ProducaoObra = () => {
             </div>
 
             <div className="space-y-2 overflow-y-auto pr-1 min-h-0 flex-1">
-              {pedreiros.length === 0 ? (
+              {pedreirosAtivos.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhum pedreiro cadastrado.</p>
               ) : (
-                pedreiros.map((pedreiro) =>
+                pedreirosAtivos.map((pedreiro) =>
                   editandoPedreiro?.id === pedreiro.id ? (
                     <div key={pedreiro.id} className="flex items-center gap-2 border rounded-md px-3 py-2 bg-blue-50">
                       <Input
@@ -2242,26 +2493,23 @@ const ProducaoObra = () => {
                     <div key={pedreiro.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border rounded-md px-3 py-2">
                       <span className="break-words">
                         {pedreiro.nome}
-                        {!pedreiro.ativo && <span className="ml-2 text-xs text-amber-600">(inativo)</span>}
                       </span>
                       <div className="flex gap-1">
                         <Button
                           variant="ghost"
                           size="icon"
                           onClick={() => setEditandoPedreiro({ id: pedreiro.id, nome: pedreiro.nome })}
-                          disabled={!pedreiro.ativo}
                         >
                           <Pencil className="h-4 w-4 text-blue-500" />
                         </Button>
-                        {pedreiro.ativo ? (
-                          <Button variant="ghost" size="icon" onClick={() => handleExcluirPedreiro(pedreiro.id)}>
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
-                        ) : (
-                          <Button variant="outline" size="sm" onClick={() => handleReativarPedreiro(pedreiro.id)}>
-                            Reativar
-                          </Button>
-                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleExcluirPedreiro(pedreiro.id)}
+                          title="Excluir da lista"
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
                       </div>
                     </div>
                   )

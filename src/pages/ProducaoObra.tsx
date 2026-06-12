@@ -1471,13 +1471,13 @@ const ProducaoObra = () => {
           escreverLinhas([`• ${detalhe}`], 10);
         }
 
-        pdf.setFont('helvetica', 'bold');
+        pdf.setFont('helvetica', 'normal');
         escreverLinhas(
           [
             `Total do dia: ${formatQuantidade(totalDiaQuantidade)} | A pagar: ${formatCurrency(totalDiaPagar)}`,
           ],
-          10.5,
-          [45, 55, 72]
+          9.5,
+          [0, 0, 0]
         );
 
         cursorY += 2.5;

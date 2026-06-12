@@ -1446,15 +1446,18 @@ const ProducaoObra = () => {
 
         totalMensalPagar += totalDiaPagar;
 
-        garantirEspaco(10);
-        pdf.setDrawColor(220, 228, 238);
-        pdf.setFillColor(247, 250, 255);
-        pdf.roundedRect(margemX, cursorY - 3.7, areaUtil, 6.5, 1.8, 1.8, 'FD');
+        garantirEspaco(11);
+        
+        // Linha simples de separação antes do dia
+        pdf.setDrawColor(200, 210, 224);
+        pdf.setLineWidth(0.3);
+        pdf.line(margemX, cursorY - 2, margemX + areaUtil, cursorY - 2);
+        cursorY += 1.5;
 
         pdf.setFont('helvetica', 'bold');
-        pdf.setFontSize(10);
+        pdf.setFontSize(10.5);
         pdf.setTextColor(34, 63, 98);
-        pdf.text(cabecalhoDia, margemX + 2.5, cursorY);
+        pdf.text(cabecalhoDia, margemX, cursorY);
         cursorY += 5.5;
 
         for (const registro of registrosDia) {
@@ -1465,7 +1468,7 @@ const ProducaoObra = () => {
             : `${tarefa?.nome || 'Serviço não identificado'} | Qtd: ${formatQuantidade(registro.quantidade)}${registro.pavimento ? ` | Pav.: ${registro.pavimento}` : ''}${registro.observacao ? ` | Obs: ${registro.observacao}` : ''}`;
 
           pdf.setFont('helvetica', 'normal');
-          escreverLinhas([`- ${detalhe}`], 9);
+          escreverLinhas([`• ${detalhe}`], 10);
         }
 
         pdf.setFont('helvetica', 'bold');
@@ -1473,11 +1476,11 @@ const ProducaoObra = () => {
           [
             `Total do dia: ${formatQuantidade(totalDiaQuantidade)} | A pagar: ${formatCurrency(totalDiaPagar)}`,
           ],
-          9.2,
+          10.5,
           [45, 55, 72]
         );
 
-        cursorY += 1;
+        cursorY += 2.5;
       }
 
       garantirEspaco(12);

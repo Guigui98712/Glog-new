@@ -1825,6 +1825,104 @@ const ProducaoObra = () => {
       return;
     }
 
+    type TarefaHidraulicaExport = {
+      id: string;
+      nome: string;
+      valor: number;
+      metragem_prevista: number;
+      ordem: number;
+    };
+
+    type EncanadorHidraulicaExport = {
+      id: string;
+      nome: string;
+      ativo: boolean;
+    };
+
+    type RegistroHidraulicaExport = {
+      id: string;
+      encanador_id: string;
+      tarefa_id: string;
+      data: string;
+      data_inicio: string;
+      data_fim?: string;
+      metragem: number | null;
+    };
+
+    let tarefasHidraulica: TarefaHidraulicaExport[] = [];
+    let encanadoresHidraulica: EncanadorHidraulicaExport[] = [];
+    let registrosHidraulica: RegistroHidraulicaExport[] = [];
+
+    const [tarefasHidraulicaResp, encanadoresHidraulicaResp, registrosHidraulicaResp] = await Promise.all([
+      supabase
+        .from('producao_hidraulica_tarefas')
+        .select('id, nome, valor, metragem_prevista, ordem')
+        .eq('obra_id', Number(obraId))
+        .order('ordem', { ascending: true })
+        .order('nome', { ascending: true }),
+      supabase
+        .from('producao_hidraulica_encanadores')
+        .select('id, nome, ativo')
+        .eq('obra_id', Number(obraId))
+        .order('nome', { ascending: true }),
+      supabase
+        .from('producao_hidraulica_registros')
+        .select('id, encanador_id, tarefa_id, data, data_inicio, data_fim, metragem')
+        .eq('obra_id', Number(obraId)),
+    ]);
+
+    const erroHidraulica = tarefasHidraulicaResp.error || encanadoresHidraulicaResp.error || registrosHidraulicaResp.error;
+    if (erroHidraulica) {
+      const msg = `${erroHidraulica.message || ''} ${erroHidraulica.details || ''}`.toLowerCase();
+      const tabelaNaoExiste =
+        msg.includes('does not exist') || msg.includes('relation') || msg.includes('not found');
+
+      if (!tabelaNaoExiste) {
+        toast({
+          title: 'Aviso na exportação',
+          description: 'Excel gerado sem a aba Hidráulica por falha ao ler os dados.',
+          variant: 'destructive',
+        });
+      }
+    } else {
+      tarefasHidraulica = (tarefasHidraulicaResp.data || []).map((t) => ({
+        id: t.id,
+        nome: t.nome,
+        valor: Number(t.valor || 0),
+        metragem_prevista: Number(t.metragem_prevista || 0),
+        ordem: Number(t.ordem || 0),
+      }));
+
+      encanadoresHidraulica = (encanadoresHidraulicaResp.data || []).map((e) => ({
+        id: e.id,
+        nome: e.nome,
+        ativo: Boolean(e.ativo),
+      }));
+
+      registrosHidraulica = (registrosHidraulicaResp.data || []).map((r) => ({
+        id: r.id,
+        encanador_id: r.encanador_id,
+        tarefa_id: r.tarefa_id,
+        data: r.data,
+        data_inicio: r.data_inicio,
+        data_fim: r.data_fim || undefined,
+        metragem: r.metragem === null || r.metragem === undefined ? null : Number(r.metragem),
+      }));
+    }
+
+    const idsEncanadoresComDadosNoMes = new Set(
+      registrosHidraulica
+        .filter((r) => {
+          const d = parseISO(r.data);
+          return d >= inicioMes && d <= fimMes;
+        })
+        .map((r) => r.encanador_id)
+    );
+
+    const encanadoresParaExportar = encanadoresHidraulica
+      .filter((e) => e.ativo || idsEncanadoresComDadosNoMes.has(e.id))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+
     const wb = new ExcelJS.Workbook();
     wb.creator = 'GLog';
     const nomesAbasUsados = new Set<string>();
@@ -1847,7 +1945,7 @@ const ProducaoObra = () => {
       `RESUMO DE PRODUÇÃO ${format(tabelaMes, 'MMMM/yyyy', { locale: ptBR }).toUpperCase()} - ${obraNome.toUpperCase()}`,
     ]);
     resumoLinhas.push([]);
-    resumoLinhas.push(['PEDREIRO', 'TOTAL A PAGAR (R$)']);
+    resumoLinhas.push(['TIPO', 'NOME', 'TOTAL A PAGAR (R$)']);
 
     let totalResumoPagar = 0;
 
@@ -1866,26 +1964,49 @@ const ProducaoObra = () => {
 
       totalResumoPagar += totalPagar;
 
-      resumoLinhas.push([pedreiro.nome, totalPagar]);
+      resumoLinhas.push(['PEDREIRO', pedreiro.nome, totalPagar]);
     }
 
-    resumoLinhas.push(['TOTAL GERAL', totalResumoPagar]);
+    for (const encanador of encanadoresParaExportar) {
+      const registrosEncanadorAteMes = registrosHidraulica.filter((r) => {
+        const d = parseISO(r.data);
+        return d <= fimMes && r.encanador_id === encanador.id;
+      });
+
+      const totalPagar = tarefasHidraulica.reduce((acc, tarefa) => {
+        const somaMetragemAcumulada = registrosEncanadorAteMes
+          .filter((r) => r.tarefa_id === tarefa.id)
+          .reduce((s, r) => s + (r.metragem || 0), 0);
+
+        const percentualFeito = tarefa.metragem_prevista > 0
+          ? Math.min(100, (somaMetragemAcumulada / tarefa.metragem_prevista) * 100)
+          : 0;
+
+        return acc + (tarefa.valor * (percentualFeito / 100));
+      }, 0);
+
+      totalResumoPagar += totalPagar;
+      resumoLinhas.push(['ENCANADOR', encanador.nome, totalPagar]);
+    }
+
+    resumoLinhas.push(['', 'TOTAL GERAL', totalResumoPagar]);
 
     const wsResumo = wb.addWorksheet('RESUMO');
     resumoLinhas.forEach((row) => wsResumo.addRow(row));
 
     wsResumo.columns = [
+      { width: 16 },
       { width: 28 },
       { width: 20 },
     ];
-    wsResumo.mergeCells(1, 1, 1, 2);
+    wsResumo.mergeCells(1, 1, 1, 3);
 
     const tituloResumo = wsResumo.getCell(1, 1);
     tituloResumo.font = { bold: true, size: 13, color: { argb: 'FFFFFFFF' } };
     tituloResumo.alignment = { horizontal: 'center', vertical: 'middle' };
     tituloResumo.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corCinzaEscuro } };
 
-    for (let c = 1; c <= 2; c += 1) {
+    for (let c = 1; c <= 3; c += 1) {
       const h = wsResumo.getCell(3, c);
       h.font = { bold: true, color: { argb: 'FFFFFFFF' } };
       h.alignment = { horizontal: 'center', vertical: 'middle' };
@@ -1894,18 +2015,18 @@ const ProducaoObra = () => {
     }
 
     for (let r = 4; r <= wsResumo.rowCount; r += 1) {
-      for (let c = 1; c <= 2; c += 1) {
+      for (let c = 1; c <= 3; c += 1) {
         const cell = wsResumo.getCell(r, c);
         cell.border = bordaFina;
         if (r % 2 === 0) {
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corCinzaClaro } };
         }
       }
-      wsResumo.getCell(r, 2).numFmt = '#,##0.00';
+      wsResumo.getCell(r, 3).numFmt = '#,##0.00';
     }
 
     const ultimaResumo = wsResumo.rowCount;
-    for (let c = 1; c <= 2; c += 1) {
+    for (let c = 1; c <= 3; c += 1) {
       const cell = wsResumo.getCell(ultimaResumo, c);
       cell.font = { bold: true };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corVerdeClaro } };
@@ -2092,6 +2213,155 @@ const ProducaoObra = () => {
       // Aba ja criada com nome final unico
     }
 
+    for (const encanador of encanadoresParaExportar) {
+      const resumoHidraulica = tarefasHidraulica.map((tarefa) => {
+        const registrosTarefa = registrosHidraulica
+          .filter((r) => r.encanador_id === encanador.id && r.tarefa_id === tarefa.id)
+          .sort((a, b) => a.data.localeCompare(b.data));
+
+        const registrosNoMes = registrosTarefa.filter((r) => {
+          const d = parseISO(r.data);
+          return d >= inicioMes && d <= fimMes;
+        });
+
+        const metragemMes = registrosNoMes.reduce((acc, r) => acc + (r.metragem || 0), 0);
+        const metragemAcumuladaAteMes = registrosTarefa
+          .filter((r) => parseISO(r.data) <= fimMes)
+          .reduce((acc, r) => acc + (r.metragem || 0), 0);
+
+        const dataFinalManual = registrosTarefa
+          .map((r) => r.data_fim)
+          .filter(Boolean)
+          .sort((a, b) => (a as string).localeCompare(b as string))[0] || null;
+
+        const percentual = tarefa.metragem_prevista > 0
+          ? Math.min(100, (metragemAcumuladaAteMes / tarefa.metragem_prevista) * 100)
+          : 0;
+
+        const dataInicio = registrosTarefa.length > 0
+          ? registrosTarefa.map((r) => r.data_inicio).sort((a, b) => a.localeCompare(b))[0]
+          : null;
+
+        let dataFinal: string | null = null;
+        if (dataFinalManual) {
+          dataFinal = dataFinalManual;
+        } else if (tarefa.metragem_prevista > 0) {
+          let acumulado = 0;
+          for (const registro of registrosTarefa) {
+            acumulado += (registro.metragem || 0);
+            if (acumulado >= tarefa.metragem_prevista) {
+              dataFinal = registro.data;
+              break;
+            }
+          }
+        }
+
+        const aPagar = tarefa.valor * (percentual / 100);
+
+        return {
+          tarefa,
+          percentual,
+          dataInicio,
+          dataFinal,
+          metragemMes,
+          aPagar,
+        };
+      });
+
+      const totalAPagarHidraulica = resumoHidraulica.reduce((acc, item) => acc + item.aPagar, 0);
+      if (resumoHidraulica.length === 0 && totalAPagarHidraulica === 0) {
+        continue;
+      }
+
+      let nomeAbaH = normalizarNomeAba(`HID ${encanador.nome}`);
+      let idxH = 2;
+      while (nomesAbasUsados.has(nomeAbaH)) {
+        nomeAbaH = `${normalizarNomeAba(`HID ${encanador.nome}`).slice(0, 28)} ${idxH}`;
+        idxH += 1;
+      }
+      nomesAbasUsados.add(nomeAbaH);
+
+      const wsHidraulica = wb.addWorksheet(nomeAbaH);
+      wsHidraulica.addRow([
+        `RELATÓRIO DE PRODUÇÃO HIDRÁULICA ${format(tabelaMes, 'MMMM/yyyy', { locale: ptBR }).toUpperCase()} - ${obraNome.toUpperCase()}`,
+      ]);
+      wsHidraulica.addRow([encanador.nome.toUpperCase()]);
+      wsHidraulica.addRow([]);
+      wsHidraulica.addRow(['SERVIÇO', 'VALOR', '% FEITO', 'DIA DE INÍCIO', 'DIA DE FINAL', 'METRAGEM', 'A PAGAR']);
+
+      for (const item of resumoHidraulica) {
+        wsHidraulica.addRow([
+          item.tarefa.nome.toUpperCase(),
+          item.tarefa.valor,
+          item.percentual / 100,
+          item.dataInicio ? format(parseISO(item.dataInicio), 'dd/MM/yyyy') : '-',
+          item.dataFinal ? format(parseISO(item.dataFinal), 'dd/MM/yyyy') : '-',
+          item.metragemMes,
+          item.aPagar,
+        ]);
+      }
+
+      wsHidraulica.addRow(['TOTAL', '', '', '', '', '', totalAPagarHidraulica]);
+
+      wsHidraulica.columns = [
+        { width: 30 },
+        { width: 14 },
+        { width: 12 },
+        { width: 16 },
+        { width: 16 },
+        { width: 14 },
+        { width: 14 },
+      ];
+
+      wsHidraulica.mergeCells(1, 1, 1, 7);
+      wsHidraulica.mergeCells(2, 1, 2, 7);
+
+      const tituloH = wsHidraulica.getCell(1, 1);
+      tituloH.font = { bold: true, size: 13, color: { argb: 'FFFFFFFF' } };
+      tituloH.alignment = { horizontal: 'center', vertical: 'middle' };
+      tituloH.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corCinzaEscuro } };
+
+      const subtituloH = wsHidraulica.getCell(2, 1);
+      subtituloH.font = { bold: true, size: 15, color: { argb: 'FFFFFFFF' } };
+      subtituloH.alignment = { horizontal: 'center', vertical: 'middle' };
+      subtituloH.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corCinzaEscuro } };
+
+      for (let c = 1; c <= 7; c += 1) {
+        const h = wsHidraulica.getCell(4, c);
+        h.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        h.alignment = { horizontal: 'center', vertical: 'middle' };
+        h.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corCinzaMedio } };
+        h.border = bordaFina;
+      }
+
+      for (let r = 5; r <= wsHidraulica.rowCount; r += 1) {
+        for (let c = 1; c <= 7; c += 1) {
+          const cell = wsHidraulica.getCell(r, c);
+          cell.border = bordaFina;
+          cell.alignment = { horizontal: c === 1 ? 'left' : 'center', vertical: 'middle' };
+          if (r % 2 === 0) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corCinzaClaro } };
+          }
+        }
+
+        wsHidraulica.getCell(r, 2).numFmt = '#,##0.00';
+        wsHidraulica.getCell(r, 3).numFmt = '0.00%';
+        wsHidraulica.getCell(r, 6).numFmt = '#,##0.00';
+        wsHidraulica.getCell(r, 7).numFmt = '#,##0.00';
+      }
+
+      const ultimaLinhaH = wsHidraulica.rowCount;
+      for (let c = 1; c <= 7; c += 1) {
+        const cell = wsHidraulica.getCell(ultimaLinhaH, c);
+        cell.font = { bold: true };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corVerdeClaro } };
+        cell.border = bordaFina;
+      }
+
+      wsHidraulica.getRow(4).height = 34;
+      wsHidraulica.getRow(2).height = 28;
+    }
+
     const nomeArquivo = `producao_${obraNome.replace(/\s+/g, '_').toLowerCase()}_${format(tabelaMes, 'MM-yyyy')}.xlsx`;
     const buffer = await wb.xlsx.writeBuffer();
     const blob = new Blob([buffer], {
@@ -2109,7 +2379,7 @@ const ProducaoObra = () => {
 
     toast({
       title: 'Excel gerado',
-      description: `Arquivo ${nomeArquivo} criado com ${pedreirosParaExportar.length} abas.`,
+      description: `Arquivo ${nomeArquivo} criado com abas de pedreiros e encanadores.`,
     });
   };
 
@@ -2127,9 +2397,14 @@ const ProducaoObra = () => {
   return (
     <div className="container mx-auto p-3 sm:p-4 space-y-4 sm:space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold">Produção de Pedreiros</h1>
-          <p className="text-sm text-muted-foreground">{obraNome}</p>
+        <div className="flex items-start gap-3">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold">Produção</h1>
+            <p className="text-sm text-muted-foreground">{obraNome}</p>
+          </div>
+          <Button className="h-9" variant="outline" onClick={() => navigate(`/obras/${obraId}/producao/hidraulica`)}>
+            Hidráulica
+          </Button>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-2">
@@ -2752,7 +3027,7 @@ const ProducaoObra = () => {
                         <Label>Quantidade</Label>
                         <Input
                           type="text"
-                          inputMode="decimal"
+                          inputMode="text"
                           value={formQuantidade}
                           onChange={(e) => setFormQuantidade(e.target.value)}
                           onBlur={handleResolverFormulaQuantidadeForm}
@@ -2876,7 +3151,7 @@ const ProducaoObra = () => {
                                     <Label className="text-xs">Quantidade</Label>
                                     <Input
                                       type="text"
-                                      inputMode="decimal"
+                                      inputMode="text"
                                       value={editandoRegistro.quantidade}
                                       onChange={(e) => setEditandoRegistro((prev) => prev ? { ...prev, quantidade: e.target.value } : prev)}
                                       onBlur={handleResolverFormulaQuantidadeEdicao}

@@ -1837,12 +1837,15 @@ const ProducaoObra = () => {
       id: string;
       nome: string;
       ativo: boolean;
+      valor_diaria: number;
     };
 
     type RegistroHidraulicaExport = {
       id: string;
       encanador_id: string;
-      tarefa_id: string;
+      tarefa_id: string | null;
+      eh_diaria: boolean;
+      valor: number | null;
       data: string;
       data_inicio: string;
       data_fim?: string;
@@ -1862,12 +1865,12 @@ const ProducaoObra = () => {
         .order('nome', { ascending: true }),
       supabase
         .from('producao_hidraulica_encanadores')
-        .select('id, nome, ativo')
+        .select('id, nome, ativo, valor_diaria')
         .eq('obra_id', Number(obraId))
         .order('nome', { ascending: true }),
       supabase
         .from('producao_hidraulica_registros')
-        .select('id, encanador_id, tarefa_id, data, data_inicio, data_fim, metragem')
+        .select('id, encanador_id, tarefa_id, eh_diaria, valor, data, data_inicio, data_fim, metragem')
         .eq('obra_id', Number(obraId)),
     ]);
 
@@ -1897,12 +1900,15 @@ const ProducaoObra = () => {
         id: e.id,
         nome: e.nome,
         ativo: Boolean(e.ativo),
+        valor_diaria: Number(e.valor_diaria || 0),
       }));
 
       registrosHidraulica = (registrosHidraulicaResp.data || []).map((r) => ({
         id: r.id,
         encanador_id: r.encanador_id,
-        tarefa_id: r.tarefa_id,
+        tarefa_id: r.tarefa_id || null,
+        eh_diaria: Boolean(r.eh_diaria),
+        valor: r.valor === null || r.valor === undefined ? null : Number(r.valor),
         data: r.data,
         data_inicio: r.data_inicio,
         data_fim: r.data_fim || undefined,
@@ -1926,6 +1932,9 @@ const ProducaoObra = () => {
     const wb = new ExcelJS.Workbook();
     wb.creator = 'GLog';
     const nomesAbasUsados = new Set<string>();
+    const referenciasResumoPedreiros = new Map<string, string>();
+    const referenciasResumoEncanadores = new Map<string, string>();
+    const escapeNomeAbaExcel = (nomeAba: string) => nomeAba.replace(/'/g, "''");
 
     const corCinzaEscuro = 'FF4B5563';
     const corCinzaMedio = 'FF6B7280';
@@ -1970,10 +1979,15 @@ const ProducaoObra = () => {
     for (const encanador of encanadoresParaExportar) {
       const registrosEncanadorAteMes = registrosHidraulica.filter((r) => {
         const d = parseISO(r.data);
-        return d <= fimMes && r.encanador_id === encanador.id;
+        return d <= fimMes && r.encanador_id === encanador.id && !r.eh_diaria;
       });
 
-      const totalPagar = tarefasHidraulica.reduce((acc, tarefa) => {
+      const registrosDiariasMes = registrosHidraulica.filter((r) => {
+        const d = parseISO(r.data);
+        return d >= inicioMes && d <= fimMes && r.encanador_id === encanador.id && r.eh_diaria;
+      });
+
+      const totalProducao = tarefasHidraulica.reduce((acc, tarefa) => {
         const somaMetragemAcumulada = registrosEncanadorAteMes
           .filter((r) => r.tarefa_id === tarefa.id)
           .reduce((s, r) => s + (r.metragem || 0), 0);
@@ -1984,6 +1998,9 @@ const ProducaoObra = () => {
 
         return acc + (tarefa.valor * (percentualFeito / 100));
       }, 0);
+
+      const totalDiarias = registrosDiariasMes.reduce((acc, r) => acc + (r.valor ?? encanador.valor_diaria ?? 0), 0);
+      const totalPagar = totalProducao + totalDiarias;
 
       totalResumoPagar += totalPagar;
       resumoLinhas.push(['ENCANADOR', encanador.nome, totalPagar]);
@@ -2210,13 +2227,23 @@ const ProducaoObra = () => {
       ws.getRow(4).height = 46;
       ws.getRow(2).height = 28;
 
+      referenciasResumoPedreiros.set(
+        pedreiro.id,
+        `'${escapeNomeAbaExcel(nomeAba)}'!${letraApagar}${rodapeRow}`
+      );
+
       // Aba ja criada com nome final unico
     }
 
     for (const encanador of encanadoresParaExportar) {
+      const registrosDiariaNoMes = registrosHidraulica.filter((r) => {
+        const d = parseISO(r.data);
+        return d >= inicioMes && d <= fimMes && r.encanador_id === encanador.id && r.eh_diaria;
+      });
+
       const resumoHidraulica = tarefasHidraulica.map((tarefa) => {
         const registrosTarefa = registrosHidraulica
-          .filter((r) => r.encanador_id === encanador.id && r.tarefa_id === tarefa.id)
+          .filter((r) => !r.eh_diaria && r.encanador_id === encanador.id && r.tarefa_id === tarefa.id)
           .sort((a, b) => a.data.localeCompare(b.data));
 
         const registrosNoMes = registrosTarefa.filter((r) => {
@@ -2268,7 +2295,13 @@ const ProducaoObra = () => {
         };
       });
 
-      const totalAPagarHidraulica = resumoHidraulica.reduce((acc, item) => acc + item.aPagar, 0);
+      const totalProducaoHidraulica = resumoHidraulica.reduce((acc, item) => acc + item.aPagar, 0);
+      const totalDiarias = registrosDiariaNoMes.reduce((acc, r) => acc + (r.valor ?? encanador.valor_diaria ?? 0), 0);
+      const valorDiariaExibida = registrosDiariaNoMes.length > 0
+        ? (totalDiarias / registrosDiariaNoMes.length)
+        : (encanador.valor_diaria || 0);
+      const totalAPagarHidraulica = totalProducaoHidraulica + totalDiarias;
+
       if (resumoHidraulica.length === 0 && totalAPagarHidraulica === 0) {
         continue;
       }
@@ -2297,11 +2330,13 @@ const ProducaoObra = () => {
           item.dataInicio ? format(parseISO(item.dataInicio), 'dd/MM/yyyy') : '-',
           item.dataFinal ? format(parseISO(item.dataFinal), 'dd/MM/yyyy') : '-',
           item.metragemMes,
-          item.aPagar,
+          null,
         ]);
       }
 
-      wsHidraulica.addRow(['TOTAL', '', '', '', '', '', totalAPagarHidraulica]);
+      wsHidraulica.addRow(['TOTAL PRODUÇÃO', '', '', '', '', '', null]);
+      wsHidraulica.addRow(['DIÁRIAS', valorDiariaExibida, registrosDiariaNoMes.length, '-', '-', '-', null]);
+      wsHidraulica.addRow(['TOTAL A PAGAR ENCANADOR', '', '', '', '', '', null]);
 
       wsHidraulica.columns = [
         { width: 30 },
@@ -2350,16 +2385,93 @@ const ProducaoObra = () => {
         wsHidraulica.getCell(r, 7).numFmt = '#,##0.00';
       }
 
+      const linhaTotalProducao = wsHidraulica.rowCount - 2;
+      const linhaTotalDiarias = wsHidraulica.rowCount - 1;
       const ultimaLinhaH = wsHidraulica.rowCount;
+      const linhaInicioDados = 5;
+      const linhaFimDados = linhaInicioDados + resumoHidraulica.length - 1;
+
+      for (let r = linhaInicioDados; r <= linhaFimDados; r += 1) {
+        wsHidraulica.getCell(r, 7).value = {
+          formula: `IF(OR(B${r}="",C${r}=""),0,B${r}*C${r})`,
+        };
+      }
+
+      if (resumoHidraulica.length > 0) {
+        wsHidraulica.getCell(linhaTotalProducao, 7).value = {
+          formula: `SUM(G${linhaInicioDados}:G${linhaFimDados})`,
+        };
+      } else {
+        wsHidraulica.getCell(linhaTotalProducao, 7).value = 0;
+      }
+
+      wsHidraulica.getCell(linhaTotalDiarias, 7).value = {
+        formula: `IF(OR(B${linhaTotalDiarias}="",C${linhaTotalDiarias}=""),0,B${linhaTotalDiarias}*C${linhaTotalDiarias})`,
+      };
+
+      wsHidraulica.getCell(ultimaLinhaH, 7).value = {
+        formula: `G${linhaTotalProducao}+G${linhaTotalDiarias}`,
+      };
+
+      wsHidraulica.getCell(linhaTotalDiarias, 1).alignment = { horizontal: 'left', vertical: 'middle' };
+      wsHidraulica.getCell(linhaTotalDiarias, 2).numFmt = '#,##0.00';
+      wsHidraulica.getCell(linhaTotalDiarias, 3).numFmt = '0';
+      wsHidraulica.getCell(linhaTotalDiarias, 4).alignment = { horizontal: 'center', vertical: 'middle' };
+      wsHidraulica.getCell(linhaTotalDiarias, 5).alignment = { horizontal: 'center', vertical: 'middle' };
+      wsHidraulica.getCell(linhaTotalDiarias, 6).alignment = { horizontal: 'center', vertical: 'middle' };
+      wsHidraulica.getCell(linhaTotalDiarias, 6).numFmt = '@';
+      wsHidraulica.getCell(linhaTotalDiarias, 7).numFmt = '#,##0.00';
+
       for (let c = 1; c <= 7; c += 1) {
-        const cell = wsHidraulica.getCell(ultimaLinhaH, c);
-        cell.font = { bold: true };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corVerdeClaro } };
-        cell.border = bordaFina;
+        const totalProdCell = wsHidraulica.getCell(linhaTotalProducao, c);
+        totalProdCell.font = { bold: true };
+        totalProdCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corCinzaClaro } };
+        totalProdCell.border = bordaFina;
+
+        const totalDiariasCell = wsHidraulica.getCell(linhaTotalDiarias, c);
+        totalDiariasCell.font = { bold: true };
+        totalDiariasCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF4D6' } };
+        totalDiariasCell.border = bordaFina;
+
+        const totalGeralCell = wsHidraulica.getCell(ultimaLinhaH, c);
+        totalGeralCell.font = { bold: true };
+        totalGeralCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corVerdeClaro } };
+        totalGeralCell.border = bordaFina;
       }
 
       wsHidraulica.getRow(4).height = 34;
       wsHidraulica.getRow(2).height = 28;
+
+      referenciasResumoEncanadores.set(
+        encanador.id,
+        `'${escapeNomeAbaExcel(nomeAbaH)}'!G${ultimaLinhaH}`
+      );
+    }
+
+    const linhaInicioResumo = 4;
+    pedreirosParaExportar.forEach((pedreiro, idx) => {
+      const referencia = referenciasResumoPedreiros.get(pedreiro.id);
+      if (!referencia) return;
+      const linhaResumo = linhaInicioResumo + idx;
+      wsResumo.getCell(linhaResumo, 3).value = { formula: referencia };
+    });
+
+    const linhaInicioEncanadoresResumo = linhaInicioResumo + pedreirosParaExportar.length;
+    encanadoresParaExportar.forEach((encanador, idx) => {
+      const referencia = referenciasResumoEncanadores.get(encanador.id);
+      if (!referencia) return;
+      const linhaResumo = linhaInicioEncanadoresResumo + idx;
+      wsResumo.getCell(linhaResumo, 3).value = { formula: referencia };
+    });
+
+    const quantidadeLinhasResumo = pedreirosParaExportar.length + encanadoresParaExportar.length;
+    const linhaTotalResumo = wsResumo.rowCount;
+    if (quantidadeLinhasResumo > 0) {
+      wsResumo.getCell(linhaTotalResumo, 3).value = {
+        formula: `SUM(C${linhaInicioResumo}:C${linhaTotalResumo - 1})`,
+      };
+    } else {
+      wsResumo.getCell(linhaTotalResumo, 3).value = 0;
     }
 
     const nomeArquivo = `producao_${obraNome.replace(/\s+/g, '_').toLowerCase()}_${format(tabelaMes, 'MM-yyyy')}.xlsx`;

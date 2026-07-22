@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/select';
 import { Trash2, Plus, ArrowLeft, ClipboardList, Check, X, Pencil, Users, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
-import { endOfMonth, format, parseISO, startOfMonth } from 'date-fns';
+import { addMonths, endOfMonth, format, parseISO, startOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/utils';
@@ -33,7 +33,9 @@ interface HidraulicaRegistro {
   id: string;
   data: string;
   encanadorId: string;
-  tarefaId: string;
+  tarefaId: string | null;
+  ehDiaria: boolean;
+  valor: number | null;
   dataInicio: string;
   dataFim?: string;
   metragem: number | null;
@@ -44,6 +46,7 @@ interface Encanador {
   id: string;
   nome: string;
   ativo: boolean;
+  valorDiaria: number;
 }
 
 const formatQuantidade = (valor: number) => {
@@ -87,17 +90,23 @@ const ProducaoHidraulica = () => {
 
   const [formTarefaId, setFormTarefaId] = useState('');
   const [formEncanadorId, setFormEncanadorId] = useState('');
+  const [formEhDiaria, setFormEhDiaria] = useState(false);
   const [formDataInicio, setFormDataInicio] = useState('');
   const [formDataFim, setFormDataFim] = useState('');
   const [formMetragem, setFormMetragem] = useState('');
   const [formObservacao, setFormObservacao] = useState('');
+  const [formValorDiaria, setFormValorDiaria] = useState('');
 
   const [novoEncanador, setNovoEncanador] = useState('');
-  const [editandoEncanador, setEditandoEncanador] = useState<{ id: string; nome: string } | null>(null);
+  const [novoValorDiaria, setNovoValorDiaria] = useState('');
+  const [editandoEncanador, setEditandoEncanador] = useState<{ id: string; nome: string; valorDiaria: string } | null>(null);
+  const [salvandoValorDiariaResumo, setSalvandoValorDiariaResumo] = useState(false);
   const [editandoRegistro, setEditandoRegistro] = useState<{
     id: string;
     encanadorId: string;
     tarefaId: string;
+    ehDiaria: boolean;
+    valor: string;
     dataInicio: string;
     dataFim: string;
     metragem: string;
@@ -115,7 +124,7 @@ const ProducaoHidraulica = () => {
         supabase.from('obras').select('nome').eq('id', Number(obraId)).single(),
         supabase
           .from('producao_hidraulica_encanadores')
-          .select('id, nome, ativo')
+          .select('id, nome, ativo, valor_diaria')
           .eq('obra_id', Number(obraId))
           .order('nome', { ascending: true }),
         supabase
@@ -126,7 +135,7 @@ const ProducaoHidraulica = () => {
           .order('nome', { ascending: true }),
         supabase
           .from('producao_hidraulica_registros')
-          .select('id, data, encanador_id, tarefa_id, data_inicio, data_fim, metragem, observacao')
+          .select('id, data, encanador_id, tarefa_id, eh_diaria, valor, data_inicio, data_fim, metragem, observacao')
           .eq('obra_id', Number(obraId))
           .order('data', { ascending: false }),
       ]);
@@ -143,6 +152,7 @@ const ProducaoHidraulica = () => {
           id: e.id,
           nome: e.nome,
           ativo: Boolean(e.ativo),
+          valorDiaria: Number(e.valor_diaria || 0),
         }))
       );
 
@@ -161,7 +171,9 @@ const ProducaoHidraulica = () => {
           id: r.id,
           data: r.data,
           encanadorId: r.encanador_id,
-          tarefaId: r.tarefa_id,
+          tarefaId: r.tarefa_id || null,
+          ehDiaria: Boolean(r.eh_diaria),
+          valor: r.valor === null || r.valor === undefined ? null : Number(r.valor),
           dataInicio: r.data_inicio,
           dataFim: r.data_fim || undefined,
           metragem: r.metragem === null || r.metragem === undefined ? null : Number(r.metragem),
@@ -244,6 +256,14 @@ const ProducaoHidraulica = () => {
     setTabelaEncanadorId(todosNaTabelaIds[nextIdx]);
   };
 
+  const irMesAnterior = () => {
+    setMesReferencia((prev) => subMonths(prev, 1));
+  };
+
+  const irProximoMes = () => {
+    setMesReferencia((prev) => addMonths(prev, 1));
+  };
+
   const encanadorTabelaAtual = encanadoresTabelaDisponiveis.find((e) => e.id === tabelaEncanadorId);
   const tabelaTitulo = tabelaEncanadorId === 'all'
     ? 'Toda a Equipe'
@@ -266,8 +286,10 @@ const ProducaoHidraulica = () => {
       ? registros
       : registros.filter((r) => r.encanadorId === tabelaEncanadorId);
 
+    const registrosProducao = registrosBase.filter((r) => !r.ehDiaria && r.tarefaId);
+
     return tarefas.map((tarefa) => {
-      const registrosTarefa = registrosBase
+      const registrosTarefa = registrosProducao
         .filter((r) => r.tarefaId === tarefa.id)
         .sort((a, b) => a.data.localeCompare(b.data));
 
@@ -327,6 +349,174 @@ const ProducaoHidraulica = () => {
     return resumoMensal.reduce((acc, item) => acc + item.aPagar, 0);
   }, [resumoMensal]);
 
+  const diariasMensais = useMemo(() => {
+    const inicioMes = startOfMonth(mesReferencia);
+    const fimMes = endOfMonth(mesReferencia);
+
+    return registros
+      .filter((r) => {
+        if (!r.ehDiaria) {
+          return false;
+        }
+
+        if (tabelaEncanadorId !== 'all' && r.encanadorId !== tabelaEncanadorId) {
+          return false;
+        }
+
+        const d = parseISO(r.data);
+        return d >= inicioMes && d <= fimMes;
+      })
+      .sort((a, b) => {
+        if (a.data === b.data) {
+          const nomeA = encanadoresPorId[a.encanadorId]?.nome || '';
+          const nomeB = encanadoresPorId[b.encanadorId]?.nome || '';
+          return nomeA.localeCompare(nomeB, 'pt-BR');
+        }
+        return a.data.localeCompare(b.data);
+      });
+  }, [registros, mesReferencia, tabelaEncanadorId, encanadoresPorId]);
+
+  const totalDiariasQuantidadeMes = diariasMensais.length;
+
+  const [valorDiariaResumoEditavel, setValorDiariaResumoEditavel] = useState('0');
+
+  useEffect(() => {
+    if (diariasMensais.length === 0) {
+      setValorDiariaResumoEditavel('0');
+      return;
+    }
+
+    if (tabelaEncanadorId !== 'all') {
+      setValorDiariaResumoEditavel(String(encanadoresPorId[tabelaEncanadorId]?.valorDiaria || 0));
+      return;
+    }
+
+    const valorMedio = diariasMensais.reduce((acc, registro) => {
+      return acc + (registro.valor ?? encanadoresPorId[registro.encanadorId]?.valorDiaria ?? 0);
+    }, 0) / diariasMensais.length;
+    setValorDiariaResumoEditavel(String(valorMedio || 0));
+  }, [diariasMensais, encanadoresPorId, tabelaEncanadorId]);
+
+  const valorDiariaResumoNumerico = Number(valorDiariaResumoEditavel.replace(',', '.'));
+
+  const totalDiariasMes = useMemo(() => {
+    const valorBase = Number.isFinite(valorDiariaResumoNumerico) ? valorDiariaResumoNumerico : 0;
+    return totalDiariasQuantidadeMes * valorBase;
+  }, [totalDiariasQuantidadeMes, valorDiariaResumoNumerico]);
+
+  const totalGeralMes = useMemo(() => {
+    const totalDiariasBase = Number.isFinite(valorDiariaResumoNumerico) ? valorDiariaResumoNumerico : 0;
+    return totalPagarMes + (totalDiariasQuantidadeMes * totalDiariasBase);
+  }, [totalPagarMes, totalDiariasQuantidadeMes, valorDiariaResumoNumerico]);
+
+  const handleSalvarValorDiariaResumo = async () => {
+    if (!obraId || salvandoValorDiariaResumo) {
+      return;
+    }
+
+    const valor = Number(valorDiariaResumoEditavel.replace(',', '.'));
+    if (!Number.isFinite(valor) || valor < 0) {
+      toast({
+        title: 'Valor inválido',
+        description: 'Informe um valor de diária maior ou igual a zero.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setSalvandoValorDiariaResumo(true);
+    try {
+      const inicioMes = startOfMonth(mesReferencia);
+      const fimMes = endOfMonth(mesReferencia);
+
+      const registrosDiariasDoMes = registros.filter((registro) => {
+        if (!registro.ehDiaria) {
+          return false;
+        }
+
+        if (tabelaEncanadorId !== 'all' && registro.encanadorId !== tabelaEncanadorId) {
+          return false;
+        }
+
+        const dataRegistro = parseISO(registro.data);
+        return dataRegistro >= inicioMes && dataRegistro <= fimMes;
+      });
+
+      if (registrosDiariasDoMes.length === 0) {
+        if (tabelaEncanadorId !== 'all') {
+          const { error } = await supabase
+            .from('producao_hidraulica_encanadores')
+            .update({ valor_diaria: valor })
+            .eq('id', tabelaEncanadorId)
+            .eq('obra_id', Number(obraId));
+
+          if (error) throw error;
+
+          setEncanadores((prev) => prev.map((encanador) => (
+            encanador.id === tabelaEncanadorId
+              ? { ...encanador, valorDiaria: valor }
+              : encanador
+          )));
+        }
+
+        toast({
+          title: 'Valor salvo',
+          description: 'O valor foi atualizado para o resumo atual.',
+        });
+        return;
+      }
+
+      const ids = registrosDiariasDoMes.map((registro) => registro.id);
+      const { error } = await supabase
+        .from('producao_hidraulica_registros')
+        .update({ valor })
+        .in('id', ids)
+        .eq('obra_id', Number(obraId));
+
+      if (error) {
+        throw error;
+      }
+
+      setRegistros((prev) => prev.map((registro) => (
+        ids.includes(registro.id)
+          ? { ...registro, valor }
+          : registro
+      )));
+
+      if (tabelaEncanadorId !== 'all') {
+        const { error: encError } = await supabase
+          .from('producao_hidraulica_encanadores')
+          .update({ valor_diaria: valor })
+          .eq('id', tabelaEncanadorId)
+          .eq('obra_id', Number(obraId));
+
+        if (encError) {
+          throw encError;
+        }
+
+        setEncanadores((prev) => prev.map((encanador) => (
+          encanador.id === tabelaEncanadorId
+            ? { ...encanador, valorDiaria: valor }
+            : encanador
+        )));
+      }
+
+      toast({
+        title: 'Valor salvo',
+        description: 'O valor das diárias foi gravado com sucesso.',
+      });
+    } catch (error) {
+      console.error('Erro ao salvar valor de diária:', error);
+      toast({
+        title: 'Erro ao salvar',
+        description: 'Não foi possível gravar o valor das diárias.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSalvandoValorDiariaResumo(false);
+    }
+  };
+
   const registrosDataSelecionada = useMemo(() => {
     if (!selectedDate) {
       return [] as HidraulicaRegistro[];
@@ -344,14 +534,42 @@ const ProducaoHidraulica = () => {
     }
 
     const primeiraData = registros
-      .filter((r) => r.encanadorId === formEncanadorId && r.tarefaId === formTarefaId)
+      .filter((r) => !r.ehDiaria && r.encanadorId === formEncanadorId && r.tarefaId === formTarefaId)
       .map((r) => r.dataInicio)
       .sort((a, b) => a.localeCompare(b))[0];
 
     return primeiraData || null;
   }, [registros, formEncanadorId, formTarefaId]);
 
+  const calcularMetragemRestante = (
+    encanadorId: string,
+    tarefaId: string,
+    registroIgnoradoId?: string
+  ) => {
+    const tarefa = tarefasPorId[tarefaId];
+    if (!tarefa || tarefa.metragemPrevista <= 0) {
+      return null;
+    }
+
+    const metragemAcumulada = registros
+      .filter((r) => !r.ehDiaria && r.encanadorId === encanadorId && r.tarefaId === tarefaId && r.id !== registroIgnoradoId)
+      .reduce((acc, r) => acc + (r.metragem || 0), 0);
+
+    const restante = Math.max(0, tarefa.metragemPrevista - metragemAcumulada);
+
+    return {
+      restante,
+      metragemPrevista: tarefa.metragemPrevista,
+      metragemAcumulada,
+    };
+  };
+
   useEffect(() => {
+    if (formEhDiaria && selectedDate) {
+      setFormDataInicio(format(selectedDate, 'yyyy-MM-dd'));
+      return;
+    }
+
     if (dataInicioJaRegistrada) {
       setFormDataInicio(dataInicioJaRegistrada);
       return;
@@ -360,16 +578,18 @@ const ProducaoHidraulica = () => {
     if (selectedDate) {
       setFormDataInicio(format(selectedDate, 'yyyy-MM-dd'));
     }
-  }, [dataInicioJaRegistrada, selectedDate]);
+  }, [dataInicioJaRegistrada, selectedDate, formEhDiaria]);
 
   const handleAbrirLancamento = (data: Date) => {
     setSelectedDate(data);
     setFormTarefaId('');
     setFormEncanadorId('');
+    setFormEhDiaria(tarefas.length === 0);
     setFormDataInicio(format(data, 'yyyy-MM-dd'));
     setFormDataFim('');
     setFormMetragem('');
     setFormObservacao('');
+    setFormValorDiaria('');
     setShowLancarDialog(true);
   };
 
@@ -379,6 +599,7 @@ const ProducaoHidraulica = () => {
     }
 
     const nome = novoEncanador.trim();
+    const valorDiaria = Number(novoValorDiaria.replace(',', '.'));
     if (!nome) {
       toast({
         title: 'Nome obrigatório',
@@ -388,10 +609,19 @@ const ProducaoHidraulica = () => {
       return;
     }
 
+    if (!Number.isFinite(valorDiaria) || valorDiaria < 0) {
+      toast({
+        title: 'Valor de diária inválido',
+        description: 'Informe um valor de diária maior ou igual a zero.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const { data, error } = await supabase
       .from('producao_hidraulica_encanadores')
-      .insert({ obra_id: Number(obraId), nome, ativo: true })
-      .select('id, nome, ativo')
+      .insert({ obra_id: Number(obraId), nome, ativo: true, valor_diaria: valorDiaria })
+      .select('id, nome, ativo, valor_diaria')
       .single();
 
     if (error || !data) {
@@ -403,9 +633,15 @@ const ProducaoHidraulica = () => {
       return;
     }
 
-    setEncanadores((prev) => [...prev, { id: data.id, nome: data.nome, ativo: Boolean(data.ativo) }]
+    setEncanadores((prev) => [...prev, {
+      id: data.id,
+      nome: data.nome,
+      ativo: Boolean(data.ativo),
+      valorDiaria: Number(data.valor_diaria || 0),
+    }]
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')));
     setNovoEncanador('');
+    setNovoValorDiaria('');
   };
 
   const handleSalvarEdicaoEncanador = async () => {
@@ -414,6 +650,7 @@ const ProducaoHidraulica = () => {
     }
 
     const nome = editandoEncanador.nome.trim();
+    const valorDiaria = Number(editandoEncanador.valorDiaria.replace(',', '.'));
     if (!nome) {
       toast({
         title: 'Nome obrigatório',
@@ -423,9 +660,18 @@ const ProducaoHidraulica = () => {
       return;
     }
 
+    if (!Number.isFinite(valorDiaria) || valorDiaria < 0) {
+      toast({
+        title: 'Valor de diária inválido',
+        description: 'Informe um valor de diária maior ou igual a zero.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const { error } = await supabase
       .from('producao_hidraulica_encanadores')
-      .update({ nome })
+      .update({ nome, valor_diaria: valorDiaria })
       .eq('id', editandoEncanador.id)
       .eq('obra_id', Number(obraId));
 
@@ -439,7 +685,7 @@ const ProducaoHidraulica = () => {
     }
 
     setEncanadores((prev) => prev
-      .map((e) => (e.id === editandoEncanador.id ? { ...e, nome } : e))
+      .map((e) => (e.id === editandoEncanador.id ? { ...e, nome, valorDiaria } : e))
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')));
     setEditandoEncanador(null);
   };
@@ -630,14 +876,40 @@ const ProducaoHidraulica = () => {
     }
 
     const metragemTexto = formMetragem.trim();
-    const metragem = metragemTexto === '' ? null : Number(metragemTexto.replace(',', '.'));
+    const metragemCalculada = metragemTexto === '' ? null : Number(metragemTexto.replace(',', '.'));
+    const dataLancamento = format(selectedDate, 'yyyy-MM-dd');
 
-    const dataInicioParaLancamento = dataInicioJaRegistrada || formDataInicio;
+    const dataInicioParaLancamento = formEhDiaria
+      ? dataLancamento
+      : (dataInicioJaRegistrada || formDataInicio);
+    const tarefaSelecionada = !formEhDiaria ? tarefasPorId[formTarefaId] : null;
+    const finalizandoTarefa = !formEhDiaria && Boolean(formDataFim);
+    const valorDiariaTexto = formValorDiaria.trim();
+    const valorDiaria = valorDiariaTexto === ''
+      ? (encanadoresPorId[formEncanadorId]?.valorDiaria || 0)
+      : Number(valorDiariaTexto.replace(',', '.'));
 
-    if (!formEncanadorId || !formTarefaId || !dataInicioParaLancamento) {
+    let metragem = formEhDiaria ? null : metragemCalculada;
+
+    if (finalizandoTarefa) {
+      const restanteInfo = calcularMetragemRestante(formEncanadorId, formTarefaId);
+      if (!restanteInfo) {
+        toast({
+          title: 'Metragem prevista obrigatória',
+          description: 'Para finalizar automaticamente, a tarefa precisa ter metragem prevista maior que zero.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      metragem = restanteInfo.restante > 0 ? restanteInfo.restante : null;
+    }
+
+    if (!formEncanadorId || !dataInicioParaLancamento || (!formEhDiaria && !formTarefaId)) {
       toast({
         title: 'Campos obrigatórios',
-        description: 'Selecione encanador, tarefa e data de início.',
+        description: formEhDiaria
+          ? 'Selecione o encanador.'
+          : 'Selecione encanador, tarefa e data de início.',
         variant: 'destructive',
       });
       return;
@@ -652,7 +924,25 @@ const ProducaoHidraulica = () => {
       return;
     }
 
-    if (formDataFim && formDataFim < dataInicioParaLancamento) {
+    if (!formEhDiaria && !tarefaSelecionada) {
+      toast({
+        title: 'Serviço inválido',
+        description: 'Selecione uma tarefa válida para lançar a produção.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (formEhDiaria && (!Number.isFinite(valorDiaria) || valorDiaria < 0)) {
+      toast({
+        title: 'Valor da diária inválido',
+        description: 'Informe um valor de diária maior ou igual a zero.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!formEhDiaria && formDataFim && formDataFim < dataInicioParaLancamento) {
       toast({
         title: 'Data de finalização inválida',
         description: 'A data de finalização não pode ser anterior à data de início.',
@@ -661,21 +951,21 @@ const ProducaoHidraulica = () => {
       return;
     }
 
-    const dataLancamento = format(selectedDate, 'yyyy-MM-dd');
-
     const { data, error } = await supabase
       .from('producao_hidraulica_registros')
       .insert({
         obra_id: Number(obraId),
         data: dataLancamento,
         encanador_id: formEncanadorId,
-        tarefa_id: formTarefaId,
+        tarefa_id: formEhDiaria ? null : formTarefaId,
+        eh_diaria: formEhDiaria,
+        valor: formEhDiaria ? valorDiaria : null,
         data_inicio: dataInicioParaLancamento,
-        data_fim: formDataFim || null,
+        data_fim: formEhDiaria ? null : (formDataFim || null),
         metragem,
         observacao: formObservacao.trim() || null,
       })
-      .select('id, data, encanador_id, tarefa_id, data_inicio, data_fim, metragem, observacao')
+      .select('id, data, encanador_id, tarefa_id, eh_diaria, valor, data_inicio, data_fim, metragem, observacao')
       .single();
 
     if (error || !data) {
@@ -692,7 +982,9 @@ const ProducaoHidraulica = () => {
         id: data.id,
         data: data.data,
         encanadorId: data.encanador_id,
-        tarefaId: data.tarefa_id,
+        tarefaId: data.tarefa_id || null,
+        ehDiaria: Boolean(data.eh_diaria),
+        valor: data.valor === null || data.valor === undefined ? null : Number(data.valor),
         dataInicio: data.data_inicio,
         dataFim: data.data_fim || undefined,
         metragem: data.metragem === null || data.metragem === undefined ? null : Number(data.metragem),
@@ -704,6 +996,7 @@ const ProducaoHidraulica = () => {
     setFormDataFim('');
     setFormMetragem('');
     setFormObservacao('');
+    setFormValorDiaria('');
 
     toast({
       title: 'Lançamento salvo',
@@ -715,7 +1008,9 @@ const ProducaoHidraulica = () => {
     setEditandoRegistro({
       id: registro.id,
       encanadorId: registro.encanadorId,
-      tarefaId: registro.tarefaId,
+      tarefaId: registro.tarefaId || '',
+      ehDiaria: registro.ehDiaria,
+      valor: registro.valor === null || registro.valor === undefined ? '' : String(registro.valor),
       dataInicio: registro.dataInicio,
       dataFim: registro.dataFim || '',
       metragem: registro.metragem === null ? '' : String(registro.metragem),
@@ -743,13 +1038,37 @@ const ProducaoHidraulica = () => {
       return;
     }
 
+    const dataInicioParaSalvar = editandoRegistro.ehDiaria ? registroOriginal.data : editandoRegistro.dataInicio;
     const metragemTexto = editandoRegistro.metragem.trim();
-    const metragem = metragemTexto === '' ? null : Number(metragemTexto.replace(',', '.'));
+    const metragemCalculada = metragemTexto === '' ? null : Number(metragemTexto.replace(',', '.'));
+    const valorDiariaTexto = editandoRegistro.valor.trim();
+    const valorDiaria = valorDiariaTexto === ''
+      ? (encanadoresPorId[editandoRegistro.encanadorId]?.valorDiaria || 0)
+      : Number(valorDiariaTexto.replace(',', '.'));
+    const finalizandoTarefa = !editandoRegistro.ehDiaria && Boolean(editandoRegistro.dataFim);
+    let metragem = editandoRegistro.ehDiaria ? null : metragemCalculada;
 
-    if (!editandoRegistro.encanadorId || !editandoRegistro.tarefaId || !editandoRegistro.dataInicio) {
+    if (finalizandoTarefa) {
+      const restanteInfo = calcularMetragemRestante(editandoRegistro.encanadorId, editandoRegistro.tarefaId, editandoRegistro.id);
+      if (!restanteInfo) {
+        toast({
+          title: 'Metragem prevista obrigatória',
+          description: 'Para finalizar automaticamente, a tarefa precisa ter metragem prevista maior que zero.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      metragem = restanteInfo.restante > 0 ? restanteInfo.restante : null;
+    }
+
+    const dataFim = editandoRegistro.ehDiaria ? '' : editandoRegistro.dataFim;
+
+    if (!editandoRegistro.encanadorId || !dataInicioParaSalvar || (!editandoRegistro.ehDiaria && !editandoRegistro.tarefaId)) {
       toast({
         title: 'Campos obrigatórios',
-        description: 'Selecione encanador, serviço e data de início.',
+        description: editandoRegistro.ehDiaria
+          ? 'Selecione o encanador.'
+          : 'Selecione encanador, serviço e data de início.',
         variant: 'destructive',
       });
       return;
@@ -764,10 +1083,19 @@ const ProducaoHidraulica = () => {
       return;
     }
 
-    if (editandoRegistro.dataFim && editandoRegistro.dataFim < editandoRegistro.dataInicio) {
+    if (!editandoRegistro.ehDiaria && dataFim && dataFim < dataInicioParaSalvar) {
       toast({
         title: 'Data de finalização inválida',
         description: 'A data de finalização não pode ser anterior à data de início.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (editandoRegistro.ehDiaria && (!Number.isFinite(valorDiaria) || valorDiaria < 0)) {
+      toast({
+        title: 'Valor da diária inválido',
+        description: 'Informe um valor de diária maior ou igual a zero.',
         variant: 'destructive',
       });
       return;
@@ -777,15 +1105,17 @@ const ProducaoHidraulica = () => {
       .from('producao_hidraulica_registros')
       .update({
         encanador_id: editandoRegistro.encanadorId,
-        tarefa_id: editandoRegistro.tarefaId,
-        data_inicio: editandoRegistro.dataInicio,
-        data_fim: editandoRegistro.dataFim || null,
+        tarefa_id: editandoRegistro.ehDiaria ? null : editandoRegistro.tarefaId,
+        eh_diaria: editandoRegistro.ehDiaria,
+        valor: editandoRegistro.ehDiaria ? valorDiaria : null,
+        data_inicio: dataInicioParaSalvar,
+        data_fim: editandoRegistro.ehDiaria ? null : (dataFim || null),
         metragem,
         observacao: editandoRegistro.observacao.trim() || null,
       })
       .eq('id', editandoRegistro.id)
       .eq('obra_id', Number(obraId))
-      .select('id, data, encanador_id, tarefa_id, data_inicio, data_fim, metragem, observacao')
+      .select('id, data, encanador_id, tarefa_id, eh_diaria, valor, data_inicio, data_fim, metragem, observacao')
       .single();
 
     if (error || !data) {
@@ -802,7 +1132,9 @@ const ProducaoHidraulica = () => {
         ? {
             ...registro,
             encanadorId: data.encanador_id,
-            tarefaId: data.tarefa_id,
+            tarefaId: data.tarefa_id || null,
+            ehDiaria: Boolean(data.eh_diaria),
+            valor: data.valor === null || data.valor === undefined ? null : Number(data.valor),
             dataInicio: data.data_inicio,
             dataFim: data.data_fim || undefined,
             metragem: data.metragem === null || data.metragem === undefined ? null : Number(data.metragem),
@@ -855,12 +1187,12 @@ const ProducaoHidraulica = () => {
   return (
     <div className="container mx-auto p-3 sm:p-4 space-y-4 sm:space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-start gap-3">
+        <div className="flex flex-wrap items-start gap-2 sm:gap-3">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold">Produção Hidráulica</h1>
             <p className="text-sm text-muted-foreground">{obraNome}</p>
           </div>
-          <Button className="h-9" variant="outline" onClick={() => navigate(`/obras/${obraId}/producao`)}>
+          <Button className="h-9 w-full sm:w-auto" variant="outline" onClick={() => navigate(`/obras/${obraId}/producao`)}>
             Pedreiros
           </Button>
         </div>
@@ -883,7 +1215,7 @@ const ProducaoHidraulica = () => {
 
       <Card className="p-4 md:p-6">
         <p className="text-sm text-muted-foreground mb-3">
-          Clique em um dia do calendário para lançar início, finalização e metragem da tarefa.
+          Clique em um dia do calendário para lançar produção da tarefa ou marcar diária.
         </p>
         <div className="w-full flex justify-center">
           <Calendar
@@ -909,11 +1241,18 @@ const ProducaoHidraulica = () => {
           </DialogHeader>
 
           <div className="space-y-3 min-h-0 flex-1 flex flex-col">
-            <div className="flex flex-col sm:flex-row gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px_auto] gap-2">
               <Input
                 placeholder="Nome do encanador"
                 value={novoEncanador}
                 onChange={(e) => setNovoEncanador(e.target.value)}
+              />
+              <Input
+                type="text"
+                inputMode="decimal"
+                placeholder="Diária R$"
+                value={novoValorDiaria}
+                onChange={(e) => setNovoValorDiaria(e.target.value)}
               />
               <Button className="w-full sm:w-auto" type="button" onClick={handleAdicionarEncanador}>
                 <Plus className="h-4 w-4 mr-2" />
@@ -927,12 +1266,19 @@ const ProducaoHidraulica = () => {
               ) : (
                 encanadoresAtivos.map((encanador) =>
                   editandoEncanador?.id === encanador.id ? (
-                    <div key={encanador.id} className="flex items-center gap-2 border rounded-md px-3 py-2 bg-blue-50">
+                    <div key={encanador.id} className="grid grid-cols-1 sm:grid-cols-[1fr_140px_auto_auto] items-center gap-2 border rounded-md px-3 py-2 bg-blue-50">
                       <Input
                         autoFocus
                         value={editandoEncanador.nome}
                         onChange={(e) => setEditandoEncanador({ ...editandoEncanador, nome: e.target.value })}
                         onKeyDown={(e) => { if (e.key === 'Enter') handleSalvarEdicaoEncanador(); if (e.key === 'Escape') setEditandoEncanador(null); }}
+                        className="h-8"
+                      />
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        value={editandoEncanador.valorDiaria}
+                        onChange={(e) => setEditandoEncanador({ ...editandoEncanador, valorDiaria: e.target.value })}
                         className="h-8"
                       />
                       <Button variant="ghost" size="icon" onClick={handleSalvarEdicaoEncanador}>
@@ -944,12 +1290,19 @@ const ProducaoHidraulica = () => {
                     </div>
                   ) : (
                     <div key={encanador.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border rounded-md px-3 py-2">
-                      <span className="break-words">{encanador.nome}</span>
+                      <div>
+                        <p className="break-words">{encanador.nome}</p>
+                        <p className="text-xs text-muted-foreground">Diária: {formatCurrency(encanador.valorDiaria)}</p>
+                      </div>
                       <div className="flex gap-1">
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => setEditandoEncanador({ id: encanador.id, nome: encanador.nome })}
+                          onClick={() => setEditandoEncanador({
+                            id: encanador.id,
+                            nome: encanador.nome,
+                            valorDiaria: String(encanador.valorDiaria),
+                          })}
                         >
                           <Pencil className="h-4 w-4 text-blue-500" />
                         </Button>
@@ -974,34 +1327,57 @@ const ProducaoHidraulica = () => {
             </p>
           </div>
           <div className="bg-gray-200 text-center py-2 px-4">
-            <p className="font-bold text-lg uppercase tracking-widest">{tabelaTitulo}</p>
+            <p className="font-bold text-sm sm:text-base md:text-lg uppercase tracking-wide break-words leading-snug">{tabelaTitulo}</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Button variant="outline" size="icon" onClick={irEncanadorAnterior} disabled={encanadoresTabelaDisponiveis.length === 0}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Select value={tabelaEncanadorId} onValueChange={setTabelaEncanadorId}>
-            <SelectTrigger className="w-full sm:w-56">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Toda a equipe</SelectItem>
-              {encanadoresTabelaDisponiveis.map((encanador) => (
-                <SelectItem key={encanador.id} value={encanador.id}>
-                  {encanador.nome}{!encanador.ativo ? ' (histórico)' : ''}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button variant="outline" size="icon" onClick={irProximoEncanador} disabled={encanadoresTabelaDisponiveis.length === 0}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+        <div className="flex flex-col gap-3 sm:items-center sm:justify-between lg:flex-row">
+          <div className="flex items-center justify-between sm:justify-start gap-2">
+            <Button variant="outline" size="icon" onClick={irMesAnterior}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="font-semibold text-sm min-w-[8.5rem] sm:min-w-[10rem] text-center capitalize">
+              {format(mesReferencia, "MMMM 'de' yyyy", { locale: ptBR })}
+            </span>
+            <Button variant="outline" size="icon" onClick={irProximoMes}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:min-w-[20rem] sm:w-auto">
+            <Button variant="outline" size="icon" onClick={irEncanadorAnterior} disabled={encanadoresTabelaDisponiveis.length === 0}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Select value={tabelaEncanadorId} onValueChange={setTabelaEncanadorId}>
+              <SelectTrigger className="w-full sm:w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Toda a equipe</SelectItem>
+                {encanadoresTabelaDisponiveis.map((encanador) => (
+                  <SelectItem key={encanador.id} value={encanador.id}>
+                    {encanador.nome}{!encanador.ativo ? ' (histórico)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="icon" onClick={irProximoEncanador} disabled={encanadoresTabelaDisponiveis.length === 0}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
-        <div className="overflow-x-auto rounded-lg border">
-          <table className="w-full text-xs sm:text-sm border-collapse whitespace-nowrap">
+        <div className="overflow-x-auto rounded-lg border -mx-1 sm:mx-0">
+          <table className="min-w-[960px] w-full table-fixed text-xs sm:text-sm border-collapse whitespace-nowrap">
+            <colgroup>
+              <col style={{ width: '28%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '10%' }} />
+            </colgroup>
             <thead>
               <tr className="bg-gray-600 text-white">
                 <th className="px-3 py-2 text-left font-bold uppercase text-xs border border-gray-500">Serviço</th>
@@ -1047,11 +1423,76 @@ const ProducaoHidraulica = () => {
             {resumoMensal.length > 0 && (
               <tfoot>
                 <tr className="bg-gray-700 text-white">
-                  <td className="px-3 py-2 border border-gray-500 text-center font-bold uppercase text-xs" colSpan={6}>Total</td>
+                  <td className="px-3 py-2 border border-gray-500 text-left font-bold uppercase text-xs" colSpan={6}>Total produção</td>
                   <td className="px-3 py-2 border border-gray-500 text-center font-bold text-xs">{formatCurrency(totalPagarMes)}</td>
+                </tr>
+                <tr className="bg-slate-600 text-white">
+                  <td className="px-3 py-2 border border-slate-500 text-left font-bold uppercase text-xs">Diárias</td>
+                  <td className="px-3 py-2 border border-slate-500 text-center font-bold text-xs">
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      className="h-8 w-full max-w-[96px] mx-auto text-center bg-white text-slate-900"
+                      value={valorDiariaResumoEditavel}
+                      onChange={(e) => setValorDiariaResumoEditavel(e.target.value)}
+                      onBlur={handleSalvarValorDiariaResumo}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleSalvarValorDiariaResumo();
+                        }
+                      }}
+                    />
+                  </td>
+                  <td className="px-3 py-2 border border-slate-500 text-center font-bold text-xs">{totalDiariasQuantidadeMes}</td>
+                  <td className="px-3 py-2 border border-slate-500 text-center font-bold text-xs">-</td>
+                  <td className="px-3 py-2 border border-slate-500 text-center font-bold text-xs">-</td>
+                  <td className="px-3 py-2 border border-slate-500 text-center font-bold text-xs">-</td>
+                  <td className="px-3 py-2 border border-slate-500 text-center font-bold text-xs">{formatCurrency(totalDiariasMes)}</td>
+                </tr>
+                <tr className="bg-primary text-primary-foreground">
+                  <td className="px-3 py-2 border border-primary/80 text-left font-bold uppercase text-xs" colSpan={6}>Total geral a pagar</td>
+                  <td className="px-3 py-2 border border-primary/80 text-center font-bold text-xs">{formatCurrency(totalGeralMes)}</td>
                 </tr>
               </tfoot>
             )}
+          </table>
+        </div>
+
+        <div className="overflow-x-auto rounded-lg border -mx-1 sm:mx-0">
+          <table className="min-w-[640px] w-full text-xs sm:text-sm border-collapse whitespace-nowrap">
+            <thead>
+              <tr className="bg-slate-600 text-white">
+                <th className="px-3 py-2 text-left font-bold uppercase text-xs border border-slate-500">Diárias no mês</th>
+                <th className="px-3 py-2 text-center font-bold uppercase text-xs border border-slate-500">Data</th>
+                <th className="px-3 py-2 text-left font-bold uppercase text-xs border border-slate-500">Encanador</th>
+                <th className="px-3 py-2 text-left font-bold uppercase text-xs border border-slate-500">Observação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {diariasMensais.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="text-center text-muted-foreground py-6">
+                    Sem diárias lançadas neste mês.
+                  </td>
+                </tr>
+              ) : (
+                diariasMensais.map((registro, idx) => (
+                  <tr key={registro.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                    <td className="px-3 py-2 border border-gray-200 text-xs font-semibold">DIÁRIA</td>
+                    <td className="px-3 py-2 border border-gray-200 text-center text-xs">
+                      {format(parseISO(registro.data), 'dd/MM/yyyy')}
+                    </td>
+                    <td className="px-3 py-2 border border-gray-200 text-xs">
+                      {encanadoresPorId[registro.encanadorId]?.nome || 'Encanador removido'}
+                    </td>
+                    <td className="px-3 py-2 border border-gray-200 text-xs">
+                      {registro.observacao || '-'}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
           </table>
         </div>
       </Card>
@@ -1163,22 +1604,48 @@ const ProducaoHidraulica = () => {
           </DialogHeader>
 
           <div className="space-y-4 min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
-            {encanadoresAtivos.length === 0 || tarefas.length === 0 ? (
+            {encanadoresAtivos.length === 0 ? (
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  Para lançar produção, primeiro cadastre pelo menos 1 encanador e 1 tarefa.
+                  Para lançar, primeiro cadastre pelo menos 1 encanador.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <Button variant="outline" onClick={() => setShowGerenciarEncanadores(true)}>
                     Gerenciar encanadores
                   </Button>
-                  <Button variant="outline" onClick={() => setShowGerenciarTarefas(true)}>
-                    Gerenciar tarefas
-                  </Button>
                 </div>
               </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <Label className="mb-1 block">Tipo de lançamento</Label>
+                  <div className="flex flex-wrap gap-4 text-sm">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        checked={!formEhDiaria}
+                        disabled={tarefas.length === 0}
+                        onChange={() => setFormEhDiaria(false)}
+                      />
+                      Produção
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        checked={formEhDiaria}
+                        onChange={() => {
+                          setFormEhDiaria(true);
+                          setFormTarefaId('');
+                          setFormDataFim('');
+                          setFormMetragem('');
+                          setFormValorDiaria('');
+                        }}
+                      />
+                      Diária
+                    </label>
+                  </div>
+                </div>
+
                 <div>
                   <Label>Encanador</Label>
                   <Select value={formEncanadorId} onValueChange={setFormEncanadorId}>
@@ -1197,9 +1664,9 @@ const ProducaoHidraulica = () => {
 
                 <div>
                   <Label>Serviço</Label>
-                  <Select value={formTarefaId} onValueChange={setFormTarefaId}>
+                  <Select value={formTarefaId} onValueChange={setFormTarefaId} disabled={formEhDiaria || tarefas.length === 0}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecione" />
+                      <SelectValue placeholder={formEhDiaria ? 'Não se aplica para diária' : (tarefas.length === 0 ? 'Cadastre tarefas para produção' : 'Selecione')} />
                     </SelectTrigger>
                     <SelectContent>
                       {tarefas.map((tarefa) => (
@@ -1217,11 +1684,16 @@ const ProducaoHidraulica = () => {
                     type="date"
                     value={formDataInicio}
                     onChange={(e) => setFormDataInicio(e.target.value)}
-                    disabled={Boolean(dataInicioJaRegistrada)}
+                    disabled={formEhDiaria || Boolean(dataInicioJaRegistrada)}
                   />
-                  {dataInicioJaRegistrada && (
+                  {!formEhDiaria && dataInicioJaRegistrada && (
                     <p className="mt-1 text-xs text-muted-foreground">
                       Tarefa já iniciada em {format(parseISO(dataInicioJaRegistrada), 'dd/MM/yyyy')}. Para alterar, edite o lançamento desse dia.
+                    </p>
+                  )}
+                  {formEhDiaria && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Para diária, o início será o próprio dia do lançamento.
                     </p>
                   )}
                 </div>
@@ -1232,6 +1704,7 @@ const ProducaoHidraulica = () => {
                     type="date"
                     value={formDataFim}
                     onChange={(e) => setFormDataFim(e.target.value)}
+                    disabled={formEhDiaria}
                   />
                 </div>
 
@@ -1243,7 +1716,13 @@ const ProducaoHidraulica = () => {
                     value={formMetragem}
                     onChange={(e) => setFormMetragem(e.target.value)}
                     placeholder="Ex.: 12,5"
+                    disabled={formEhDiaria || Boolean(formDataFim)}
                   />
+                  {!formEhDiaria && formDataFim && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Com data final informada, a metragem deste lançamento será preenchida automaticamente com o restante da tarefa.
+                    </p>
+                  )}
                 </div>
 
                 <div className="sm:col-span-2">
@@ -1254,11 +1733,33 @@ const ProducaoHidraulica = () => {
                     placeholder="Opcional"
                   />
                 </div>
+
+                {formEhDiaria && (
+                  <div>
+                    <Label>Valor da diária</Label>
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      value={formValorDiaria}
+                      onChange={(e) => setFormValorDiaria(e.target.value)}
+                      placeholder={`Padrão: ${formatCurrency(encanadoresPorId[formEncanadorId]?.valorDiaria || 0)}`}
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Se deixar em branco, será usado o valor padrão cadastrado para o encanador.
+                    </p>
+                  </div>
+                )}
+
+                {tarefas.length === 0 && (
+                  <div className="sm:col-span-2 text-xs text-muted-foreground">
+                    Sem tarefas cadastradas: você pode lançar apenas diária. Para produção, cadastre tarefas em "Gerenciar tarefas".
+                  </div>
+                )}
               </div>
             )}
 
             <div className="flex justify-end gap-2">
-              <Button className="w-full sm:w-auto" onClick={handleSalvarLancamento} disabled={encanadoresAtivos.length === 0 || tarefas.length === 0}>
+              <Button className="w-full sm:w-auto" onClick={handleSalvarLancamento} disabled={encanadoresAtivos.length === 0 || (!formEhDiaria && tarefas.length === 0)}>
                 Salvar lançamento
               </Button>
             </div>
@@ -1272,6 +1773,35 @@ const ProducaoHidraulica = () => {
                   registrosDataSelecionada.map((registro) => (
                     editandoRegistro?.id === registro.id ? (
                       <div key={registro.id} className="border rounded-md px-3 py-3 bg-blue-50 space-y-3">
+                        <div>
+                          <Label className="text-xs mb-1 block">Tipo de lançamento</Label>
+                          <div className="flex flex-wrap gap-4 text-sm">
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="radio"
+                                checked={!editandoRegistro.ehDiaria}
+                                onChange={() => setEditandoRegistro((prev) => prev ? { ...prev, ehDiaria: false } : prev)}
+                              />
+                              Produção
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="radio"
+                                checked={editandoRegistro.ehDiaria}
+                                onChange={() => setEditandoRegistro((prev) => prev ? {
+                                  ...prev,
+                                  ehDiaria: true,
+                                  tarefaId: '',
+                                  dataFim: '',
+                                  metragem: '',
+                                  valor: prev.valor || '',
+                                } : prev)}
+                              />
+                              Diária
+                            </label>
+                          </div>
+                        </div>
+
                         <div className="grid gap-3 sm:grid-cols-2">
                           <div>
                             <Label className="text-xs">Encanador</Label>
@@ -1297,9 +1827,10 @@ const ProducaoHidraulica = () => {
                             <Select
                               value={editandoRegistro.tarefaId}
                               onValueChange={(value) => setEditandoRegistro((prev) => prev ? { ...prev, tarefaId: value } : prev)}
+                              disabled={editandoRegistro.ehDiaria}
                             >
                               <SelectTrigger>
-                                <SelectValue placeholder="Selecione" />
+                                <SelectValue placeholder={editandoRegistro.ehDiaria ? 'Não se aplica para diária' : 'Selecione'} />
                               </SelectTrigger>
                               <SelectContent>
                                 {tarefas.map((tarefa) => (
@@ -1315,7 +1846,9 @@ const ProducaoHidraulica = () => {
                             <Label className="text-xs">Início</Label>
                             {(() => {
                               const registroOriginal = registros.find((r) => r.id === editandoRegistro.id);
-                              const podeEditar = registroOriginal ? registroOriginal.data === registroOriginal.dataInicio : true;
+                              const podeEditar = editandoRegistro.ehDiaria
+                                ? false
+                                : (registroOriginal ? registroOriginal.data === registroOriginal.dataInicio : true);
                               return (
                             <Input
                               type="date"
@@ -1327,9 +1860,18 @@ const ProducaoHidraulica = () => {
                             })()}
                             {(() => {
                               const registroOriginal = registros.find((r) => r.id === editandoRegistro.id);
-                              const podeEditar = registroOriginal ? registroOriginal.data === registroOriginal.dataInicio : true;
+                              const podeEditar = editandoRegistro.ehDiaria
+                                ? false
+                                : (registroOriginal ? registroOriginal.data === registroOriginal.dataInicio : true);
                               if (podeEditar) {
                                 return null;
+                              }
+                              if (editandoRegistro.ehDiaria) {
+                                return (
+                                  <p className="mt-1 text-[11px] text-muted-foreground">
+                                    Em diária, o início segue a data do lançamento.
+                                  </p>
+                                );
                               }
                               return (
                                 <p className="mt-1 text-[11px] text-muted-foreground">
@@ -1345,6 +1887,7 @@ const ProducaoHidraulica = () => {
                               type="date"
                               value={editandoRegistro.dataFim}
                               onChange={(e) => setEditandoRegistro((prev) => prev ? { ...prev, dataFim: e.target.value } : prev)}
+                              disabled={editandoRegistro.ehDiaria}
                             />
                           </div>
 
@@ -1355,8 +1898,27 @@ const ProducaoHidraulica = () => {
                               inputMode="decimal"
                               value={editandoRegistro.metragem}
                               onChange={(e) => setEditandoRegistro((prev) => prev ? { ...prev, metragem: e.target.value } : prev)}
+                              disabled={editandoRegistro.ehDiaria || Boolean(editandoRegistro.dataFim)}
                             />
+                            {!editandoRegistro.ehDiaria && editandoRegistro.dataFim && (
+                              <p className="mt-1 text-[11px] text-muted-foreground">
+                                Com data final informada, a metragem será ajustada automaticamente para o restante da tarefa.
+                              </p>
+                            )}
                           </div>
+
+                          {editandoRegistro.ehDiaria && (
+                            <div>
+                              <Label className="text-xs">Valor da diária</Label>
+                              <Input
+                                type="text"
+                                inputMode="decimal"
+                                value={editandoRegistro.valor}
+                                onChange={(e) => setEditandoRegistro((prev) => prev ? { ...prev, valor: e.target.value } : prev)}
+                                placeholder="Ex.: 250,00"
+                              />
+                            </div>
+                          )}
 
                           <div className="sm:col-span-2">
                             <Label className="text-xs">Observação</Label>
@@ -1381,13 +1943,12 @@ const ProducaoHidraulica = () => {
                       <div key={registro.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border rounded-md px-3 py-2">
                         <div className="min-w-0">
                           <p className="font-medium break-words">
-                            {encanadoresPorId[registro.encanadorId]?.nome || 'Encanador removido'} - {tarefasPorId[registro.tarefaId]?.nome || 'Serviço removido'}
+                            {encanadoresPorId[registro.encanadorId]?.nome || 'Encanador removido'} - {registro.ehDiaria ? 'DIÁRIA' : (tarefasPorId[registro.tarefaId || '']?.nome || 'Serviço removido')}
                           </p>
                           <p className="text-sm text-muted-foreground break-words">
                             Início: {format(parseISO(registro.dataInicio), 'dd/MM/yyyy')}
-                            {registro.dataFim ? ` | Final: ${format(parseISO(registro.dataFim), 'dd/MM/yyyy')}` : ''}
-                            {' | '}
-                            Metragem: {registro.metragem ? formatQuantidade(registro.metragem) : '-'}
+                            {!registro.ehDiaria && registro.dataFim ? ` | Final: ${format(parseISO(registro.dataFim), 'dd/MM/yyyy')}` : ''}
+                            {!registro.ehDiaria ? ` | Metragem: ${registro.metragem ? formatQuantidade(registro.metragem) : '-'}` : ''}
                           </p>
                           {registro.observacao && (
                             <p className="text-xs text-muted-foreground break-words">Obs: {registro.observacao}</p>

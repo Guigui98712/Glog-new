@@ -98,7 +98,6 @@ const ProducaoHidraulica = () => {
   const [formValorDiaria, setFormValorDiaria] = useState('');
 
   const [novoEncanador, setNovoEncanador] = useState('');
-  const [novoValorDiaria, setNovoValorDiaria] = useState('');
   const [editandoEncanador, setEditandoEncanador] = useState<{ id: string; nome: string; valorDiaria: string } | null>(null);
   const [salvandoValorDiariaResumo, setSalvandoValorDiariaResumo] = useState(false);
   const [editandoRegistro, setEditandoRegistro] = useState<{
@@ -599,7 +598,6 @@ const ProducaoHidraulica = () => {
     }
 
     const nome = novoEncanador.trim();
-    const valorDiaria = Number(novoValorDiaria.replace(',', '.'));
     if (!nome) {
       toast({
         title: 'Nome obrigatório',
@@ -609,18 +607,9 @@ const ProducaoHidraulica = () => {
       return;
     }
 
-    if (!Number.isFinite(valorDiaria) || valorDiaria < 0) {
-      toast({
-        title: 'Valor de diária inválido',
-        description: 'Informe um valor de diária maior ou igual a zero.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
     const { data, error } = await supabase
       .from('producao_hidraulica_encanadores')
-      .insert({ obra_id: Number(obraId), nome, ativo: true, valor_diaria: valorDiaria })
+      .insert({ obra_id: Number(obraId), nome, ativo: true, valor_diaria: 0 })
       .select('id, nome, ativo, valor_diaria')
       .single();
 
@@ -641,7 +630,6 @@ const ProducaoHidraulica = () => {
     }]
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')));
     setNovoEncanador('');
-    setNovoValorDiaria('');
   };
 
   const handleSalvarEdicaoEncanador = async () => {
@@ -1241,18 +1229,11 @@ const ProducaoHidraulica = () => {
           </DialogHeader>
 
           <div className="space-y-3 min-h-0 flex-1 flex flex-col">
-            <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px_auto] gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
               <Input
                 placeholder="Nome do encanador"
                 value={novoEncanador}
                 onChange={(e) => setNovoEncanador(e.target.value)}
-              />
-              <Input
-                type="text"
-                inputMode="decimal"
-                placeholder="Diária R$"
-                value={novoValorDiaria}
-                onChange={(e) => setNovoValorDiaria(e.target.value)}
               />
               <Button className="w-full sm:w-auto" type="button" onClick={handleAdicionarEncanador}>
                 <Plus className="h-4 w-4 mr-2" />

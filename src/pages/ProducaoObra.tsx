@@ -1845,6 +1845,7 @@ const ProducaoObra = () => {
       encanador_id: string;
       tarefa_id: string | null;
       eh_diaria: boolean;
+      fator_diaria: number;
       valor: number | null;
       data: string;
       data_inicio: string;
@@ -1870,7 +1871,7 @@ const ProducaoObra = () => {
         .order('nome', { ascending: true }),
       supabase
         .from('producao_hidraulica_registros')
-        .select('id, encanador_id, tarefa_id, eh_diaria, valor, data, data_inicio, data_fim, metragem')
+        .select('id, encanador_id, tarefa_id, eh_diaria, fator_diaria, valor, data, data_inicio, data_fim, metragem')
         .eq('obra_id', Number(obraId)),
     ]);
 
@@ -1908,6 +1909,7 @@ const ProducaoObra = () => {
         encanador_id: r.encanador_id,
         tarefa_id: r.tarefa_id || null,
         eh_diaria: Boolean(r.eh_diaria),
+        fator_diaria: Number(r.fator_diaria || 1) === 0.5 ? 0.5 : 1,
         valor: r.valor === null || r.valor === undefined ? null : Number(r.valor),
         data: r.data,
         data_inicio: r.data_inicio,
@@ -1987,6 +1989,8 @@ const ProducaoObra = () => {
         return d >= inicioMes && d <= fimMes && r.encanador_id === encanador.id && r.eh_diaria;
       });
 
+      const totalDiariasQuantidade = registrosDiariasMes.reduce((acc, r) => acc + (r.fator_diaria || 1), 0);
+
       const totalProducao = tarefasHidraulica.reduce((acc, tarefa) => {
         const somaMetragemAcumulada = registrosEncanadorAteMes
           .filter((r) => r.tarefa_id === tarefa.id)
@@ -1999,7 +2003,10 @@ const ProducaoObra = () => {
         return acc + (tarefa.valor * (percentualFeito / 100));
       }, 0);
 
-      const totalDiarias = registrosDiariasMes.reduce((acc, r) => acc + (r.valor ?? encanador.valor_diaria ?? 0), 0);
+      const totalDiarias = registrosDiariasMes.reduce((acc, r) => {
+        const fator = r.fator_diaria || 1;
+        return acc + ((r.valor ?? encanador.valor_diaria ?? 0) * fator);
+      }, 0);
       const totalPagar = totalProducao + totalDiarias;
 
       totalResumoPagar += totalPagar;
@@ -2241,6 +2248,8 @@ const ProducaoObra = () => {
         return d >= inicioMes && d <= fimMes && r.encanador_id === encanador.id && r.eh_diaria;
       });
 
+      const totalDiariasQuantidade = registrosDiariaNoMes.reduce((acc, r) => acc + (r.fator_diaria || 1), 0);
+
       const resumoHidraulica = tarefasHidraulica.map((tarefa) => {
         const registrosTarefa = registrosHidraulica
           .filter((r) => !r.eh_diaria && r.encanador_id === encanador.id && r.tarefa_id === tarefa.id)
@@ -2296,9 +2305,12 @@ const ProducaoObra = () => {
       });
 
       const totalProducaoHidraulica = resumoHidraulica.reduce((acc, item) => acc + item.aPagar, 0);
-      const totalDiarias = registrosDiariaNoMes.reduce((acc, r) => acc + (r.valor ?? encanador.valor_diaria ?? 0), 0);
-      const valorDiariaExibida = registrosDiariaNoMes.length > 0
-        ? (totalDiarias / registrosDiariaNoMes.length)
+      const totalDiarias = registrosDiariaNoMes.reduce((acc, r) => {
+        const fator = r.fator_diaria || 1;
+        return acc + ((r.valor ?? encanador.valor_diaria ?? 0) * fator);
+      }, 0);
+      const valorDiariaExibida = totalDiariasQuantidade > 0
+        ? (totalDiarias / totalDiariasQuantidade)
         : (encanador.valor_diaria || 0);
       const totalAPagarHidraulica = totalProducaoHidraulica + totalDiarias;
 
@@ -2335,7 +2347,7 @@ const ProducaoObra = () => {
       }
 
       wsHidraulica.addRow(['TOTAL PRODUÇÃO', '', '', '', '', '', null]);
-      wsHidraulica.addRow(['DIÁRIAS', valorDiariaExibida, registrosDiariaNoMes.length, '-', '-', '-', null]);
+      wsHidraulica.addRow(['DIÁRIAS', valorDiariaExibida, totalDiariasQuantidade, '-', '-', '-', null]);
       wsHidraulica.addRow(['TOTAL A PAGAR ENCANADOR', '', '', '', '', '', null]);
 
       wsHidraulica.columns = [

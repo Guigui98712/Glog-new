@@ -35,6 +35,7 @@ interface HidraulicaRegistro {
   encanadorId: string;
   tarefaId: string | null;
   ehDiaria: boolean;
+  fatorDiaria: number;
   valor: number | null;
   dataInicio: string;
   dataFim?: string;
@@ -91,11 +92,11 @@ const ProducaoHidraulica = () => {
   const [formTarefaId, setFormTarefaId] = useState('');
   const [formEncanadorId, setFormEncanadorId] = useState('');
   const [formEhDiaria, setFormEhDiaria] = useState(false);
+  const [formFatorDiaria, setFormFatorDiaria] = useState<1 | 0.5>(1);
   const [formDataInicio, setFormDataInicio] = useState('');
   const [formDataFim, setFormDataFim] = useState('');
   const [formMetragem, setFormMetragem] = useState('');
   const [formObservacao, setFormObservacao] = useState('');
-  const [formValorDiaria, setFormValorDiaria] = useState('');
 
   const [novoEncanador, setNovoEncanador] = useState('');
   const [editandoEncanador, setEditandoEncanador] = useState<{ id: string; nome: string; valorDiaria: string } | null>(null);
@@ -105,6 +106,7 @@ const ProducaoHidraulica = () => {
     encanadorId: string;
     tarefaId: string;
     ehDiaria: boolean;
+    fatorDiaria: 1 | 0.5;
     valor: string;
     dataInicio: string;
     dataFim: string;
@@ -134,7 +136,7 @@ const ProducaoHidraulica = () => {
           .order('nome', { ascending: true }),
         supabase
           .from('producao_hidraulica_registros')
-          .select('id, data, encanador_id, tarefa_id, eh_diaria, valor, data_inicio, data_fim, metragem, observacao')
+          .select('id, data, encanador_id, tarefa_id, eh_diaria, fator_diaria, valor, data_inicio, data_fim, metragem, observacao')
           .eq('obra_id', Number(obraId))
           .order('data', { ascending: false }),
       ]);
@@ -172,6 +174,7 @@ const ProducaoHidraulica = () => {
           encanadorId: r.encanador_id,
           tarefaId: r.tarefa_id || null,
           ehDiaria: Boolean(r.eh_diaria),
+          fatorDiaria: Number(r.fator_diaria || 1) === 0.5 ? 0.5 : 1,
           valor: r.valor === null || r.valor === undefined ? null : Number(r.valor),
           dataInicio: r.data_inicio,
           dataFim: r.data_fim || undefined,
@@ -375,7 +378,7 @@ const ProducaoHidraulica = () => {
       });
   }, [registros, mesReferencia, tabelaEncanadorId, encanadoresPorId]);
 
-  const totalDiariasQuantidadeMes = diariasMensais.length;
+  const totalDiariasQuantidadeMes = diariasMensais.reduce((acc, registro) => acc + (registro.fatorDiaria || 1), 0);
 
   const [valorDiariaResumoEditavel, setValorDiariaResumoEditavel] = useState('0');
 
@@ -390,10 +393,13 @@ const ProducaoHidraulica = () => {
       return;
     }
 
-    const valorMedio = diariasMensais.reduce((acc, registro) => {
-      return acc + (registro.valor ?? encanadoresPorId[registro.encanadorId]?.valorDiaria ?? 0);
-    }, 0) / diariasMensais.length;
-    setValorDiariaResumoEditavel(String(valorMedio || 0));
+    const totalBasePonderada = diariasMensais.reduce((acc, registro) => {
+      return acc + ((registro.valor ?? encanadoresPorId[registro.encanadorId]?.valorDiaria ?? 0) * (registro.fatorDiaria || 1));
+    }, 0);
+    const valorBaseMedio = totalDiariasQuantidadeMes > 0
+      ? (totalBasePonderada / totalDiariasQuantidadeMes)
+      : 0;
+    setValorDiariaResumoEditavel(String(valorBaseMedio || 0));
   }, [diariasMensais, encanadoresPorId, tabelaEncanadorId]);
 
   const valorDiariaResumoNumerico = Number(valorDiariaResumoEditavel.replace(',', '.'));
@@ -584,11 +590,11 @@ const ProducaoHidraulica = () => {
     setFormTarefaId('');
     setFormEncanadorId('');
     setFormEhDiaria(tarefas.length === 0);
+    setFormFatorDiaria(1);
     setFormDataInicio(format(data, 'yyyy-MM-dd'));
     setFormDataFim('');
     setFormMetragem('');
     setFormObservacao('');
-    setFormValorDiaria('');
     setShowLancarDialog(true);
   };
 
@@ -872,10 +878,7 @@ const ProducaoHidraulica = () => {
       : (dataInicioJaRegistrada || formDataInicio);
     const tarefaSelecionada = !formEhDiaria ? tarefasPorId[formTarefaId] : null;
     const finalizandoTarefa = !formEhDiaria && Boolean(formDataFim);
-    const valorDiariaTexto = formValorDiaria.trim();
-    const valorDiaria = valorDiariaTexto === ''
-      ? (encanadoresPorId[formEncanadorId]?.valorDiaria || 0)
-      : Number(valorDiariaTexto.replace(',', '.'));
+    const valorDiaria = encanadoresPorId[formEncanadorId]?.valorDiaria || 0;
 
     let metragem = formEhDiaria ? null : metragemCalculada;
 
@@ -921,15 +924,6 @@ const ProducaoHidraulica = () => {
       return;
     }
 
-    if (formEhDiaria && (!Number.isFinite(valorDiaria) || valorDiaria < 0)) {
-      toast({
-        title: 'Valor da diária inválido',
-        description: 'Informe um valor de diária maior ou igual a zero.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
     if (!formEhDiaria && formDataFim && formDataFim < dataInicioParaLancamento) {
       toast({
         title: 'Data de finalização inválida',
@@ -939,6 +933,8 @@ const ProducaoHidraulica = () => {
       return;
     }
 
+    const fatorDiaria = formEhDiaria ? formFatorDiaria : 1;
+
     const { data, error } = await supabase
       .from('producao_hidraulica_registros')
       .insert({
@@ -947,13 +943,14 @@ const ProducaoHidraulica = () => {
         encanador_id: formEncanadorId,
         tarefa_id: formEhDiaria ? null : formTarefaId,
         eh_diaria: formEhDiaria,
+        fator_diaria: formEhDiaria ? fatorDiaria : 1,
         valor: formEhDiaria ? valorDiaria : null,
         data_inicio: dataInicioParaLancamento,
         data_fim: formEhDiaria ? null : (formDataFim || null),
         metragem,
         observacao: formObservacao.trim() || null,
       })
-      .select('id, data, encanador_id, tarefa_id, eh_diaria, valor, data_inicio, data_fim, metragem, observacao')
+      .select('id, data, encanador_id, tarefa_id, eh_diaria, fator_diaria, valor, data_inicio, data_fim, metragem, observacao')
       .single();
 
     if (error || !data) {
@@ -972,6 +969,7 @@ const ProducaoHidraulica = () => {
         encanadorId: data.encanador_id,
         tarefaId: data.tarefa_id || null,
         ehDiaria: Boolean(data.eh_diaria),
+        fatorDiaria: Number(data.fator_diaria || 1) === 0.5 ? 0.5 : 1,
         valor: data.valor === null || data.valor === undefined ? null : Number(data.valor),
         dataInicio: data.data_inicio,
         dataFim: data.data_fim || undefined,
@@ -984,7 +982,7 @@ const ProducaoHidraulica = () => {
     setFormDataFim('');
     setFormMetragem('');
     setFormObservacao('');
-    setFormValorDiaria('');
+    setFormFatorDiaria(1);
 
     toast({
       title: 'Lançamento salvo',
@@ -998,6 +996,7 @@ const ProducaoHidraulica = () => {
       encanadorId: registro.encanadorId,
       tarefaId: registro.tarefaId || '',
       ehDiaria: registro.ehDiaria,
+      fatorDiaria: registro.fatorDiaria === 0.5 ? 0.5 : 1,
       valor: registro.valor === null || registro.valor === undefined ? '' : String(registro.valor),
       dataInicio: registro.dataInicio,
       dataFim: registro.dataFim || '',
@@ -1029,10 +1028,7 @@ const ProducaoHidraulica = () => {
     const dataInicioParaSalvar = editandoRegistro.ehDiaria ? registroOriginal.data : editandoRegistro.dataInicio;
     const metragemTexto = editandoRegistro.metragem.trim();
     const metragemCalculada = metragemTexto === '' ? null : Number(metragemTexto.replace(',', '.'));
-    const valorDiariaTexto = editandoRegistro.valor.trim();
-    const valorDiaria = valorDiariaTexto === ''
-      ? (encanadoresPorId[editandoRegistro.encanadorId]?.valorDiaria || 0)
-      : Number(valorDiariaTexto.replace(',', '.'));
+    const valorDiaria = encanadoresPorId[editandoRegistro.encanadorId]?.valorDiaria || 0;
     const finalizandoTarefa = !editandoRegistro.ehDiaria && Boolean(editandoRegistro.dataFim);
     let metragem = editandoRegistro.ehDiaria ? null : metragemCalculada;
 
@@ -1080,14 +1076,7 @@ const ProducaoHidraulica = () => {
       return;
     }
 
-    if (editandoRegistro.ehDiaria && (!Number.isFinite(valorDiaria) || valorDiaria < 0)) {
-      toast({
-        title: 'Valor da diária inválido',
-        description: 'Informe um valor de diária maior ou igual a zero.',
-        variant: 'destructive',
-      });
-      return;
-    }
+    const fatorDiaria = editandoRegistro.ehDiaria ? editandoRegistro.fatorDiaria : 1;
 
     const { data, error } = await supabase
       .from('producao_hidraulica_registros')
@@ -1095,6 +1084,7 @@ const ProducaoHidraulica = () => {
         encanador_id: editandoRegistro.encanadorId,
         tarefa_id: editandoRegistro.ehDiaria ? null : editandoRegistro.tarefaId,
         eh_diaria: editandoRegistro.ehDiaria,
+        fator_diaria: editandoRegistro.ehDiaria ? fatorDiaria : 1,
         valor: editandoRegistro.ehDiaria ? valorDiaria : null,
         data_inicio: dataInicioParaSalvar,
         data_fim: editandoRegistro.ehDiaria ? null : (dataFim || null),
@@ -1103,7 +1093,7 @@ const ProducaoHidraulica = () => {
       })
       .eq('id', editandoRegistro.id)
       .eq('obra_id', Number(obraId))
-      .select('id, data, encanador_id, tarefa_id, eh_diaria, valor, data_inicio, data_fim, metragem, observacao')
+      .select('id, data, encanador_id, tarefa_id, eh_diaria, fator_diaria, valor, data_inicio, data_fim, metragem, observacao')
       .single();
 
     if (error || !data) {
@@ -1122,6 +1112,7 @@ const ProducaoHidraulica = () => {
             encanadorId: data.encanador_id,
             tarefaId: data.tarefa_id || null,
             ehDiaria: Boolean(data.eh_diaria),
+            fatorDiaria: Number(data.fator_diaria || 1) === 0.5 ? 0.5 : 1,
             valor: data.valor === null || data.valor === undefined ? null : Number(data.valor),
             dataInicio: data.data_inicio,
             dataFim: data.data_fim || undefined,
@@ -1460,7 +1451,9 @@ const ProducaoHidraulica = () => {
               ) : (
                 diariasMensais.map((registro, idx) => (
                   <tr key={registro.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                    <td className="px-3 py-2 border border-gray-200 text-xs font-semibold">DIÁRIA</td>
+                    <td className="px-3 py-2 border border-gray-200 text-xs font-semibold">
+                      {registro.fatorDiaria === 0.5 ? 'MEIA DIÁRIA' : 'DIÁRIA'}
+                    </td>
                     <td className="px-3 py-2 border border-gray-200 text-center text-xs">
                       {format(parseISO(registro.data), 'dd/MM/yyyy')}
                     </td>
@@ -1613,16 +1606,27 @@ const ProducaoHidraulica = () => {
                     <label className="flex items-center gap-2">
                       <input
                         type="radio"
-                        checked={formEhDiaria}
+                        checked={formEhDiaria && formFatorDiaria === 1}
                         onChange={() => {
                           setFormEhDiaria(true);
                           setFormTarefaId('');
                           setFormDataFim('');
                           setFormMetragem('');
-                          setFormValorDiaria('');
+                          setFormFatorDiaria(1);
                         }}
                       />
                       Diária
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        checked={formEhDiaria && formFatorDiaria === 0.5}
+                        onChange={() => {
+                          setFormEhDiaria(true);
+                          setFormFatorDiaria(0.5);
+                        }}
+                      />
+                      Meia diária
                     </label>
                   </div>
                 </div>
@@ -1715,22 +1719,6 @@ const ProducaoHidraulica = () => {
                   />
                 </div>
 
-                {formEhDiaria && (
-                  <div>
-                    <Label>Valor da diária</Label>
-                    <Input
-                      type="text"
-                      inputMode="decimal"
-                      value={formValorDiaria}
-                      onChange={(e) => setFormValorDiaria(e.target.value)}
-                      placeholder={`Padrão: ${formatCurrency(encanadoresPorId[formEncanadorId]?.valorDiaria || 0)}`}
-                    />
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Se deixar em branco, será usado o valor padrão cadastrado para o encanador.
-                    </p>
-                  </div>
-                )}
-
                 {tarefas.length === 0 && (
                   <div className="sm:col-span-2 text-xs text-muted-foreground">
                     Sem tarefas cadastradas: você pode lançar apenas diária. Para produção, cadastre tarefas em "Gerenciar tarefas".
@@ -1768,7 +1756,7 @@ const ProducaoHidraulica = () => {
                             <label className="flex items-center gap-2">
                               <input
                                 type="radio"
-                                checked={editandoRegistro.ehDiaria}
+                                checked={editandoRegistro.ehDiaria && editandoRegistro.fatorDiaria === 1}
                                 onChange={() => setEditandoRegistro((prev) => prev ? {
                                   ...prev,
                                   ehDiaria: true,
@@ -1776,9 +1764,26 @@ const ProducaoHidraulica = () => {
                                   dataFim: '',
                                   metragem: '',
                                   valor: prev.valor || '',
+                                  fatorDiaria: 1,
                                 } : prev)}
                               />
                               Diária
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="radio"
+                                checked={editandoRegistro.ehDiaria && editandoRegistro.fatorDiaria === 0.5}
+                                onChange={() => setEditandoRegistro((prev) => prev ? {
+                                  ...prev,
+                                  ehDiaria: true,
+                                  tarefaId: '',
+                                  dataFim: '',
+                                  metragem: '',
+                                  valor: prev.valor || '',
+                                  fatorDiaria: 0.5,
+                                } : prev)}
+                              />
+                              Meia diária
                             </label>
                           </div>
                         </div>
@@ -1887,19 +1892,6 @@ const ProducaoHidraulica = () => {
                               </p>
                             )}
                           </div>
-
-                          {editandoRegistro.ehDiaria && (
-                            <div>
-                              <Label className="text-xs">Valor da diária</Label>
-                              <Input
-                                type="text"
-                                inputMode="decimal"
-                                value={editandoRegistro.valor}
-                                onChange={(e) => setEditandoRegistro((prev) => prev ? { ...prev, valor: e.target.value } : prev)}
-                                placeholder="Ex.: 250,00"
-                              />
-                            </div>
-                          )}
 
                           <div className="sm:col-span-2">
                             <Label className="text-xs">Observação</Label>

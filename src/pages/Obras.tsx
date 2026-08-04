@@ -18,13 +18,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, MoreVertical, Pencil, Trash2, Upload, Image, Search, Building, AlertTriangle, X } from "lucide-react";
+import { Plus, MoreVertical, Pencil, Trash2, Upload, Image, X, Archive } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { 
   listarObrasComAcesso,
   criarObra, 
   atualizarObra, 
   excluirObraSegura, 
+  arquivarObra,
   uploadFoto,
   listarRegistrosDiario,
   type Obra,
@@ -359,6 +360,25 @@ const Obras = () => {
     }
   };
 
+  const handleArquivarObra = async (obraId: number, nomeObra: string) => {
+    try {
+      await arquivarObra(obraId);
+      await carregarObras();
+
+      toast({
+        title: "Obra arquivada",
+        description: `A obra \"${nomeObra}\" foi movida para Arquivadas.`,
+      });
+    } catch (error) {
+      console.error('Erro ao arquivar obra:', error);
+      toast({
+        title: "Erro ao arquivar",
+        description: "Nao foi possivel arquivar a obra.",
+        variant: "destructive"
+      });
+    }
+  };
+
   const abrirDialogCompartilhar = (obraId: number) => {
     setCompartilharObraId(obraId);
     setCompartilharEmail("");
@@ -440,6 +460,12 @@ const Obras = () => {
             {!obra.compartilhada && (
               <DropdownMenuItem onClick={() => abrirDialogCompartilhar(obra.id)}>
                 Compartilhar
+              </DropdownMenuItem>
+            )}
+            {!obra.compartilhada && (
+              <DropdownMenuItem onClick={() => handleArquivarObra(obra.id, obra.nome)}>
+                <Archive className="w-4 h-4 mr-2" />
+                Arquivar
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>

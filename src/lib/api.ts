@@ -18,6 +18,7 @@ export type ObraComAcesso = Obra & {
   compartilhada?: boolean;
   permissao_compartilhamento?: string | null;
   obra_origem_id?: number;
+  arquivada?: boolean;
 };
 export type Etapa = Database['public']['Tables']['etapas']['Row'];
 type NovaEtapa = Database['public']['Tables']['etapas']['Insert'];
@@ -41,6 +42,7 @@ export const listarObras = async () => {
     let query = supabase
       .from('obras')
       .select('*')
+      .eq('arquivada', false)
       .order('created_at', { ascending: false });
     
     // Se estiver autenticado, filtrar por user_id
@@ -158,6 +160,72 @@ export const atualizarObra = async (id: number, obra: Partial<Obra>) => {
     return data;
   } catch (error) {
     console.error('Erro ao atualizar obra:', error);
+    throw error;
+  }
+};
+
+export const arquivarObra = async (id: number) => {
+  try {
+    const { data, error } = await supabase
+      .from('obras')
+      .update({
+        arquivada: true,
+        arquivada_em: new Date().toISOString(),
+      } as any)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Erro ao arquivar obra:', error);
+    throw error;
+  }
+};
+
+export const desarquivarObra = async (id: number) => {
+  try {
+    const { data, error } = await supabase
+      .from('obras')
+      .update({
+        arquivada: false,
+        arquivada_em: null,
+        arquivada_por: null,
+      } as any)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Erro ao desarquivar obra:', error);
+    throw error;
+  }
+};
+
+export const listarObrasArquivadas = async (): Promise<Obra[]> => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+
+    if (!userId) {
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .from('obras')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('arquivada', true)
+      .order('arquivada_em', { ascending: false })
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Erro ao listar obras arquivadas:', error);
     throw error;
   }
 };
@@ -2934,6 +3002,7 @@ export const listarObrasComAcesso = async (): Promise<ObraComAcesso[]> => {
     let queryProprias = supabase
       .from('obras')
       .select('*')
+      .eq('arquivada', false)
       .order('created_at', { ascending: false });
 
     if (userId) {
@@ -2990,12 +3059,13 @@ export const listarObrasComAcesso = async (): Promise<ObraComAcesso[]> => {
           data_previsao_fim: obra.data_previsao_fim ?? null,
           trello_board_id: obra.trello_board_id ?? null,
           observacoes: obra.observacoes ?? null,
+          arquivada: obra.arquivada ?? false,
           compartilhada: true,
           permissao_compartilhamento: obra.permissao ?? null,
           obra_origem_id: obraId,
         } as ObraComAcesso;
       })
-      .filter((obra) => obra.id && !idsProprias.has(obra.id));
+      .filter((obra) => obra.id && !idsProprias.has(obra.id) && obra.arquivada !== true);
 
     return [...propriasNormalizadas, ...compartilhadasNormalizadas].sort((a, b) => {
       const dataA = new Date(a.created_at || 0).getTime();

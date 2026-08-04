@@ -6,6 +6,7 @@ import { useAuth } from "./contexts/AuthContext";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import Obras from "./pages/Obras";
+import ObrasArquivadas from "./pages/ObrasArquivadas";
 import ObraDetalhes from "./pages/ObraDetalhes";
 import DiarioObra from "./pages/DiarioObra";
 import Relatorios from "./pages/Relatorios";
@@ -300,6 +301,7 @@ function App() {
             }
           >
             <Route index element={<Obras />} />
+            <Route path="arquivadas" element={<ObrasArquivadas />} />
             <Route path=":id" element={<ObraDetalhes />} />
             <Route path=":id/pendencias" element={<PendenciasObra />} />
             <Route path=":id/diario" element={<DiarioObra />} />

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Link, useLocation, Outlet, useNavigate } from "react-router-dom";
-import { Building2, Calculator, RefreshCw, LogOut, User, Menu, X, ChevronLeft, FolderKanban, Share as ShareIcon } from "lucide-react";
+import { Building2, Calculator, RefreshCw, LogOut, User, Menu, X, ChevronLeft, FolderKanban, Share as ShareIcon, Archive } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,7 @@ const Layout = () => {
   // Determinar o título da página atual
   const getPageTitle = () => {
     const path = location.pathname;
+    if (path.startsWith('/obras/arquivadas')) return 'Arquivadas';
     if (path.startsWith('/obras')) return 'Obras';
     if (path.startsWith('/orcamentos')) return 'Orçamentos';
     if (path.startsWith('/diario')) return 'Diário de Obra';
@@ -120,7 +121,8 @@ const Layout = () => {
     { icon: Building2, label: "Obras", path: "/obras" },
     { icon: ShareIcon, label: "Compartilhadas", path: "/compartilhadas" },
     { icon: Calculator, label: "Orçamentos", path: "/orcamentos" },
-    { icon: FolderKanban, label: "Projetos", path: "/projetos" }
+    { icon: FolderKanban, label: "Projetos", path: "/projetos" },
+    { icon: Archive, label: "Arquivadas", path: "/obras/arquivadas" }
   ];
 
   const handleLogout = async () => {
@@ -305,7 +307,9 @@ const Layout = () => {
           <nav className="p-4 space-y-2">
             {menuItems.map((item) => {
               const Icon = item.icon;
-              const isActive = location.pathname.startsWith(item.path);
+              const isActive = item.path === '/obras'
+                ? location.pathname === '/obras'
+                : location.pathname.startsWith(item.path);
               return (
                 <Link
                   key={item.path}
@@ -349,7 +353,9 @@ const Layout = () => {
           <nav className="p-4 space-y-2 overflow-y-auto h-[calc(100%-5rem)]">
             {menuItems.map((item) => {
               const Icon = item.icon;
-              const isActive = location.pathname.startsWith(item.path);
+              const isActive = item.path === '/obras'
+                ? location.pathname === '/obras'
+                : location.pathname.startsWith(item.path);
               return (
                 <Link
                   key={item.path}

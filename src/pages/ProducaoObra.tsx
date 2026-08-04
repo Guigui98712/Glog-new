@@ -5,7 +5,7 @@ import 'react-calendar/dist/Calendar.css';
 import { formatCurrency } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -21,8 +21,10 @@ import { useToast } from '@/components/ui/use-toast';
 import {
   endOfMonth,
   format,
+  isAfter,
   isSameMonth,
   parseISO,
+  startOfDay,
   startOfMonth,
   addMonths,
   subMonths,
@@ -93,6 +95,88 @@ const formatQuantidade = (valor: number) => {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   }).format(valor);
+};
+
+const normalizarDataISO = (valor?: string | null) => {
+  return valor ? valor.slice(0, 10) : '';
+};
+
+const TAMANHO_PAGINA_REGISTROS = 1000;
+
+const COLUNAS_REGISTRO_COM_FORMULA = 'id, data, pedreiro_id, tarefa_id, quantidade, quantidade_formula, pavimento, observacao, created_at';
+const COLUNAS_REGISTRO_SEM_FORMULA = 'id, data, pedreiro_id, tarefa_id, quantidade, pavimento, observacao, created_at';
+
+const erroColunaUserIdNaoExiste = (error: any) => {
+  const texto = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
+  return texto.includes('user_id') && (texto.includes('does not exist') || texto.includes('schema cache'));
+};
+
+const erroColunaNaoExiste = (error: any, coluna: string) => {
+  const texto = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
+  const colunaLower = coluna.toLowerCase();
+  return texto.includes(colunaLower) && (
+    texto.includes('does not exist')
+    || texto.includes('schema cache')
+    || texto.includes('could not find')
+  );
+};
+
+const montarDetalheErro = (error: any) => {
+  return [error?.message, error?.details, error?.hint].filter(Boolean).join(' | ');
+};
+
+const carregarTodosRegistrosProducao = async (obraNumero: number, comFormula: boolean) => {
+  const registros: any[] = [];
+  let ultimoCreatedAt: string | null = null;
+
+  while (true) {
+    const colunas = comFormula ? COLUNAS_REGISTRO_COM_FORMULA : COLUNAS_REGISTRO_SEM_FORMULA;
+    let query = supabase
+      .from('producao_registros')
+      .select(colunas)
+      .eq('obra_id', obraNumero)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(TAMANHO_PAGINA_REGISTROS);
+
+    if (ultimoCreatedAt) {
+      query = query.lt('created_at', ultimoCreatedAt);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      throw error;
+    }
+
+    const pagina = data || [];
+    registros.push(...pagina);
+
+    if (pagina.length < TAMANHO_PAGINA_REGISTROS) {
+      break;
+    }
+
+    const ultimoItem = pagina[pagina.length - 1];
+    if (!ultimoItem?.created_at) {
+      break;
+    }
+
+    ultimoCreatedAt = ultimoItem.created_at;
+  }
+
+  return registros.sort((a, b) => {
+    if (a.data !== b.data) {
+      return String(a.data).localeCompare(String(b.data));
+    }
+
+    const createdAtA = String(a.created_at || '');
+    const createdAtB = String(b.created_at || '');
+    if (createdAtA !== createdAtB) {
+      return createdAtA.localeCompare(createdAtB);
+    }
+
+    return String(a.id).localeCompare(String(b.id));
+  });
 };
 
 const calcularExpressao = (expressao: string): number | null => {
@@ -253,6 +337,7 @@ const ProducaoObra = () => {
   const [formQuantidadeFormula, setFormQuantidadeFormula] = useState<string | null>(null);
   const [formPavimento, setFormPavimento] = useState('');
   const [formObservacao, setFormObservacao] = useState('');
+  const [suportaQuantidadeFormula, setSuportaQuantidadeFormula] = useState(true);
   const [formPedreiroFaltou, setFormPedreiroFaltou] = useState(false);
   const [formEhFeriado, setFormEhFeriado] = useState(false);
   const [editandoRegistro, setEditandoRegistro] = useState<{
@@ -274,7 +359,7 @@ const ProducaoObra = () => {
       setLoadingDados(true);
       const obraNumero = Number(obraId);
 
-      const [pedreirosResp, tarefasResp, registrosResp] = await Promise.all([
+      const [pedreirosResp, tarefasResp] = await Promise.all([
         supabase
           .from('producao_pedreiros')
           .select('id, nome, ativo')
@@ -286,16 +371,27 @@ const ProducaoObra = () => {
           .eq('obra_id', obraNumero)
           .order('ordem', { ascending: true })
           .order('nome', { ascending: true }),
-        supabase
-          .from('producao_registros')
-          .select('id, data, pedreiro_id, tarefa_id, quantidade, quantidade_formula, pavimento, observacao')
-          .eq('obra_id', obraNumero)
-          .order('data', { ascending: true }),
       ]);
 
-      if (pedreirosResp.error || tarefasResp.error || registrosResp.error) {
-        throw pedreirosResp.error || tarefasResp.error || registrosResp.error;
+      let registrosData: any[] = [];
+      let suportaFormulaNoBanco = true;
+
+      try {
+        registrosData = await carregarTodosRegistrosProducao(obraNumero, true);
+      } catch (error: any) {
+        if (!erroColunaNaoExiste(error, 'quantidade_formula')) {
+          throw error;
+        }
+
+        suportaFormulaNoBanco = false;
+        registrosData = await carregarTodosRegistrosProducao(obraNumero, false);
       }
+
+      if (pedreirosResp.error || tarefasResp.error) {
+        throw pedreirosResp.error || tarefasResp.error;
+      }
+
+      setSuportaQuantidadeFormula(suportaFormulaNoBanco);
 
       // Carrega feriados separadamente para não quebrar se a tabela não existir
       const feriadosResp = await supabase
@@ -319,9 +415,9 @@ const ProducaoObra = () => {
       }));
       setTarefas(ordenarTarefas(tarefasCarregadas));
       setRegistros(
-        (registrosResp.data || []).map((r: any) => ({
+        registrosData.map((r: any) => ({
           id: r.id,
-          data: r.data,
+          data: normalizarDataISO(r.data),
           pedreiroId: r.pedreiro_id,
           tarefaId: r.tarefa_id,
           quantidade: Number(r.quantidade),
@@ -336,7 +432,7 @@ const ProducaoObra = () => {
         setFeriados(
           (feriadosResp.data || []).map((f: any) => ({
             id: f.id,
-            data: f.data,
+            data: normalizarDataISO(f.data),
             descricao: f.descricao || '',
           }))
         );
@@ -1016,6 +1112,24 @@ const ProducaoObra = () => {
       return;
     }
 
+    const hoje = startOfDay(new Date());
+    const dataSelecionada = startOfDay(selectedDate);
+    if (isAfter(dataSelecionada, hoje)) {
+      const dataSelecionadaTexto = format(selectedDate, 'dd/MM/yyyy');
+      const hojeTexto = format(hoje, 'dd/MM/yyyy');
+      const confirmouDataFutura = window.confirm(
+        `A data selecionada (${dataSelecionadaTexto}) é futura em relação a hoje (${hojeTexto}). Deseja salvar mesmo assim?`
+      );
+
+      if (!confirmouDataFutura) {
+        toast({
+          title: 'Lançamento cancelado',
+          description: 'Selecione a data correta no calendário para continuar.',
+        });
+        return;
+      }
+    }
+
     if (!formPedreiroId || (!formPedreiroFaltou && !formTarefaId)) {
       toast({
         title: 'Campos obrigatórios',
@@ -1065,26 +1179,66 @@ const ProducaoObra = () => {
       return;
     }
 
-    const { data, error } = await supabase
-      .from('producao_registros')
-      .insert({
-        obra_id: Number(obraId),
-        data: format(selectedDate, 'yyyy-MM-dd'),
-        pedreiro_id: formPedreiroId,
-        tarefa_id: tarefaParaSalvar,
-        quantidade,
-        quantidade_formula: formulaParaSalvar,
-        pavimento: formPedreiroFaltou ? null : (formPavimento.trim() || null),
-        observacao: formPedreiroFaltou
-          ? montarObservacaoFalta(formObservacao)
-          : (formObservacao.trim() || null),
-      })
-      .select('id, data, pedreiro_id, tarefa_id, quantidade, quantidade_formula, pavimento, observacao')
-      .single();
+    const payloadBase: Record<string, any> = {
+      obra_id: Number(obraId),
+      data: format(selectedDate, 'yyyy-MM-dd'),
+      pedreiro_id: formPedreiroId,
+      tarefa_id: tarefaParaSalvar,
+      quantidade,
+      pavimento: formPedreiroFaltou ? null : (formPavimento.trim() || null),
+      observacao: formPedreiroFaltou
+        ? montarObservacaoFalta(formObservacao)
+        : (formObservacao.trim() || null),
+    };
 
-    if (error || !data) {
-      const partesErro = [error?.message, error?.details, error?.hint].filter(Boolean);
-      const detalheErro = partesErro.length > 0 ? ` (${partesErro.join(' | ')})` : '';
+    if (suportaQuantidadeFormula && formulaParaSalvar) {
+      payloadBase.quantidade_formula = formulaParaSalvar;
+    }
+
+    const { data: authData } = await supabase.auth.getUser();
+    const payloadComUserId = authData?.user?.id
+      ? { ...payloadBase, user_id: authData.user.id }
+      : payloadBase;
+
+    let insertResp = await supabase
+      .from('producao_registros')
+      .insert(payloadComUserId as any)
+      ;
+
+    if (insertResp.error && erroColunaUserIdNaoExiste(insertResp.error) && 'user_id' in payloadComUserId) {
+      insertResp = await supabase
+        .from('producao_registros')
+        .insert(payloadBase)
+        ;
+    }
+
+    if (insertResp.error && erroColunaNaoExiste(insertResp.error, 'quantidade_formula')) {
+      setSuportaQuantidadeFormula(false);
+      const payloadSemFormula: Record<string, any> = { ...payloadBase };
+      delete payloadSemFormula.quantidade_formula;
+
+      const payloadSemFormulaComUser = authData?.user?.id
+        ? { ...payloadSemFormula, user_id: authData.user.id }
+        : payloadSemFormula;
+
+      insertResp = await supabase
+        .from('producao_registros')
+        .insert(payloadSemFormulaComUser as any)
+        ;
+
+      if (insertResp.error && erroColunaUserIdNaoExiste(insertResp.error) && 'user_id' in payloadSemFormulaComUser) {
+        insertResp = await supabase
+          .from('producao_registros')
+          .insert(payloadSemFormula)
+          ;
+      }
+    }
+
+    const { error } = insertResp;
+
+    if (error) {
+      const detalheBruto = montarDetalheErro(error);
+      const detalheErro = detalheBruto ? ` (${detalheBruto})` : '';
       toast({
         title: 'Erro ao salvar lançamento',
         description: `Não foi possível salvar no banco.${detalheErro}`,
@@ -1093,19 +1247,7 @@ const ProducaoObra = () => {
       return;
     }
 
-    setRegistros((prev) => [
-      ...prev,
-      {
-        id: data.id,
-        data: data.data,
-        pedreiroId: data.pedreiro_id,
-        tarefaId: data.tarefa_id,
-        quantidade: Number(data.quantidade),
-        quantidadeFormula: data.quantidade_formula || undefined,
-        pavimento: data.pavimento || '',
-        observacao: data.observacao || '',
-      },
-    ]);
+    await carregarDadosProducao();
     setFormQuantidade('');
     setFormQuantidadeFormula(null);
     setFormPavimento('');
@@ -1113,7 +1255,9 @@ const ProducaoObra = () => {
     setFormPedreiroFaltou(false);
     toast({
       title: formPedreiroFaltou ? 'Falta registrada' : 'Produção lançada',
-      description: formPedreiroFaltou ? 'Falta do pedreiro registrada com sucesso.' : 'Registro salvo com sucesso.',
+      description: formPedreiroFaltou
+        ? `Falta registrada com sucesso em ${format(selectedDate, 'dd/MM/yyyy')}.`
+        : `Registro salvo com sucesso em ${format(selectedDate, 'dd/MM/yyyy')}.`,
     });
   };
 
@@ -1727,25 +1871,42 @@ const ProducaoObra = () => {
       return;
     }
 
-    const { data, error } = await supabase
-      .from('producao_registros')
-      .update({
-        pedreiro_id: editandoRegistro.pedreiroId,
-        tarefa_id: tarefaParaSalvar,
-        quantidade,
-        quantidade_formula: editandoRegistro.faltou || edicaoSomenteObservacao ? null : formulaDigitada,
-        pavimento: editandoRegistro.faltou ? null : (editandoRegistro.pavimento.trim() || null),
-        observacao: editandoRegistro.faltou
-          ? montarObservacaoFalta(editandoRegistro.observacao)
-          : (editandoRegistro.observacao.trim() || null),
-      })
-      .eq('id', editandoRegistro.id)
-      .eq('obra_id', Number(obraId))
-      .select('id, pedreiro_id, tarefa_id, quantidade, quantidade_formula, pavimento, observacao')
-      .single();
+    const payloadEdicao: Record<string, any> = {
+      pedreiro_id: editandoRegistro.pedreiroId,
+      tarefa_id: tarefaParaSalvar,
+      quantidade,
+      pavimento: editandoRegistro.faltou ? null : (editandoRegistro.pavimento.trim() || null),
+      observacao: editandoRegistro.faltou
+        ? montarObservacaoFalta(editandoRegistro.observacao)
+        : (editandoRegistro.observacao.trim() || null),
+    };
 
-    if (error || !data) {
-      const partesErro = [error?.message, error?.details, error?.hint].filter(Boolean);
+    if (suportaQuantidadeFormula) {
+      payloadEdicao.quantidade_formula = editandoRegistro.faltou || edicaoSomenteObservacao ? null : formulaDigitada;
+    }
+
+    let updateResp = await supabase
+      .from('producao_registros')
+      .update(payloadEdicao)
+      .eq('id', editandoRegistro.id)
+      .eq('obra_id', Number(obraId));
+
+    if (updateResp.error && erroColunaNaoExiste(updateResp.error, 'quantidade_formula')) {
+      setSuportaQuantidadeFormula(false);
+      const payloadEdicaoSemFormula: Record<string, any> = { ...payloadEdicao };
+      delete payloadEdicaoSemFormula.quantidade_formula;
+
+      updateResp = await supabase
+        .from('producao_registros')
+        .update(payloadEdicaoSemFormula)
+        .eq('id', editandoRegistro.id)
+        .eq('obra_id', Number(obraId));
+    }
+
+    const { error: updateError } = updateResp;
+
+    if (updateError) {
+      const partesErro = [updateError?.message, updateError?.details, updateError?.hint].filter(Boolean);
       const detalheErro = partesErro.length > 0 ? ` (${partesErro.join(' | ')})` : '';
       toast({
         title: 'Erro ao editar lançamento',
@@ -1755,21 +1916,7 @@ const ProducaoObra = () => {
       return;
     }
 
-    setRegistros((prev) =>
-      prev.map((r) =>
-        r.id === data.id
-          ? {
-              ...r,
-              pedreiroId: data.pedreiro_id,
-              tarefaId: data.tarefa_id,
-              quantidade: Number(data.quantidade),
-              quantidadeFormula: data.quantidade_formula || undefined,
-              pavimento: data.pavimento || '',
-              observacao: data.observacao || '',
-            }
-          : r
-      )
-    );
+    await carregarDadosProducao();
 
     setEditandoRegistro(null);
     toast({
@@ -2855,6 +3002,9 @@ const ProducaoObra = () => {
         <DialogContent className="w-[95vw] max-w-lg h-[86vh] sm:h-[88vh] max-h-[92vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Gerenciar pedreiros</DialogTitle>
+            <DialogDescription className="sr-only">
+              Cadastro e manutenção da lista de pedreiros da obra.
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3 min-h-0 flex-1 flex flex-col">
@@ -2926,6 +3076,9 @@ const ProducaoObra = () => {
         <DialogContent className="w-[95vw] max-w-2xl h-[86vh] sm:h-[88vh] max-h-[92vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Gerenciar tarefas</DialogTitle>
+            <DialogDescription className="sr-only">
+              Cadastro e ordenação de tarefas de produção da obra.
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3 min-h-0 flex-1 flex flex-col">
@@ -3042,10 +3195,13 @@ const ProducaoObra = () => {
       <Dialog open={showLancarDialog} onOpenChange={setShowLancarDialog}>
         <DialogContent className="w-[95vw] max-w-2xl h-[86vh] sm:h-[88vh] max-h-[92vh] overflow-y-hidden flex flex-col">
           <DialogHeader className="pr-7">
+            <DialogDescription className="sr-only">
+              Formulário para lançar produção diária dos pedreiros da obra.
+            </DialogDescription>
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-3">
                 <DialogTitle>
-                  Lançar produção - {selectedDate ? format(selectedDate, "EEEE, dd 'de' MMMM", { locale: ptBR }) : ''}
+                  Lançar produção - {selectedDate ? format(selectedDate, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR }) : ''}
                 </DialogTitle>
                 <div className="flex items-center gap-2">
                   <input

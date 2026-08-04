@@ -57,6 +57,10 @@ const formatQuantidade = (valor: number) => {
   }).format(valor);
 };
 
+const normalizarDataISO = (valor?: string | null) => {
+  return valor ? valor.slice(0, 10) : '';
+};
+
 const ProducaoHidraulica = () => {
   const { id: obraId } = useParams();
   const navigate = useNavigate();
@@ -170,14 +174,14 @@ const ProducaoHidraulica = () => {
       setRegistros(
         (registrosResp.data || []).map((r) => ({
           id: r.id,
-          data: r.data,
+          data: normalizarDataISO(r.data),
           encanadorId: r.encanador_id,
           tarefaId: r.tarefa_id || null,
           ehDiaria: Boolean(r.eh_diaria),
           fatorDiaria: Number(r.fator_diaria || 1) === 0.5 ? 0.5 : 1,
           valor: r.valor === null || r.valor === undefined ? null : Number(r.valor),
-          dataInicio: r.data_inicio,
-          dataFim: r.data_fim || undefined,
+          dataInicio: normalizarDataISO(r.data_inicio),
+          dataFim: normalizarDataISO(r.data_fim) || undefined,
           metragem: r.metragem === null || r.metragem === undefined ? null : Number(r.metragem),
           observacao: r.observacao || '',
         }))
@@ -965,14 +969,14 @@ const ProducaoHidraulica = () => {
     setRegistros((prev) => [
       {
         id: data.id,
-        data: data.data,
+        data: normalizarDataISO(data.data),
         encanadorId: data.encanador_id,
         tarefaId: data.tarefa_id || null,
         ehDiaria: Boolean(data.eh_diaria),
         fatorDiaria: Number(data.fator_diaria || 1) === 0.5 ? 0.5 : 1,
         valor: data.valor === null || data.valor === undefined ? null : Number(data.valor),
-        dataInicio: data.data_inicio,
-        dataFim: data.data_fim || undefined,
+        dataInicio: normalizarDataISO(data.data_inicio),
+        dataFim: normalizarDataISO(data.data_fim) || undefined,
         metragem: data.metragem === null || data.metragem === undefined ? null : Number(data.metragem),
         observacao: data.observacao || '',
       },

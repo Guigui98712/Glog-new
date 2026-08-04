@@ -87,6 +87,10 @@ interface TarefaProducaoResumo {
   nome: string;
 }
 
+const normalizarDataISO = (valor?: string | null) => {
+  return valor ? valor.slice(0, 10) : '';
+};
+
 interface DefinicaoCard {
   id: string;
   title: string;
@@ -668,7 +672,7 @@ const ObraDetalhes = () => {
       setRegistrosProducao(
         (registrosResp.data || []).map((registro: any) => ({
           id: registro.id,
-          data: registro.data,
+          data: normalizarDataISO(registro.data),
           pedreiroId: registro.pedreiro_id,
           tarefaId: registro.tarefa_id,
           quantidade: Number(registro.quantidade),
@@ -682,7 +686,7 @@ const ObraDetalhes = () => {
         setFeriadosProducao(
           (feriadosResp.data || []).map((feriado: any) => ({
             id: feriado.id,
-            data: feriado.data,
+            data: normalizarDataISO(feriado.data),
             descricao: feriado.descricao || '',
           }))
         );

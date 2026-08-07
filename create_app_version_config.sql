@@ -26,7 +26,20 @@ create policy "Leitura publica versao app"
   for select
   using (true);
 
--- Exemplo inicial Android
+-- Configuração Android padrão
+update public.app_version_config
+set
+  latest_version = '1.0.32',
+  min_supported_version = '1.0.31',
+  force_update = false,
+  store_url = 'https://play.google.com/store/apps/details?id=com.glog.app',
+  title = 'Nova versão disponível',
+  message = 'Atualize o GLog para receber melhorias e correções mais recentes.',
+  release_notes = '- Atualização da base do app para a versão 1.0.32\n- Sincronização com a versão web mais recente\n- Correções gerais de estabilidade',
+  is_active = true,
+  updated_at = now()
+where platform = 'android' and is_active = true;
+
 insert into public.app_version_config (
   platform,
   latest_version,
@@ -38,15 +51,18 @@ insert into public.app_version_config (
   release_notes,
   is_active
 )
-values (
+select
   'android',
-  '1.0.24',
-  '1.0.23',
+  '1.0.32',
+  '1.0.31',
   false,
   'https://play.google.com/store/apps/details?id=com.glog.app',
   'Nova versão disponível',
   'Atualize o GLog para receber melhorias e correções mais recentes.',
-  '- Melhorias de responsividade para telas pequenas\n- Ajustes na produção e exportação\n- Correções gerais de estabilidade',
+  '- Atualização da base do app para a versão 1.0.32\n- Sincronização com a versão web mais recente\n- Correções gerais de estabilidade',
   true
-)
-on conflict do nothing;
+where not exists (
+  select 1
+  from public.app_version_config
+  where platform = 'android' and is_active = true
+);

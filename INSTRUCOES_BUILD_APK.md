@@ -12,7 +12,7 @@ O projeto está **pronto para build** com todas as seguintes melhorias implement
 - ✅ Sincronização Capacitor concluída
 
 ### Versão Atual
-- **Versão**: 1.0.19
+- **Versão**: 1.0.32
 - **Build**: f100251
 - **Data**: 04/02/2026
 

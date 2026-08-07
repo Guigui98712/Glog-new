@@ -340,6 +340,24 @@ const ProducaoHidraulica = () => {
 
       const aPagar = tarefa.valor * (percentualFeito / 100);
 
+      const dataInicioDate = dataInicio ? parseISO(dataInicio) : null;
+      const dataFinalDate = dataFinal ? parseISO(dataFinal) : null;
+      const exibirNoMes = (() => {
+        if (!dataInicioDate) {
+          return true;
+        }
+
+        if (dataInicioDate > fimMes) {
+          return false;
+        }
+
+        if (!dataFinalDate) {
+          return true;
+        }
+
+        return dataFinalDate >= inicioMes;
+      })();
+
       return {
         tarefa,
         metragemMes,
@@ -347,8 +365,9 @@ const ProducaoHidraulica = () => {
         dataInicio,
         dataFinal,
         aPagar,
+        exibirNoMes,
       };
-    });
+    }).filter((item) => item.exibirNoMes);
   }, [tarefas, registros, mesReferencia, tabelaEncanadorId]);
 
   const totalPagarMes = useMemo(() => {
@@ -1118,8 +1137,8 @@ const ProducaoHidraulica = () => {
             ehDiaria: Boolean(data.eh_diaria),
             fatorDiaria: Number(data.fator_diaria || 1) === 0.5 ? 0.5 : 1,
             valor: data.valor === null || data.valor === undefined ? null : Number(data.valor),
-            dataInicio: data.data_inicio,
-            dataFim: data.data_fim || undefined,
+            dataInicio: normalizarDataISO(data.data_inicio),
+            dataFim: normalizarDataISO(data.data_fim) || undefined,
             metragem: data.metragem === null || data.metragem === undefined ? null : Number(data.metragem),
             observacao: data.observacao || '',
           }

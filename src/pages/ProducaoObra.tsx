@@ -1950,12 +1950,15 @@ const ProducaoObra = () => {
     const semanas = montarSemanasDoMes(tabelaMes);
     const inicioMes = startOfMonth(tabelaMes);
     const fimMes = endOfMonth(tabelaMes);
+    const inicioMesIso = format(inicioMes, 'yyyy-MM-dd');
+    const fimMesIso = format(fimMes, 'yyyy-MM-dd');
+    const chaveMesReferencia = format(tabelaMes, 'yyyy-MM');
+    const ehDoMesReferencia = (dataIso?: string | null) => normalizarDataISO(dataIso).slice(0, 7) === chaveMesReferencia;
 
     const idsComDadosNoMes = new Set(
       registros
         .filter((r) => {
-          const d = parseISO(r.data);
-          return d >= inicioMes && d <= fimMes;
+          return ehDoMesReferencia(r.data);
         })
         .map((r) => r.pedreiroId)
     );
@@ -2058,9 +2061,9 @@ const ProducaoObra = () => {
         eh_diaria: Boolean(r.eh_diaria),
         fator_diaria: Number(r.fator_diaria || 1) === 0.5 ? 0.5 : 1,
         valor: r.valor === null || r.valor === undefined ? null : Number(r.valor),
-        data: r.data,
-        data_inicio: r.data_inicio,
-        data_fim: r.data_fim || undefined,
+        data: normalizarDataISO(r.data),
+        data_inicio: normalizarDataISO(r.data_inicio),
+        data_fim: normalizarDataISO(r.data_fim) || undefined,
         metragem: r.metragem === null || r.metragem === undefined ? null : Number(r.metragem),
       }));
     }
@@ -2068,15 +2071,89 @@ const ProducaoObra = () => {
     const idsEncanadoresComDadosNoMes = new Set(
       registrosHidraulica
         .filter((r) => {
-          const d = parseISO(r.data);
-          return d >= inicioMes && d <= fimMes;
+          return ehDoMesReferencia(r.data);
         })
         .map((r) => r.encanador_id)
     );
 
     const encanadoresParaExportar = encanadoresHidraulica
-      .filter((e) => e.ativo || idsEncanadoresComDadosNoMes.has(e.id))
+      .filter((e) => idsEncanadoresComDadosNoMes.has(e.id))
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+
+    const montarResumoMensalHidraulicaPorEncanador = (encanadorId: string) => {
+      return tarefasHidraulica
+        .map((tarefa) => {
+          const registrosTarefa = registrosHidraulica
+            .filter((r) => !r.eh_diaria && r.encanador_id === encanadorId && r.tarefa_id === tarefa.id)
+            .sort((a, b) => a.data.localeCompare(b.data));
+
+          const registrosNoMes = registrosTarefa.filter((r) => {
+            return ehDoMesReferencia(r.data);
+          });
+
+          const metragemMes = registrosNoMes.reduce((acc, r) => acc + (r.metragem || 0), 0);
+          const metragemAcumuladaAteMes = registrosTarefa
+            .filter((r) => normalizarDataISO(r.data) <= fimMesIso)
+            .reduce((acc, r) => acc + (r.metragem || 0), 0);
+
+          const dataFinalManual = registrosTarefa
+            .map((r) => r.data_fim)
+            .filter(Boolean)
+            .sort((a, b) => (a as string).localeCompare(b as string))[0] || null;
+
+          const percentual = tarefa.metragem_prevista > 0
+            ? Math.min(100, (metragemAcumuladaAteMes / tarefa.metragem_prevista) * 100)
+            : 0;
+
+          const dataInicio = registrosTarefa.length > 0
+            ? registrosTarefa.map((r) => r.data_inicio).sort((a, b) => a.localeCompare(b))[0]
+            : null;
+
+          let dataFinal: string | null = null;
+          if (dataFinalManual) {
+            dataFinal = dataFinalManual;
+          } else if (tarefa.metragem_prevista > 0) {
+            let acumulado = 0;
+            for (const registro of registrosTarefa) {
+              acumulado += (registro.metragem || 0);
+              if (acumulado >= tarefa.metragem_prevista) {
+                dataFinal = registro.data;
+                break;
+              }
+            }
+          }
+
+          const aPagar = tarefa.valor * (percentual / 100);
+          const dataInicioIso = dataInicio ? normalizarDataISO(dataInicio) : '';
+          const dataFinalIso = dataFinal ? normalizarDataISO(dataFinal) : '';
+          const exibirNoMes = (() => {
+            if (!dataInicioIso) {
+              return true;
+            }
+
+            if (dataInicioIso > fimMesIso) {
+              return false;
+            }
+
+            if (!dataFinalIso) {
+              return true;
+            }
+
+            return dataFinalIso >= inicioMesIso;
+          })();
+
+          return {
+            tarefa,
+            percentual,
+            dataInicio,
+            dataFinal,
+            metragemMes,
+            aPagar,
+            exibirNoMes,
+          };
+        })
+        .filter((item) => item.exibirNoMes);
+    };
 
     const wb = new ExcelJS.Workbook();
     wb.creator = 'GLog';
@@ -2126,29 +2203,15 @@ const ProducaoObra = () => {
     }
 
     for (const encanador of encanadoresParaExportar) {
-      const registrosEncanadorAteMes = registrosHidraulica.filter((r) => {
-        const d = parseISO(r.data);
-        return d <= fimMes && r.encanador_id === encanador.id && !r.eh_diaria;
-      });
+      const resumoHidraulicaEncanador = montarResumoMensalHidraulicaPorEncanador(encanador.id);
 
       const registrosDiariasMes = registrosHidraulica.filter((r) => {
-        const d = parseISO(r.data);
-        return d >= inicioMes && d <= fimMes && r.encanador_id === encanador.id && r.eh_diaria;
+        return ehDoMesReferencia(r.data) && r.encanador_id === encanador.id && r.eh_diaria;
       });
 
       const totalDiariasQuantidade = registrosDiariasMes.reduce((acc, r) => acc + (r.fator_diaria || 1), 0);
 
-      const totalProducao = tarefasHidraulica.reduce((acc, tarefa) => {
-        const somaMetragemAcumulada = registrosEncanadorAteMes
-          .filter((r) => r.tarefa_id === tarefa.id)
-          .reduce((s, r) => s + (r.metragem || 0), 0);
-
-        const percentualFeito = tarefa.metragem_prevista > 0
-          ? Math.min(100, (somaMetragemAcumulada / tarefa.metragem_prevista) * 100)
-          : 0;
-
-        return acc + (tarefa.valor * (percentualFeito / 100));
-      }, 0);
+      const totalProducao = resumoHidraulicaEncanador.reduce((acc, item) => acc + item.aPagar, 0);
 
       const totalDiarias = registrosDiariasMes.reduce((acc, r) => {
         const fator = r.fator_diaria || 1;
@@ -2391,65 +2454,11 @@ const ProducaoObra = () => {
 
     for (const encanador of encanadoresParaExportar) {
       const registrosDiariaNoMes = registrosHidraulica.filter((r) => {
-        const d = parseISO(r.data);
-        return d >= inicioMes && d <= fimMes && r.encanador_id === encanador.id && r.eh_diaria;
+        return ehDoMesReferencia(r.data) && r.encanador_id === encanador.id && r.eh_diaria;
       });
 
       const totalDiariasQuantidade = registrosDiariaNoMes.reduce((acc, r) => acc + (r.fator_diaria || 1), 0);
-
-      const resumoHidraulica = tarefasHidraulica.map((tarefa) => {
-        const registrosTarefa = registrosHidraulica
-          .filter((r) => !r.eh_diaria && r.encanador_id === encanador.id && r.tarefa_id === tarefa.id)
-          .sort((a, b) => a.data.localeCompare(b.data));
-
-        const registrosNoMes = registrosTarefa.filter((r) => {
-          const d = parseISO(r.data);
-          return d >= inicioMes && d <= fimMes;
-        });
-
-        const metragemMes = registrosNoMes.reduce((acc, r) => acc + (r.metragem || 0), 0);
-        const metragemAcumuladaAteMes = registrosTarefa
-          .filter((r) => parseISO(r.data) <= fimMes)
-          .reduce((acc, r) => acc + (r.metragem || 0), 0);
-
-        const dataFinalManual = registrosTarefa
-          .map((r) => r.data_fim)
-          .filter(Boolean)
-          .sort((a, b) => (a as string).localeCompare(b as string))[0] || null;
-
-        const percentual = tarefa.metragem_prevista > 0
-          ? Math.min(100, (metragemAcumuladaAteMes / tarefa.metragem_prevista) * 100)
-          : 0;
-
-        const dataInicio = registrosTarefa.length > 0
-          ? registrosTarefa.map((r) => r.data_inicio).sort((a, b) => a.localeCompare(b))[0]
-          : null;
-
-        let dataFinal: string | null = null;
-        if (dataFinalManual) {
-          dataFinal = dataFinalManual;
-        } else if (tarefa.metragem_prevista > 0) {
-          let acumulado = 0;
-          for (const registro of registrosTarefa) {
-            acumulado += (registro.metragem || 0);
-            if (acumulado >= tarefa.metragem_prevista) {
-              dataFinal = registro.data;
-              break;
-            }
-          }
-        }
-
-        const aPagar = tarefa.valor * (percentual / 100);
-
-        return {
-          tarefa,
-          percentual,
-          dataInicio,
-          dataFinal,
-          metragemMes,
-          aPagar,
-        };
-      });
+      const resumoHidraulica = montarResumoMensalHidraulicaPorEncanador(encanador.id);
 
       const totalProducaoHidraulica = resumoHidraulica.reduce((acc, item) => acc + item.aPagar, 0);
       const totalDiarias = registrosDiariaNoMes.reduce((acc, r) => {
@@ -2574,7 +2583,7 @@ const ProducaoObra = () => {
 
       wsHidraulica.getCell(linhaTotalDiarias, 1).alignment = { horizontal: 'left', vertical: 'middle' };
       wsHidraulica.getCell(linhaTotalDiarias, 2).numFmt = '#,##0.00';
-      wsHidraulica.getCell(linhaTotalDiarias, 3).numFmt = '0';
+      wsHidraulica.getCell(linhaTotalDiarias, 3).numFmt = '#,##0.##';
       wsHidraulica.getCell(linhaTotalDiarias, 4).alignment = { horizontal: 'center', vertical: 'middle' };
       wsHidraulica.getCell(linhaTotalDiarias, 5).alignment = { horizontal: 'center', vertical: 'middle' };
       wsHidraulica.getCell(linhaTotalDiarias, 6).alignment = { horizontal: 'center', vertical: 'middle' };

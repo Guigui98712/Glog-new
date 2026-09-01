@@ -287,9 +287,7 @@ export class ViagensService {
       const contagemPorMes: { [key: string]: number } = {};
       
       data?.forEach(viagem => {
-        const data = new Date(viagem.data);
-        const ano = data.getFullYear();
-        const mes = data.getMonth() + 1; // JavaScript months are 0-based
+        const [ano, mes] = viagem.data.split('-').map(Number);
         const chave = `${ano}-${mes.toString().padStart(2, '0')}`;
         
         contagemPorMes[chave] = (contagemPorMes[chave] || 0) + 1;
@@ -541,9 +539,7 @@ export class ViagensService {
       const contagemPorMes: { [key: string]: ContagemCarroMensal } = {};
       
       viagens.forEach(viagem => {
-        const data = new Date(viagem.data);
-        const ano = data.getFullYear();
-        const mes = data.getMonth() + 1;
+        const [ano, mes] = viagem.data.split('-').map(Number);
         const chave = `${ano}-${mes.toString().padStart(2, '0')}`;
         
         // Criar entrada do mês se não existir

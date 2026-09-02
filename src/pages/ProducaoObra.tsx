@@ -2272,6 +2272,9 @@ const ProducaoObra = () => {
         const d = parseISO(r.data);
         return d >= inicioMes && d <= fimMes && r.pedreiroId === pedreiro.id;
       });
+      const tarefasPedreiroNoMes = tarefas.filter((tarefa) => {
+        return registrosPedreiroMes.some((registro) => registro.tarefaId === tarefa.id);
+      });
 
       const linhas: (string | number)[][] = [];
 
@@ -2287,7 +2290,7 @@ const ProducaoObra = () => {
       const semanasHeader = semanas.map((s) => s.label.toUpperCase());
       linhas.push([...headerBase, ...semanasHeader, 'TOTAL METRAGEM', 'A PAGAR']);
 
-      for (const tarefa of tarefas) {
+      for (const tarefa of tarefasPedreiroNoMes) {
         const registrosTarefa = registrosPedreiroMes.filter((r) => r.tarefaId === tarefa.id);
         const valoresSemana = semanas.map((semana) => {
           return registrosTarefa
@@ -2322,7 +2325,7 @@ const ProducaoObra = () => {
         return Object.entries(freq).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
       });
 
-      const totalGeralPagar = tarefas.reduce((acc, tarefa) => {
+      const totalGeralPagar = tarefasPedreiroNoMes.reduce((acc, tarefa) => {
         const somaQuantidade = registrosPedreiroMes
           .filter((r) => r.tarefaId === tarefa.id)
           .reduce((s, r) => s + r.quantidade, 0);
@@ -2384,7 +2387,7 @@ const ProducaoObra = () => {
       }
 
       const inicioDados = 5;
-      const fimDados = inicioDados + tarefas.length - 1;
+  const fimDados = inicioDados + tarefasPedreiroNoMes.length - 1;
       for (let r = inicioDados; r <= fimDados; r += 1) {
         for (let c = 1; c <= ultimaCol; c += 1) {
           const cell = ws.getCell(r, c);
@@ -2458,7 +2461,14 @@ const ProducaoObra = () => {
       });
 
       const totalDiariasQuantidade = registrosDiariaNoMes.reduce((acc, r) => acc + (r.fator_diaria || 1), 0);
-      const resumoHidraulica = montarResumoMensalHidraulicaPorEncanador(encanador.id);
+      const resumoHidraulica = montarResumoMensalHidraulicaPorEncanador(encanador.id).filter((item) => {
+        return registrosHidraulica.some((registro) => {
+          return ehDoMesReferencia(registro.data)
+            && !registro.eh_diaria
+            && registro.encanador_id === encanador.id
+            && registro.tarefa_id === item.tarefa.id;
+        });
+      });
 
       const totalProducaoHidraulica = resumoHidraulica.reduce((acc, item) => acc + item.aPagar, 0);
       const totalDiarias = registrosDiariaNoMes.reduce((acc, r) => {

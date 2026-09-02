@@ -61,6 +61,10 @@ const normalizarDataISO = (valor?: string | null) => {
   return valor ? valor.slice(0, 10) : '';
 };
 
+const pertenceAoMes = (dataIso: string, mesReferencia: Date) => {
+  return normalizarDataISO(dataIso).slice(0, 7) === format(mesReferencia, 'yyyy-MM');
+};
+
 const ProducaoHidraulica = () => {
   const { id: obraId } = useParams();
   const navigate = useNavigate();
@@ -221,15 +225,9 @@ const ProducaoHidraulica = () => {
   }, [encanadores]);
 
   const encanadoresTabelaDisponiveis = useMemo(() => {
-    const inicioMes = startOfMonth(mesReferencia);
-    const fimMes = endOfMonth(mesReferencia);
-
     const idsComDadosNoMes = new Set(
       registros
-        .filter((r) => {
-          const d = parseISO(r.data);
-          return d >= inicioMes && d <= fimMes;
-        })
+        .filter((r) => pertenceAoMes(r.data, mesReferencia))
         .map((r) => r.encanadorId)
     );
 
@@ -286,8 +284,8 @@ const ProducaoHidraulica = () => {
   };
 
   const resumoMensal = useMemo(() => {
-    const inicioMes = startOfMonth(mesReferencia);
-    const fimMes = endOfMonth(mesReferencia);
+    const inicioMesIso = format(startOfMonth(mesReferencia), 'yyyy-MM-dd');
+    const fimMesIso = format(endOfMonth(mesReferencia), 'yyyy-MM-dd');
     const registrosBase = tabelaEncanadorId === 'all'
       ? registros
       : registros.filter((r) => r.encanadorId === tabelaEncanadorId);
@@ -300,13 +298,12 @@ const ProducaoHidraulica = () => {
         .sort((a, b) => a.data.localeCompare(b.data));
 
       const registrosNoMes = registrosTarefa.filter((r) => {
-        const d = parseISO(r.data);
-        return d >= inicioMes && d <= fimMes;
+        return pertenceAoMes(r.data, mesReferencia);
       });
 
       const metragemMes = registrosNoMes.reduce((acc, r) => acc + (r.metragem || 0), 0);
       const metragemAcumuladaAteMes = registrosTarefa
-        .filter((r) => parseISO(r.data) <= fimMes)
+        .filter((r) => normalizarDataISO(r.data) <= fimMesIso)
         .reduce((acc, r) => acc + (r.metragem || 0), 0);
 
       const dataFinalManual = registrosTarefa
@@ -340,22 +337,22 @@ const ProducaoHidraulica = () => {
 
       const aPagar = tarefa.valor * (percentualFeito / 100);
 
-      const dataInicioDate = dataInicio ? parseISO(dataInicio) : null;
-      const dataFinalDate = dataFinal ? parseISO(dataFinal) : null;
+      const dataInicioIso = dataInicio ? normalizarDataISO(dataInicio) : '';
+      const dataFinalIso = dataFinal ? normalizarDataISO(dataFinal) : '';
       const exibirNoMes = (() => {
-        if (!dataInicioDate) {
+        if (!dataInicioIso) {
           return true;
         }
 
-        if (dataInicioDate > fimMes) {
+        if (dataInicioIso > fimMesIso) {
           return false;
         }
 
-        if (!dataFinalDate) {
+        if (!dataFinalIso) {
           return true;
         }
 
-        return dataFinalDate >= inicioMes;
+        return dataFinalIso >= inicioMesIso;
       })();
 
       return {
@@ -375,9 +372,6 @@ const ProducaoHidraulica = () => {
   }, [resumoMensal]);
 
   const diariasMensais = useMemo(() => {
-    const inicioMes = startOfMonth(mesReferencia);
-    const fimMes = endOfMonth(mesReferencia);
-
     return registros
       .filter((r) => {
         if (!r.ehDiaria) {
@@ -388,8 +382,7 @@ const ProducaoHidraulica = () => {
           return false;
         }
 
-        const d = parseISO(r.data);
-        return d >= inicioMes && d <= fimMes;
+        return pertenceAoMes(r.data, mesReferencia);
       })
       .sort((a, b) => {
         if (a.data === b.data) {

@@ -40,6 +40,7 @@ import AlmoxarifadoAcesso from './pages/AlmoxarifadoAcesso';
 import Ferramentas from './pages/Ferramentas';
 import ProducaoObra from './pages/ProducaoObra';
 import ProducaoHidraulica from './pages/ProducaoHidraulica';
+import ProducaoEletricidade from './pages/ProducaoEletricidade';
 import AppUpdateChecker from './components/AppUpdateChecker';
 
 // Componente para capturar erros
@@ -317,6 +318,7 @@ function App() {
             <Route path=":id/demanda/total" element={<DemandaTotais />} />
             <Route path=":id/producao" element={<ProducaoObra />} />
             <Route path=":id/producao/hidraulica" element={<ProducaoHidraulica />} />
+            <Route path=":id/producao/eletricidade" element={<ProducaoEletricidade />} />
             <Route path=":id/projetos" element={<Projetos />} />
             <Route path=":id/viagens" element={<ViagensObra />} />
           </Route>

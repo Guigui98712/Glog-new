@@ -2003,11 +2003,34 @@ const ProducaoObra = () => {
       metragem: number | null;
     };
 
+    type TarefaEletricaExport = TarefaHidraulicaExport;
+
+    type EletricistaEletricaExport = {
+      id: string;
+      nome: string;
+      ativo: boolean;
+      valor_diaria: number;
+    };
+
+    type RegistroEletricaExport = Omit<RegistroHidraulicaExport, 'encanador_id'> & {
+      eletricista_id: string;
+    };
+
     let tarefasHidraulica: TarefaHidraulicaExport[] = [];
     let encanadoresHidraulica: EncanadorHidraulicaExport[] = [];
     let registrosHidraulica: RegistroHidraulicaExport[] = [];
+    let tarefasEletrica: TarefaEletricaExport[] = [];
+    let eletricistasEletrica: EletricistaEletricaExport[] = [];
+    let registrosEletrica: RegistroEletricaExport[] = [];
 
-    const [tarefasHidraulicaResp, encanadoresHidraulicaResp, registrosHidraulicaResp] = await Promise.all([
+    const [
+      tarefasHidraulicaResp,
+      encanadoresHidraulicaResp,
+      registrosHidraulicaResp,
+      tarefasEletricaResp,
+      eletricistasEletricaResp,
+      registrosEletricaResp,
+    ] = await Promise.all([
       supabase
         .from('producao_hidraulica_tarefas')
         .select('id, nome, valor, metragem_prevista, ordem')
@@ -2022,6 +2045,21 @@ const ProducaoObra = () => {
       supabase
         .from('producao_hidraulica_registros')
         .select('id, encanador_id, tarefa_id, eh_diaria, fator_diaria, valor, data, data_inicio, data_fim, metragem')
+        .eq('obra_id', Number(obraId)),
+      supabase
+        .from('producao_eletrica_tarefas')
+        .select('id, nome, valor, metragem_prevista, ordem')
+        .eq('obra_id', Number(obraId))
+        .order('ordem', { ascending: true })
+        .order('nome', { ascending: true }),
+      supabase
+        .from('producao_eletrica_eletricistas')
+        .select('id, nome, ativo, valor_diaria')
+        .eq('obra_id', Number(obraId))
+        .order('nome', { ascending: true }),
+      supabase
+        .from('producao_eletrica_registros')
+        .select('id, eletricista_id, tarefa_id, eh_diaria, fator_diaria, valor, data, data_inicio, data_fim, metragem')
         .eq('obra_id', Number(obraId)),
     ]);
 
@@ -2068,6 +2106,49 @@ const ProducaoObra = () => {
       }));
     }
 
+    const erroEletrica = tarefasEletricaResp.error || eletricistasEletricaResp.error || registrosEletricaResp.error;
+    if (erroEletrica) {
+      const msg = `${erroEletrica.message || ''} ${erroEletrica.details || ''}`.toLowerCase();
+      const tabelaNaoExiste =
+        msg.includes('does not exist') || msg.includes('relation') || msg.includes('not found');
+
+      if (!tabelaNaoExiste) {
+        toast({
+          title: 'Aviso na exportação',
+          description: 'Excel gerado sem a aba Elétrica por falha ao ler os dados.',
+          variant: 'destructive',
+        });
+      }
+    } else {
+      tarefasEletrica = (tarefasEletricaResp.data || []).map((t) => ({
+        id: t.id,
+        nome: t.nome,
+        valor: Number(t.valor || 0),
+        metragem_prevista: Number(t.metragem_prevista || 0),
+        ordem: Number(t.ordem || 0),
+      }));
+
+      eletricistasEletrica = (eletricistasEletricaResp.data || []).map((e) => ({
+        id: e.id,
+        nome: e.nome,
+        ativo: Boolean(e.ativo),
+        valor_diaria: Number(e.valor_diaria || 0),
+      }));
+
+      registrosEletrica = (registrosEletricaResp.data || []).map((r) => ({
+        id: r.id,
+        eletricista_id: r.eletricista_id,
+        tarefa_id: r.tarefa_id || null,
+        eh_diaria: Boolean(r.eh_diaria),
+        fator_diaria: Number(r.fator_diaria || 1) === 0.5 ? 0.5 : 1,
+        valor: r.valor === null || r.valor === undefined ? null : Number(r.valor),
+        data: normalizarDataISO(r.data),
+        data_inicio: normalizarDataISO(r.data_inicio),
+        data_fim: normalizarDataISO(r.data_fim) || undefined,
+        metragem: r.metragem === null || r.metragem === undefined ? null : Number(r.metragem),
+      }));
+    }
+
     const idsEncanadoresComDadosNoMes = new Set(
       registrosHidraulica
         .filter((r) => {
@@ -2078,6 +2159,16 @@ const ProducaoObra = () => {
 
     const encanadoresParaExportar = encanadoresHidraulica
       .filter((e) => idsEncanadoresComDadosNoMes.has(e.id))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+
+    const idsEletricistasComDadosNoMes = new Set(
+      registrosEletrica
+        .filter((r) => ehDoMesReferencia(r.data))
+        .map((r) => r.eletricista_id)
+    );
+
+    const eletricistasParaExportar = eletricistasEletrica
+      .filter((e) => idsEletricistasComDadosNoMes.has(e.id))
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 
     const montarResumoMensalHidraulicaPorEncanador = (encanadorId: string) => {
@@ -2155,11 +2246,47 @@ const ProducaoObra = () => {
         .filter((item) => item.exibirNoMes);
     };
 
+    const montarResumoMensalEletricaPorEletricista = (eletricistaId: string) => {
+      return tarefasEletrica
+        .map((tarefa) => {
+          const registrosTarefa = registrosEletrica
+            .filter((r) => !r.eh_diaria && r.eletricista_id === eletricistaId && r.tarefa_id === tarefa.id)
+            .sort((a, b) => a.data.localeCompare(b.data));
+          const registrosNoMes = registrosTarefa.filter((r) => ehDoMesReferencia(r.data));
+          const metragemMes = registrosNoMes.reduce((acc, r) => acc + (r.metragem || 0), 0);
+          const metragemAcumuladaAteMes = registrosTarefa
+            .filter((r) => normalizarDataISO(r.data) <= fimMesIso)
+            .reduce((acc, r) => acc + (r.metragem || 0), 0);
+          const dataInicio = registrosTarefa.map((r) => r.data_inicio).sort((a, b) => a.localeCompare(b))[0] || null;
+          const dataFinalManual = registrosTarefa.map((r) => r.data_fim).filter(Boolean)
+            .sort((a, b) => (a as string).localeCompare(b as string))[0] || null;
+          const percentual = tarefa.metragem_prevista > 0
+            ? Math.min(100, (metragemAcumuladaAteMes / tarefa.metragem_prevista) * 100)
+            : 0;
+          let dataFinal: string | null = dataFinalManual;
+          if (!dataFinal && tarefa.metragem_prevista > 0) {
+            let acumulado = 0;
+            for (const registro of registrosTarefa) {
+              acumulado += registro.metragem || 0;
+              if (acumulado >= tarefa.metragem_prevista) {
+                dataFinal = registro.data;
+                break;
+              }
+            }
+          }
+
+          return { tarefa, percentual, dataInicio, dataFinal, metragemMes, aPagar: tarefa.valor * (percentual / 100) };
+        })
+        .filter((item) => item.dataInicio && normalizarDataISO(item.dataInicio) <= fimMesIso
+          && (!item.dataFinal || normalizarDataISO(item.dataFinal) >= inicioMesIso));
+    };
+
     const wb = new ExcelJS.Workbook();
     wb.creator = 'GLog';
     const nomesAbasUsados = new Set<string>();
     const referenciasResumoPedreiros = new Map<string, string>();
     const referenciasResumoEncanadores = new Map<string, string>();
+    const referenciasResumoEletricistas = new Map<string, string>();
     const escapeNomeAbaExcel = (nomeAba: string) => nomeAba.replace(/'/g, "''");
 
     const corCinzaEscuro = 'FF4B5563';
@@ -2221,6 +2348,20 @@ const ProducaoObra = () => {
 
       totalResumoPagar += totalPagar;
       resumoLinhas.push(['ENCANADOR', encanador.nome, totalPagar]);
+    }
+
+    for (const eletricista of eletricistasParaExportar) {
+      const resumoEletricaEletricista = montarResumoMensalEletricaPorEletricista(eletricista.id);
+      const registrosDiariasMes = registrosEletrica.filter((r) => ehDoMesReferencia(r.data)
+        && r.eletricista_id === eletricista.id && r.eh_diaria);
+      const totalProducao = resumoEletricaEletricista.reduce((acc, item) => acc + item.aPagar, 0);
+      const totalDiarias = registrosDiariasMes.reduce((acc, r) => {
+        return acc + ((r.valor ?? eletricista.valor_diaria) * (r.fator_diaria || 1));
+      }, 0);
+      const totalPagar = totalProducao + totalDiarias;
+
+      totalResumoPagar += totalPagar;
+      resumoLinhas.push(['ELETRICISTA', eletricista.nome, totalPagar]);
     }
 
     resumoLinhas.push(['', 'TOTAL GERAL', totalResumoPagar]);
@@ -2593,7 +2734,7 @@ const ProducaoObra = () => {
 
       wsHidraulica.getCell(linhaTotalDiarias, 1).alignment = { horizontal: 'left', vertical: 'middle' };
       wsHidraulica.getCell(linhaTotalDiarias, 2).numFmt = '#,##0.00';
-      wsHidraulica.getCell(linhaTotalDiarias, 3).numFmt = '#,##0.##';
+      wsHidraulica.getCell(linhaTotalDiarias, 3).numFmt = '0.0';
       wsHidraulica.getCell(linhaTotalDiarias, 4).alignment = { horizontal: 'center', vertical: 'middle' };
       wsHidraulica.getCell(linhaTotalDiarias, 5).alignment = { horizontal: 'center', vertical: 'middle' };
       wsHidraulica.getCell(linhaTotalDiarias, 6).alignment = { horizontal: 'center', vertical: 'middle' };
@@ -2626,6 +2767,136 @@ const ProducaoObra = () => {
       );
     }
 
+    for (const eletricista of eletricistasParaExportar) {
+      const registrosDiariaNoMes = registrosEletrica.filter((r) => {
+        return ehDoMesReferencia(r.data) && r.eletricista_id === eletricista.id && r.eh_diaria;
+      });
+      const resumoEletrica = montarResumoMensalEletricaPorEletricista(eletricista.id).filter((item) => {
+        return registrosEletrica.some((registro) => ehDoMesReferencia(registro.data)
+          && !registro.eh_diaria
+          && registro.eletricista_id === eletricista.id
+          && registro.tarefa_id === item.tarefa.id);
+      });
+      const totalDiariasQuantidade = registrosDiariaNoMes.reduce((acc, r) => acc + (r.fator_diaria || 1), 0);
+      const totalDiarias = registrosDiariaNoMes.reduce((acc, r) => {
+        return acc + ((r.valor ?? eletricista.valor_diaria) * (r.fator_diaria || 1));
+      }, 0);
+      const valorDiariaExibida = totalDiariasQuantidade > 0
+        ? totalDiarias / totalDiariasQuantidade
+        : eletricista.valor_diaria;
+
+      let nomeAbaE = normalizarNomeAba(`ELE ${eletricista.nome}`);
+      let idxE = 2;
+      while (nomesAbasUsados.has(nomeAbaE)) {
+        nomeAbaE = `${normalizarNomeAba(`ELE ${eletricista.nome}`).slice(0, 28)} ${idxE}`;
+        idxE += 1;
+      }
+      nomesAbasUsados.add(nomeAbaE);
+
+      const wsEletrica = wb.addWorksheet(nomeAbaE);
+      wsEletrica.addRow([
+        `RELATÓRIO DE PRODUÇÃO ELÉTRICA ${format(tabelaMes, 'MMMM/yyyy', { locale: ptBR }).toUpperCase()} - ${obraNome.toUpperCase()}`,
+      ]);
+      wsEletrica.addRow([eletricista.nome.toUpperCase()]);
+      wsEletrica.addRow([]);
+      wsEletrica.addRow(['SERVIÇO', 'VALOR', '% FEITO', 'DIA DE INÍCIO', 'DIA DE FINAL', 'METRAGEM', 'A PAGAR']);
+
+      for (const item of resumoEletrica) {
+        wsEletrica.addRow([
+          item.tarefa.nome.toUpperCase(),
+          item.tarefa.valor,
+          item.percentual / 100,
+          item.dataInicio ? format(parseISO(item.dataInicio), 'dd/MM/yyyy') : '-',
+          item.dataFinal ? format(parseISO(item.dataFinal), 'dd/MM/yyyy') : '-',
+          item.metragemMes,
+          null,
+        ]);
+      }
+
+      wsEletrica.addRow(['TOTAL PRODUÇÃO', '', '', '', '', '', null]);
+      wsEletrica.addRow(['DIÁRIAS', valorDiariaExibida, totalDiariasQuantidade, '-', '-', '-', null]);
+      wsEletrica.addRow(['TOTAL A PAGAR ELETRICISTA', '', '', '', '', '', null]);
+      wsEletrica.columns = [
+        { width: 30 }, { width: 14 }, { width: 12 }, { width: 16 },
+        { width: 16 }, { width: 14 }, { width: 14 },
+      ];
+      wsEletrica.mergeCells(1, 1, 1, 7);
+      wsEletrica.mergeCells(2, 1, 2, 7);
+
+      const tituloE = wsEletrica.getCell(1, 1);
+      tituloE.font = { bold: true, size: 13, color: { argb: 'FFFFFFFF' } };
+      tituloE.alignment = { horizontal: 'center', vertical: 'middle' };
+      tituloE.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corCinzaEscuro } };
+      const subtituloE = wsEletrica.getCell(2, 1);
+      subtituloE.font = { bold: true, size: 15, color: { argb: 'FFFFFFFF' } };
+      subtituloE.alignment = { horizontal: 'center', vertical: 'middle' };
+      subtituloE.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corCinzaEscuro } };
+
+      for (let c = 1; c <= 7; c += 1) {
+        const header = wsEletrica.getCell(4, c);
+        header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        header.alignment = { horizontal: 'center', vertical: 'middle' };
+        header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corCinzaMedio } };
+        header.border = bordaFina;
+      }
+
+      for (let r = 5; r <= wsEletrica.rowCount; r += 1) {
+        for (let c = 1; c <= 7; c += 1) {
+          const cell = wsEletrica.getCell(r, c);
+          cell.border = bordaFina;
+          cell.alignment = { horizontal: c === 1 ? 'left' : 'center', vertical: 'middle' };
+          if (r % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corCinzaClaro } };
+        }
+        wsEletrica.getCell(r, 2).numFmt = '#,##0.00';
+        wsEletrica.getCell(r, 3).numFmt = '0.00%';
+        wsEletrica.getCell(r, 6).numFmt = '#,##0.00';
+        wsEletrica.getCell(r, 7).numFmt = '#,##0.00';
+      }
+
+      const linhaTotalProducao = wsEletrica.rowCount - 2;
+      const linhaTotalDiarias = wsEletrica.rowCount - 1;
+      const ultimaLinhaE = wsEletrica.rowCount;
+      const linhaInicioDados = 5;
+      const linhaFimDados = linhaInicioDados + resumoEletrica.length - 1;
+      for (let r = linhaInicioDados; r <= linhaFimDados; r += 1) {
+        wsEletrica.getCell(r, 7).value = { formula: `IF(OR(B${r}="",C${r}=""),0,B${r}*C${r})` };
+      }
+      wsEletrica.getCell(linhaTotalProducao, 7).value = resumoEletrica.length > 0
+        ? { formula: `SUM(G${linhaInicioDados}:G${linhaFimDados})` }
+        : 0;
+      wsEletrica.getCell(linhaTotalDiarias, 7).value = {
+        formula: `IF(OR(B${linhaTotalDiarias}="",C${linhaTotalDiarias}=""),0,B${linhaTotalDiarias}*C${linhaTotalDiarias})`,
+      };
+      wsEletrica.getCell(ultimaLinhaE, 7).value = { formula: `G${linhaTotalProducao}+G${linhaTotalDiarias}` };
+
+      wsEletrica.getCell(linhaTotalDiarias, 2).numFmt = '#,##0.00';
+      wsEletrica.getCell(linhaTotalDiarias, 3).numFmt = '0.0';
+      wsEletrica.getCell(linhaTotalDiarias, 6).numFmt = '@';
+      wsEletrica.getCell(linhaTotalDiarias, 7).numFmt = '#,##0.00';
+
+      for (let c = 1; c <= 7; c += 1) {
+        const totalProducaoCell = wsEletrica.getCell(linhaTotalProducao, c);
+        totalProducaoCell.font = { bold: true };
+        totalProducaoCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corCinzaClaro } };
+        totalProducaoCell.border = bordaFina;
+        const totalDiariasCell = wsEletrica.getCell(linhaTotalDiarias, c);
+        totalDiariasCell.font = { bold: true };
+        totalDiariasCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF4D6' } };
+        totalDiariasCell.border = bordaFina;
+        const totalGeralCell = wsEletrica.getCell(ultimaLinhaE, c);
+        totalGeralCell.font = { bold: true };
+        totalGeralCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corVerdeClaro } };
+        totalGeralCell.border = bordaFina;
+      }
+
+      wsEletrica.getRow(4).height = 34;
+      wsEletrica.getRow(2).height = 28;
+      referenciasResumoEletricistas.set(
+        eletricista.id,
+        `'${escapeNomeAbaExcel(nomeAbaE)}'!G${ultimaLinhaE}`
+      );
+    }
+
     const linhaInicioResumo = 4;
     pedreirosParaExportar.forEach((pedreiro, idx) => {
       const referencia = referenciasResumoPedreiros.get(pedreiro.id);
@@ -2642,7 +2913,17 @@ const ProducaoObra = () => {
       wsResumo.getCell(linhaResumo, 3).value = { formula: referencia };
     });
 
-    const quantidadeLinhasResumo = pedreirosParaExportar.length + encanadoresParaExportar.length;
+    const linhaInicioEletricistasResumo = linhaInicioEncanadoresResumo + encanadoresParaExportar.length;
+    eletricistasParaExportar.forEach((eletricista, idx) => {
+      const referencia = referenciasResumoEletricistas.get(eletricista.id);
+      if (!referencia) return;
+      const linhaResumo = linhaInicioEletricistasResumo + idx;
+      wsResumo.getCell(linhaResumo, 3).value = { formula: referencia };
+    });
+
+    const quantidadeLinhasResumo = pedreirosParaExportar.length
+      + encanadoresParaExportar.length
+      + eletricistasParaExportar.length;
     const linhaTotalResumo = wsResumo.rowCount;
     if (quantidadeLinhasResumo > 0) {
       wsResumo.getCell(linhaTotalResumo, 3).value = {
@@ -2669,7 +2950,7 @@ const ProducaoObra = () => {
 
     toast({
       title: 'Excel gerado',
-      description: `Arquivo ${nomeArquivo} criado com abas de pedreiros e encanadores.`,
+      description: `Arquivo ${nomeArquivo} criado com abas de pedreiros, encanadores e eletricistas.`,
     });
   };
 
@@ -2694,6 +2975,9 @@ const ProducaoObra = () => {
           </div>
           <Button className="h-9" variant="outline" onClick={() => navigate(`/obras/${obraId}/producao/hidraulica`)}>
             Hidráulica
+          </Button>
+          <Button className="h-9" variant="outline" onClick={() => navigate(`/obras/${obraId}/producao/eletricidade`)}>
+            Elétrica
           </Button>
         </div>
 

@@ -328,6 +328,13 @@ const ProducaoHidraulica = () => {
             .map((r) => r.dataInicio)
             .sort((a, b) => a.localeCompare(b))[0]
         : null;
+      // Usado so para decidir exibirNoMes: se o encanador da aba nao participou da
+      // tarefa, dataInicio (acima) fica vazio e nao pode liberar a exibicao sozinho.
+      const dataInicioTodos = registrosTarefaTodos.length > 0
+        ? registrosTarefaTodos
+            .map((r) => r.dataInicio)
+            .sort((a, b) => a.localeCompare(b))[0]
+        : null;
 
       let dataFinal: string | null = null;
       if (dataFinalManual) {
@@ -345,14 +352,14 @@ const ProducaoHidraulica = () => {
 
       const aPagar = tarefa.valor * (percentualFeito / 100);
 
-      const dataInicioIso = dataInicio ? normalizarDataISO(dataInicio) : '';
+      const dataInicioTodosIso = dataInicioTodos ? normalizarDataISO(dataInicioTodos) : '';
       const dataFinalIso = dataFinal ? normalizarDataISO(dataFinal) : '';
       const exibirNoMes = (() => {
-        if (!dataInicioIso) {
+        if (!dataInicioTodosIso) {
           return true;
         }
 
-        if (dataInicioIso > fimMesIso) {
+        if (dataInicioTodosIso > fimMesIso) {
           return false;
         }
 

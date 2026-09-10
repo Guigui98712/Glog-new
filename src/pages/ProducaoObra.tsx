@@ -2178,6 +2178,12 @@ const ProducaoObra = () => {
             .filter((r) => !r.eh_diaria && r.encanador_id === encanadorId && r.tarefa_id === tarefa.id)
             .sort((a, b) => a.data.localeCompare(b.data));
 
+          // Tarefa dividida entre varios encanadores: a finalizacao (dataFinal) precisa
+          // considerar a metragem somada de todos, senao nunca some do mes/excel seguinte.
+          const registrosTarefaTodos = registrosHidraulica
+            .filter((r) => !r.eh_diaria && r.tarefa_id === tarefa.id)
+            .sort((a, b) => a.data.localeCompare(b.data));
+
           const registrosNoMes = registrosTarefa.filter((r) => {
             return ehDoMesReferencia(r.data);
           });
@@ -2187,7 +2193,7 @@ const ProducaoObra = () => {
             .filter((r) => normalizarDataISO(r.data) <= fimMesIso)
             .reduce((acc, r) => acc + (r.metragem || 0), 0);
 
-          const dataFinalManual = registrosTarefa
+          const dataFinalManual = registrosTarefaTodos
             .map((r) => r.data_fim)
             .filter(Boolean)
             .sort((a, b) => (a as string).localeCompare(b as string))[0] || null;
@@ -2205,7 +2211,7 @@ const ProducaoObra = () => {
             dataFinal = dataFinalManual;
           } else if (tarefa.metragem_prevista > 0) {
             let acumulado = 0;
-            for (const registro of registrosTarefa) {
+            for (const registro of registrosTarefaTodos) {
               acumulado += (registro.metragem || 0);
               if (acumulado >= tarefa.metragem_prevista) {
                 dataFinal = registro.data;
@@ -2252,13 +2258,17 @@ const ProducaoObra = () => {
           const registrosTarefa = registrosEletrica
             .filter((r) => !r.eh_diaria && r.eletricista_id === eletricistaId && r.tarefa_id === tarefa.id)
             .sort((a, b) => a.data.localeCompare(b.data));
+          // Mesma logica da hidraulica: finalizacao considera a metragem de todos os eletricistas da tarefa.
+          const registrosTarefaTodos = registrosEletrica
+            .filter((r) => !r.eh_diaria && r.tarefa_id === tarefa.id)
+            .sort((a, b) => a.data.localeCompare(b.data));
           const registrosNoMes = registrosTarefa.filter((r) => ehDoMesReferencia(r.data));
           const metragemMes = registrosNoMes.reduce((acc, r) => acc + (r.metragem || 0), 0);
           const metragemAcumuladaAteMes = registrosTarefa
             .filter((r) => normalizarDataISO(r.data) <= fimMesIso)
             .reduce((acc, r) => acc + (r.metragem || 0), 0);
           const dataInicio = registrosTarefa.map((r) => r.data_inicio).sort((a, b) => a.localeCompare(b))[0] || null;
-          const dataFinalManual = registrosTarefa.map((r) => r.data_fim).filter(Boolean)
+          const dataFinalManual = registrosTarefaTodos.map((r) => r.data_fim).filter(Boolean)
             .sort((a, b) => (a as string).localeCompare(b as string))[0] || null;
           const percentual = tarefa.metragem_prevista > 0
             ? Math.min(100, (metragemAcumuladaAteMes / tarefa.metragem_prevista) * 100)
@@ -2266,7 +2276,7 @@ const ProducaoObra = () => {
           let dataFinal: string | null = dataFinalManual;
           if (!dataFinal && tarefa.metragem_prevista > 0) {
             let acumulado = 0;
-            for (const registro of registrosTarefa) {
+            for (const registro of registrosTarefaTodos) {
               acumulado += registro.metragem || 0;
               if (acumulado >= tarefa.metragem_prevista) {
                 dataFinal = registro.data;

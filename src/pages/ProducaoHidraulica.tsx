@@ -291,9 +291,17 @@ const ProducaoHidraulica = () => {
       : registros.filter((r) => r.encanadorId === tabelaEncanadorId);
 
     const registrosProducao = registrosBase.filter((r) => !r.ehDiaria && r.tarefaId);
+    // Todos os encanadores da tarefa, independente da aba selecionada: a finalizacao
+    // (data final/percentual usados para sumir do mes seguinte) precisa considerar a
+    // metragem somada de quem dividiu o servico, nao so a do encanador filtrado na tela.
+    const registrosProducaoTodos = registros.filter((r) => !r.ehDiaria && r.tarefaId);
 
     return tarefas.map((tarefa) => {
       const registrosTarefa = registrosProducao
+        .filter((r) => r.tarefaId === tarefa.id)
+        .sort((a, b) => a.data.localeCompare(b.data));
+
+      const registrosTarefaTodos = registrosProducaoTodos
         .filter((r) => r.tarefaId === tarefa.id)
         .sort((a, b) => a.data.localeCompare(b.data));
 
@@ -306,7 +314,7 @@ const ProducaoHidraulica = () => {
         .filter((r) => normalizarDataISO(r.data) <= fimMesIso)
         .reduce((acc, r) => acc + (r.metragem || 0), 0);
 
-      const dataFinalManual = registrosTarefa
+      const dataFinalManual = registrosTarefaTodos
         .map((r) => r.dataFim)
         .filter(Boolean)
         .sort((a, b) => (a as string).localeCompare(b as string))[0] || null;
@@ -326,7 +334,7 @@ const ProducaoHidraulica = () => {
         dataFinal = dataFinalManual;
       } else if (tarefa.metragemPrevista > 0) {
         let acumulado = 0;
-        for (const registro of registrosTarefa) {
+        for (const registro of registrosTarefaTodos) {
           acumulado += (registro.metragem || 0);
           if (acumulado >= tarefa.metragemPrevista) {
             dataFinal = registro.data;

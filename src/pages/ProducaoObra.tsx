@@ -2225,7 +2225,9 @@ const ProducaoObra = () => {
             }
           }
 
-          const aPagar = tarefa.valor * (percentual / 100);
+          const aPagar = tarefa.metragem_prevista > 0
+            ? Math.min(metragemMes, tarefa.metragem_prevista) * (tarefa.valor / tarefa.metragem_prevista)
+            : 0;
           const dataInicioTodosIso = dataInicioTodos ? normalizarDataISO(dataInicioTodos) : '';
           const dataFinalIso = dataFinal ? normalizarDataISO(dataFinal) : '';
           const exibirNoMes = (() => {

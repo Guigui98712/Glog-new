@@ -350,7 +350,9 @@ const ProducaoHidraulica = () => {
         }
       }
 
-      const aPagar = tarefa.valor * (percentualFeito / 100);
+      const aPagar = tarefa.metragemPrevista > 0
+        ? Math.min(metragemMes, tarefa.metragemPrevista) * (tarefa.valor / tarefa.metragemPrevista)
+        : 0;
 
       const dataInicioTodosIso = dataInicioTodos ? normalizarDataISO(dataInicioTodos) : '';
       const dataFinalIso = dataFinal ? normalizarDataISO(dataFinal) : '';

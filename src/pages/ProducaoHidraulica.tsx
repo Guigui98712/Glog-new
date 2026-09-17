@@ -213,6 +213,36 @@ const ProducaoHidraulica = () => {
     }, {});
   }, [tarefas]);
 
+  // Status geral (todo o historico, todos os encanadores) usado so para organizar a
+  // lista de tarefas: concluidas ficam com destaque visual e vao para o final da lista.
+  const tarefasComStatus = useMemo(() => {
+    const registrosProducaoTodos = registros.filter((r) => !r.ehDiaria && r.tarefaId);
+
+    const comStatus = tarefas.map((tarefa) => {
+      const registrosTarefa = registrosProducaoTodos.filter((r) => r.tarefaId === tarefa.id);
+
+      const dataFinalManual = registrosTarefa
+        .map((r) => r.dataFim)
+        .filter(Boolean)
+        .sort((a, b) => (a as string).localeCompare(b as string))[0] || null;
+
+      const metragemAcumulada = registrosTarefa.reduce((acc, r) => acc + (r.metragem || 0), 0);
+      const concluida = Boolean(dataFinalManual)
+        || (tarefa.metragemPrevista > 0 && metragemAcumulada >= tarefa.metragemPrevista);
+
+      return { tarefa, concluida };
+    });
+
+    return comStatus
+      .map((item, index) => ({ ...item, index }))
+      .sort((a, b) => {
+        if (a.concluida !== b.concluida) {
+          return a.concluida ? 1 : -1;
+        }
+        return a.index - b.index;
+      });
+  }, [tarefas, registros]);
+
   const encanadoresPorId = useMemo(() => {
     return encanadores.reduce<Record<string, Encanador>>((acc, encanador) => {
       acc[encanador.id] = encanador;
@@ -1541,61 +1571,88 @@ const ProducaoHidraulica = () => {
               {tarefas.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhuma tarefa cadastrada.</p>
               ) : (
-                tarefas.map((tarefa) =>
-                  editandoTarefa?.id === tarefa.id ? (
-                    <div key={tarefa.id} className="grid grid-cols-1 sm:grid-cols-[1fr_120px_140px_auto_auto] gap-2 border rounded-md px-3 py-2 bg-blue-50">
-                      <Input
-                        autoFocus
-                        value={editandoTarefa.nome}
-                        onChange={(e) => setEditandoTarefa({ ...editandoTarefa, nome: e.target.value })}
-                      />
-                      <Input
-                        type="text"
-                        inputMode="decimal"
-                        value={editandoTarefa.valor}
-                        onChange={(e) => setEditandoTarefa({ ...editandoTarefa, valor: e.target.value })}
-                      />
-                      <Input
-                        type="text"
-                        inputMode="decimal"
-                        value={editandoTarefa.metragemPrevista}
-                        onChange={(e) => setEditandoTarefa({ ...editandoTarefa, metragemPrevista: e.target.value })}
-                      />
-                      <Button variant="ghost" size="icon" onClick={handleSalvarEdicaoTarefa}>
-                        <Check className="h-4 w-4 text-green-600" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => setEditandoTarefa(null)}>
-                        <X className="h-4 w-4 text-gray-500" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <div key={tarefa.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border rounded-md px-3 py-2">
-                      <div>
-                        <p className="font-medium break-words">{tarefa.nome}</p>
-                        <p className="text-sm text-muted-foreground">
-                          Valor: {formatCurrency(tarefa.valor)} | Metragem total: {formatQuantidade(tarefa.metragemPrevista)}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1 self-end sm:self-auto">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setEditandoTarefa({
-                            id: tarefa.id,
-                            nome: tarefa.nome,
-                            valor: String(tarefa.valor),
-                            metragemPrevista: String(tarefa.metragemPrevista),
-                          })}
+                tarefasComStatus.map(({ tarefa, concluida }, idx) => {
+                  const primeiraConcluida = concluida
+                    && tarefasComStatus[idx - 1]
+                    && !tarefasComStatus[idx - 1].concluida;
+
+                  return (
+                    <div key={tarefa.id}>
+                      {primeiraConcluida && (
+                        <div className="flex items-center gap-2 pt-2 pb-1">
+                          <span className="h-px flex-1 bg-green-200" />
+                          <span className="text-[11px] font-semibold uppercase text-green-700">Concluídas</span>
+                          <span className="h-px flex-1 bg-green-200" />
+                        </div>
+                      )}
+                      {editandoTarefa?.id === tarefa.id ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-[1fr_120px_140px_auto_auto] gap-2 border rounded-md px-3 py-2 bg-blue-50">
+                          <Input
+                            autoFocus
+                            value={editandoTarefa.nome}
+                            onChange={(e) => setEditandoTarefa({ ...editandoTarefa, nome: e.target.value })}
+                          />
+                          <Input
+                            type="text"
+                            inputMode="decimal"
+                            value={editandoTarefa.valor}
+                            onChange={(e) => setEditandoTarefa({ ...editandoTarefa, valor: e.target.value })}
+                          />
+                          <Input
+                            type="text"
+                            inputMode="decimal"
+                            value={editandoTarefa.metragemPrevista}
+                            onChange={(e) => setEditandoTarefa({ ...editandoTarefa, metragemPrevista: e.target.value })}
+                          />
+                          <Button variant="ghost" size="icon" onClick={handleSalvarEdicaoTarefa}>
+                            <Check className="h-4 w-4 text-green-600" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => setEditandoTarefa(null)}>
+                            <X className="h-4 w-4 text-gray-500" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div
+                          className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border rounded-md px-3 py-2 ${
+                            concluida ? 'border-green-300 bg-green-50' : ''
+                          }`}
                         >
-                          <Pencil className="h-4 w-4 text-blue-500" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleExcluirTarefa(tarefa.id)}>
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
-                      </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-medium break-words">{tarefa.nome}</p>
+                              {concluida && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-green-600 px-2 py-0.5 text-[10px] font-semibold uppercase text-white">
+                                  <Check className="h-3 w-3" />
+                                  Concluída
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              Valor: {formatCurrency(tarefa.valor)} | Metragem total: {formatQuantidade(tarefa.metragemPrevista)}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1 self-end sm:self-auto">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setEditandoTarefa({
+                                id: tarefa.id,
+                                nome: tarefa.nome,
+                                valor: String(tarefa.valor),
+                                metragemPrevista: String(tarefa.metragemPrevista),
+                              })}
+                            >
+                              <Pencil className="h-4 w-4 text-blue-500" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => handleExcluirTarefa(tarefa.id)}>
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )
-                )
+                  );
+                })
               )}
             </div>
           </div>

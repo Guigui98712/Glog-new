@@ -381,8 +381,9 @@ const ProducaoEletricidade = () => {
       const dataInicioTodosIso = dataInicioTodos ? normalizarDataISO(dataInicioTodos) : '';
       const dataFinalIso = dataFinal ? normalizarDataISO(dataFinal) : '';
       const exibirNoMes = (() => {
+        // Tarefa sem nenhum lancamento ainda nao deve aparecer na tabela do mes.
         if (!dataInicioTodosIso) {
-          return true;
+          return false;
         }
 
         if (dataInicioTodosIso > fimMesIso) {

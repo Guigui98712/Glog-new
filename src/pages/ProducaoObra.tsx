@@ -2231,8 +2231,9 @@ const ProducaoObra = () => {
           const dataInicioTodosIso = dataInicioTodos ? normalizarDataISO(dataInicioTodos) : '';
           const dataFinalIso = dataFinal ? normalizarDataISO(dataFinal) : '';
           const exibirNoMes = (() => {
+            // Tarefa sem nenhum lancamento ainda nao deve aparecer no relatorio do mes.
             if (!dataInicioTodosIso) {
-              return true;
+              return false;
             }
 
             if (dataInicioTodosIso > fimMesIso) {

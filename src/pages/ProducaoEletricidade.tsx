@@ -291,9 +291,13 @@ const ProducaoEletricidade = () => {
       : registros.filter((r) => r.eletricistaId === tabelaEletricistaId);
 
     const registrosProducao = registrosBase.filter((r) => !r.ehDiaria && r.tarefaId);
+    const registrosProducaoTodos = registros.filter((r) => !r.ehDiaria && r.tarefaId);
 
     return tarefas.map((tarefa) => {
       const registrosTarefa = registrosProducao
+        .filter((r) => r.tarefaId === tarefa.id)
+        .sort((a, b) => a.data.localeCompare(b.data));
+      const registrosTarefaTodos = registrosProducaoTodos
         .filter((r) => r.tarefaId === tarefa.id)
         .sort((a, b) => a.data.localeCompare(b.data));
 
@@ -306,7 +310,7 @@ const ProducaoEletricidade = () => {
         .filter((r) => normalizarDataISO(r.data) <= fimMesIso)
         .reduce((acc, r) => acc + (r.metragem || 0), 0);
 
-      const dataFinalManual = registrosTarefa
+      const dataFinalManual = registrosTarefaTodos
         .map((r) => r.dataFim)
         .filter(Boolean)
         .sort((a, b) => (a as string).localeCompare(b as string))[0] || null;
@@ -320,13 +324,18 @@ const ProducaoEletricidade = () => {
             .map((r) => r.dataInicio)
             .sort((a, b) => a.localeCompare(b))[0]
         : null;
+      const dataInicioTodos = registrosTarefaTodos.length > 0
+        ? registrosTarefaTodos
+            .map((r) => r.dataInicio)
+            .sort((a, b) => a.localeCompare(b))[0]
+        : null;
 
       let dataFinal: string | null = null;
       if (dataFinalManual) {
         dataFinal = dataFinalManual;
       } else if (tarefa.metragemPrevista > 0) {
         let acumulado = 0;
-        for (const registro of registrosTarefa) {
+        for (const registro of registrosTarefaTodos) {
           acumulado += (registro.metragem || 0);
           if (acumulado >= tarefa.metragemPrevista) {
             dataFinal = registro.data;
@@ -335,16 +344,18 @@ const ProducaoEletricidade = () => {
         }
       }
 
-      const aPagar = tarefa.valor * (percentualFeito / 100);
+      const aPagar = tarefa.metragemPrevista > 0
+        ? Math.min(metragemMes, tarefa.metragemPrevista) * (tarefa.valor / tarefa.metragemPrevista)
+        : 0;
 
-      const dataInicioIso = dataInicio ? normalizarDataISO(dataInicio) : '';
+      const dataInicioTodosIso = dataInicioTodos ? normalizarDataISO(dataInicioTodos) : '';
       const dataFinalIso = dataFinal ? normalizarDataISO(dataFinal) : '';
       const exibirNoMes = (() => {
-        if (!dataInicioIso) {
+        if (!dataInicioTodosIso) {
           return true;
         }
 
-        if (dataInicioIso > fimMesIso) {
+        if (dataInicioTodosIso > fimMesIso) {
           return false;
         }
 

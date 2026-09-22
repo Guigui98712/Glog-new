@@ -387,6 +387,11 @@ const ProducaoHidraulica = () => {
       const dataInicioTodosIso = dataInicioTodos ? normalizarDataISO(dataInicioTodos) : '';
       const dataFinalIso = dataFinal ? normalizarDataISO(dataFinal) : '';
       const exibirNoMes = (() => {
+        // Na aba de um encanador especifico, so mostrar tarefas que ele realmente executou.
+        if (tabelaEncanadorId !== 'all' && registrosTarefa.length === 0) {
+          return false;
+        }
+
         // Tarefa sem nenhum lancamento ainda nao deve aparecer na tabela do mes.
         if (!dataInicioTodosIso) {
           return false;

@@ -2231,6 +2231,11 @@ const ProducaoObra = () => {
           const dataInicioTodosIso = dataInicioTodos ? normalizarDataISO(dataInicioTodos) : '';
           const dataFinalIso = dataFinal ? normalizarDataISO(dataFinal) : '';
           const exibirNoMes = (() => {
+            // So mostrar tarefas que esse encanador realmente executou.
+            if (registrosTarefa.length === 0) {
+              return false;
+            }
+
             // Tarefa sem nenhum lancamento ainda nao deve aparecer no relatorio do mes.
             if (!dataInicioTodosIso) {
               return false;

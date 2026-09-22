@@ -381,6 +381,11 @@ const ProducaoEletricidade = () => {
       const dataInicioTodosIso = dataInicioTodos ? normalizarDataISO(dataInicioTodos) : '';
       const dataFinalIso = dataFinal ? normalizarDataISO(dataFinal) : '';
       const exibirNoMes = (() => {
+        // Na aba de um eletricista especifico, so mostrar tarefas que ele realmente executou.
+        if (tabelaEletricistaId !== 'all' && registrosTarefa.length === 0) {
+          return false;
+        }
+
         // Tarefa sem nenhum lancamento ainda nao deve aparecer na tabela do mes.
         if (!dataInicioTodosIso) {
           return false;

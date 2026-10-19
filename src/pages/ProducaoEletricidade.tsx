@@ -172,7 +172,7 @@ const ProducaoEletricidade = () => {
           valor: Number(t.valor || 0),
           metragemPrevista: Number(t.metragem_prevista || 0),
           ordem: Number(t.ordem || 0),
-        }))
+        })).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
       );
 
       setRegistros(
@@ -841,7 +841,7 @@ const ProducaoEletricidade = () => {
         metragemPrevista: Number(data.metragem_prevista || 0),
         ordem: Number(data.ordem || 0),
       },
-    ].sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR')));
+    ].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')));
 
     setNovaTarefa('');
     setNovoValorTarefa('');

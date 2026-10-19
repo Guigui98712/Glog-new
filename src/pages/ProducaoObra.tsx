@@ -235,7 +235,7 @@ const normalizarNomeAba = (nome: string) => {
 };
 
 const ordenarTarefas = (lista: Tarefa[]) => {
-  return [...lista].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  return [...lista].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true, sensitivity: 'base' }));
 };
 
 const montarSemanasDoMes = (mesReferencia: Date): SemanaColuna[] => {
@@ -595,7 +595,7 @@ const ProducaoObra = () => {
   }, [registros, tabelaMes, tabelaPedreiroId]);
 
   const resumoPorTarefa = useMemo(() => {
-    return tarefas.map((tarefa) => {
+    return ordenarTarefas(tarefas).map((tarefa) => {
       const registrosDaTarefa = registrosDoMes.filter((r) => r.tarefaId === tarefa.id);
       const valoresSemana = semanasDoMes.map((semana) => {
         return registrosDaTarefa

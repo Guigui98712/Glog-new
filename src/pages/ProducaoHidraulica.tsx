@@ -50,6 +50,9 @@ interface Encanador {
   valorDiaria: number;
 }
 
+const compararNomeTarefa = (a: string, b: string) =>
+  a.localeCompare(b, 'pt-BR', { numeric: true, sensitivity: 'base' });
+
 const formatQuantidade = (valor: number) => {
   return new Intl.NumberFormat('pt-BR', {
     minimumFractionDigits: 0,
@@ -172,7 +175,7 @@ const ProducaoHidraulica = () => {
           valor: Number(t.valor || 0),
           metragemPrevista: Number(t.metragem_prevista || 0),
           ordem: Number(t.ordem || 0),
-        })).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+        })).sort((a, b) => compararNomeTarefa(a.nome, b.nome))
       );
 
       setRegistros(
@@ -234,7 +237,7 @@ const ProducaoHidraulica = () => {
 
     return comStatus.sort((a, b) => {
       if (a.concluida !== b.concluida) return a.concluida ? 1 : -1;
-      return a.tarefa.nome.localeCompare(b.tarefa.nome, 'pt-BR');
+      return compararNomeTarefa(a.tarefa.nome, b.tarefa.nome);
     });
   }, [tarefas, registros]);
 
@@ -407,7 +410,8 @@ const ProducaoHidraulica = () => {
         aPagar,
         exibirNoMes,
       };
-    }).filter((item) => item.exibirNoMes);
+    }).filter((item) => item.exibirNoMes)
+      .sort((a, b) => compararNomeTarefa(a.tarefa.nome, b.tarefa.nome));
   }, [tarefas, registros, mesReferencia, tabelaEncanadorId]);
 
   const totalPagarMes = useMemo(() => {
@@ -842,7 +846,7 @@ const ProducaoHidraulica = () => {
         metragemPrevista: Number(data.metragem_prevista || 0),
         ordem: Number(data.ordem || 0),
       },
-    ].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')));
+    ].sort((a, b) => compararNomeTarefa(a.nome, b.nome)));
 
     setNovaTarefa('');
     setNovoValorTarefa('');
@@ -886,7 +890,7 @@ const ProducaoHidraulica = () => {
       t.id === editandoTarefa.id
         ? { ...t, nome, valor, metragemPrevista }
         : t
-    ).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')));
+    ).sort((a, b) => compararNomeTarefa(a.nome, b.nome)));
     setEditandoTarefa(null);
   };
 

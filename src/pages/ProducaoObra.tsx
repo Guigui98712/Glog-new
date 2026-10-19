@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowLeft, Plus, Trash2, Users, ClipboardList, ChevronLeft, ChevronRight, Pencil, Check, X, FileSpreadsheet, ArrowUp, ArrowDown, FileText } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Users, ClipboardList, ChevronLeft, ChevronRight, Pencil, Check, X, FileSpreadsheet, ArrowUp, ArrowDown, FileText, RefreshCw } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import {
   endOfMonth,
@@ -235,12 +235,7 @@ const normalizarNomeAba = (nome: string) => {
 };
 
 const ordenarTarefas = (lista: Tarefa[]) => {
-  return [...lista].sort((a, b) => {
-    if (a.ordem !== b.ordem) {
-      return a.ordem - b.ordem;
-    }
-    return a.nome.localeCompare(b.nome, 'pt-BR');
-  });
+  return [...lista].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 };
 
 const montarSemanasDoMes = (mesReferencia: Date): SemanaColuna[] => {
@@ -473,7 +468,67 @@ const ProducaoObra = () => {
   }, [obraId, navigate]);
 
   useEffect(() => {
-    carregarDadosProducao();
+    void carregarDadosProducao();
+
+    let listenerAtivo = true;
+    let ultimaAtualizacao = Date.now();
+    let listenerEstadoApp: { remove: () => Promise<void> } | null = null;
+
+    const atualizarAoRetomar = () => {
+      const agora = Date.now();
+      if (agora - ultimaAtualizacao < 1500) {
+        return;
+      }
+
+      ultimaAtualizacao = agora;
+      void carregarDadosProducao();
+    };
+
+    const atualizarQuandoVisivel = () => {
+      if (document.visibilityState === 'visible') {
+        atualizarAoRetomar();
+      }
+    };
+
+    window.addEventListener('focus', atualizarAoRetomar);
+    document.addEventListener('visibilitychange', atualizarQuandoVisivel);
+
+    void (async () => {
+      try {
+        const [{ Capacitor }, { App: CapacitorApp }] = await Promise.all([
+          import('@capacitor/core'),
+          import('@capacitor/app'),
+        ]);
+
+        if (!listenerAtivo || !Capacitor.isNativePlatform()) {
+          return;
+        }
+
+        const listener = await CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+          if (isActive) {
+            atualizarAoRetomar();
+          }
+        });
+
+        if (!listenerAtivo) {
+          void listener.remove();
+          return;
+        }
+
+        listenerEstadoApp = listener;
+      } catch (error) {
+        console.warn('Não foi possível configurar a atualização ao retomar o app:', error);
+      }
+    })();
+
+    return () => {
+      listenerAtivo = false;
+      window.removeEventListener('focus', atualizarAoRetomar);
+      document.removeEventListener('visibilitychange', atualizarQuandoVisivel);
+      if (listenerEstadoApp) {
+        void listenerEstadoApp.remove();
+      }
+    };
   }, [obraId]);
 
   const pedreirosAtivos = useMemo(() => pedreiros.filter((p) => p.ativo), [pedreiros]);
@@ -3005,6 +3060,10 @@ const ProducaoObra = () => {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-2">
+          <Button className="w-full sm:w-auto" variant="outline" onClick={() => void carregarDadosProducao()} disabled={loadingDados}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loadingDados ? 'animate-spin' : ''}`} />
+            Atualizar
+          </Button>
           <Button className="w-full sm:w-auto" variant="outline" onClick={() => navigate(`/obras/${obraId}`)}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Voltar para obra

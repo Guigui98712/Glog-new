@@ -29,13 +29,13 @@ create policy "Leitura publica versao app"
 -- Configuração Android padrão
 update public.app_version_config
 set
-  latest_version = '1.0.32',
+  latest_version = '1.0.38',
   min_supported_version = '1.0.31',
   force_update = false,
   store_url = 'https://play.google.com/store/apps/details?id=com.glog.app',
   title = 'Nova versão disponível',
   message = 'Atualize o GLog para receber melhorias e correções mais recentes.',
-  release_notes = '- Atualização da base do app para a versão 1.0.32\n- Sincronização com a versão web mais recente\n- Correções gerais de estabilidade',
+  release_notes = '- Percentual e valor de produção elétrica e hidráulica calculados com os lançamentos do mês\n- Tarefas pausadas continuam visíveis sem somar valor nos meses sem produção',
   is_active = true,
   updated_at = now()
 where platform = 'android' and is_active = true;
@@ -53,13 +53,13 @@ insert into public.app_version_config (
 )
 select
   'android',
-  '1.0.32',
+  '1.0.38',
   '1.0.31',
   false,
   'https://play.google.com/store/apps/details?id=com.glog.app',
   'Nova versão disponível',
   'Atualize o GLog para receber melhorias e correções mais recentes.',
-  '- Atualização da base do app para a versão 1.0.32\n- Sincronização com a versão web mais recente\n- Correções gerais de estabilidade',
+  '- Percentual e valor de produção elétrica e hidráulica calculados com os lançamentos do mês\n- Tarefas pausadas continuam visíveis sem somar valor nos meses sem produção',
   true
 where not exists (
   select 1

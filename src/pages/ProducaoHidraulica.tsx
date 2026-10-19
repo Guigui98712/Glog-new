@@ -340,17 +340,14 @@ const ProducaoHidraulica = () => {
       });
 
       const metragemMes = registrosNoMes.reduce((acc, r) => acc + (r.metragem || 0), 0);
-      const metragemAcumuladaAteMes = registrosTarefa
-        .filter((r) => normalizarDataISO(r.data) <= fimMesIso)
-        .reduce((acc, r) => acc + (r.metragem || 0), 0);
 
       const dataFinalManual = registrosTarefaTodos
         .map((r) => r.dataFim)
         .filter(Boolean)
         .sort((a, b) => (a as string).localeCompare(b as string))[0] || null;
 
-      const percentualFeito = tarefa.metragemPrevista > 0
-        ? Math.min(100, (metragemAcumuladaAteMes / tarefa.metragemPrevista) * 100)
+      const percentualMes = tarefa.metragemPrevista > 0
+        ? Math.min(100, (metragemMes / tarefa.metragemPrevista) * 100)
         : 0;
 
       const dataInicio = registrosTarefa.length > 0
@@ -380,9 +377,7 @@ const ProducaoHidraulica = () => {
         }
       }
 
-      const aPagar = tarefa.metragemPrevista > 0
-        ? Math.min(metragemMes, tarefa.metragemPrevista) * (tarefa.valor / tarefa.metragemPrevista)
-        : 0;
+      const aPagar = tarefa.valor * (percentualMes / 100);
 
       const dataInicioTodosIso = dataInicioTodos ? normalizarDataISO(dataInicioTodos) : '';
       const dataFinalIso = dataFinal ? normalizarDataISO(dataFinal) : '';
@@ -411,7 +406,7 @@ const ProducaoHidraulica = () => {
       return {
         tarefa,
         metragemMes,
-        percentualFeito,
+        percentualMes,
         dataInicio,
         dataFinal,
         aPagar,
@@ -1422,12 +1417,12 @@ const ProducaoHidraulica = () => {
             <thead>
               <tr className="bg-gray-600 text-white">
                 <th className="px-3 py-2 text-left font-bold uppercase text-xs border border-gray-500">Serviço</th>
-                <th className="px-3 py-2 text-center font-bold uppercase text-xs border border-gray-500">Valor</th>
-                <th className="px-3 py-2 text-center font-bold uppercase text-xs border border-gray-500">% feito</th>
+                <th className="px-3 py-2 text-center font-bold uppercase text-xs border border-gray-500">Valor total</th>
+                <th className="px-3 py-2 text-center font-bold uppercase text-xs border border-gray-500">% no mês</th>
                 <th className="px-3 py-2 text-center font-bold uppercase text-xs border border-gray-500">Dia início</th>
                 <th className="px-3 py-2 text-center font-bold uppercase text-xs border border-gray-500">Dia final</th>
                 <th className="px-3 py-2 text-center font-bold uppercase text-xs border border-gray-500">Metragem (mês)</th>
-                <th className="px-3 py-2 text-center font-bold uppercase text-xs border border-gray-500">A pagar</th>
+                <th className="px-3 py-2 text-center font-bold uppercase text-xs border border-gray-500">A pagar no mês</th>
               </tr>
             </thead>
             <tbody>
@@ -1443,7 +1438,7 @@ const ProducaoHidraulica = () => {
                     <td className="px-3 py-2 border border-gray-200 font-semibold uppercase text-xs">{item.tarefa.nome}</td>
                     <td className="px-3 py-2 border border-gray-200 text-center text-xs">{formatCurrency(item.tarefa.valor)}</td>
                     <td className="px-3 py-2 border border-gray-200 text-center text-xs font-semibold">
-                      {item.tarefa.metragemPrevista > 0 ? `${item.percentualFeito.toFixed(1).replace('.', ',')}%` : '-'}
+                      {item.tarefa.metragemPrevista > 0 ? `${item.percentualMes.toFixed(1).replace('.', ',')}%` : '-'}
                     </td>
                     <td className="px-3 py-2 border border-gray-200 text-center text-xs">
                       {item.dataInicio ? format(parseISO(item.dataInicio), 'dd/MM/yyyy') : '-'}

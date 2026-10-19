@@ -213,7 +213,7 @@ const ProducaoEletricidade = () => {
     }, {});
   }, [tarefas]);
 
-  // O status geral define apenas o destaque visual; a lista permanece alfabetica.
+  // Agrupa por status e ordena alfabeticamente dentro de cada grupo.
   const tarefasComStatus = useMemo(() => {
     const registrosProducaoTodos = registros.filter((r) => !r.ehDiaria && r.tarefaId);
 
@@ -232,7 +232,10 @@ const ProducaoEletricidade = () => {
       return { tarefa, concluida };
     });
 
-    return comStatus.sort((a, b) => a.tarefa.nome.localeCompare(b.tarefa.nome, 'pt-BR'));
+    return comStatus.sort((a, b) => {
+      if (a.concluida !== b.concluida) return a.concluida ? 1 : -1;
+      return a.tarefa.nome.localeCompare(b.tarefa.nome, 'pt-BR');
+    });
   }, [tarefas, registros]);
 
   const eletricistasPorId = useMemo(() => {
@@ -1558,9 +1561,20 @@ const ProducaoEletricidade = () => {
               {tarefas.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhuma tarefa cadastrada.</p>
               ) : (
-                tarefasComStatus.map(({ tarefa, concluida }) => {
+                tarefasComStatus.map(({ tarefa, concluida }, idx) => {
+                  const primeiraConcluida = concluida
+                    && tarefasComStatus[idx - 1]
+                    && !tarefasComStatus[idx - 1].concluida;
+
                   return (
                     <div key={tarefa.id}>
+                      {primeiraConcluida && (
+                        <div className="flex items-center gap-2 pt-2 pb-1">
+                          <span className="h-px flex-1 bg-green-200" />
+                          <span className="text-[11px] font-semibold uppercase text-green-700">Concluídas</span>
+                          <span className="h-px flex-1 bg-green-200" />
+                        </div>
+                      )}
                       {editandoTarefa?.id === tarefa.id ? (
                         <div className="grid grid-cols-1 sm:grid-cols-[1fr_120px_140px_auto_auto] gap-2 border rounded-md px-3 py-2 bg-blue-50">
                           <Input

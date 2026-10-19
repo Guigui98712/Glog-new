@@ -213,8 +213,7 @@ const ProducaoHidraulica = () => {
     }, {});
   }, [tarefas]);
 
-  // Status geral (todo o historico, todos os encanadores) usado so para organizar a
-  // lista de tarefas: concluidas ficam com destaque visual e vao para o final da lista.
+  // O status geral define apenas o destaque visual; a lista permanece alfabetica.
   const tarefasComStatus = useMemo(() => {
     const registrosProducaoTodos = registros.filter((r) => !r.ehDiaria && r.tarefaId);
 
@@ -233,14 +232,7 @@ const ProducaoHidraulica = () => {
       return { tarefa, concluida };
     });
 
-    return comStatus
-      .map((item, index) => ({ ...item, index }))
-      .sort((a, b) => {
-        if (a.concluida !== b.concluida) {
-          return a.concluida ? 1 : -1;
-        }
-        return a.index - b.index;
-      });
+    return comStatus.sort((a, b) => a.tarefa.nome.localeCompare(b.tarefa.nome, 'pt-BR'));
   }, [tarefas, registros]);
 
   const encanadoresPorId = useMemo(() => {
@@ -891,7 +883,7 @@ const ProducaoHidraulica = () => {
       t.id === editandoTarefa.id
         ? { ...t, nome, valor, metragemPrevista }
         : t
-    ));
+    ).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')));
     setEditandoTarefa(null);
   };
 
@@ -1572,20 +1564,9 @@ const ProducaoHidraulica = () => {
               {tarefas.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhuma tarefa cadastrada.</p>
               ) : (
-                tarefasComStatus.map(({ tarefa, concluida }, idx) => {
-                  const primeiraConcluida = concluida
-                    && tarefasComStatus[idx - 1]
-                    && !tarefasComStatus[idx - 1].concluida;
-
+                tarefasComStatus.map(({ tarefa, concluida }) => {
                   return (
                     <div key={tarefa.id}>
-                      {primeiraConcluida && (
-                        <div className="flex items-center gap-2 pt-2 pb-1">
-                          <span className="h-px flex-1 bg-green-200" />
-                          <span className="text-[11px] font-semibold uppercase text-green-700">Concluídas</span>
-                          <span className="h-px flex-1 bg-green-200" />
-                        </div>
-                      )}
                       {editandoTarefa?.id === tarefa.id ? (
                         <div className="grid grid-cols-1 sm:grid-cols-[1fr_120px_140px_auto_auto] gap-2 border rounded-md px-3 py-2 bg-blue-50">
                           <Input

@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Trash2, Edit2, Plus, Car } from 'lucide-react';
+import { Trash2, Edit2, Plus, Car, ChevronDown } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 
 export default function ViagensObra() {
@@ -244,6 +244,18 @@ export default function ViagensObra() {
     return diasComViagem.includes(dateString) ? 'viagem-dia' : '';
   };
 
+  const anoAtual = new Date().getFullYear();
+  const contagemPorAno = contagemMensal
+    .filter(item => item.ano < anoAtual || (item.ano === anoAtual && item.mesNum <= new Date().getMonth() + 1))
+    .reduce<Record<number, ContagemMensal[]>>((anos, item) => {
+      (anos[item.ano] ??= []).push(item);
+      return anos;
+    }, {});
+  const contagemCarrosPorAno = contagemCarrosMensal.reduce<Record<number, ContagemCarroMensal[]>>((anos, item) => {
+    (anos[item.ano] ??= []).push(item);
+    return anos;
+  }, {});
+
   if (loadingInitial) {
     return (
       <div className="container mx-auto p-4">
@@ -270,39 +282,30 @@ export default function ViagensObra() {
         </div>
       </Card>
 
-      {/* Tabela de contagem mensal */}
+      {/* Totais e contagem mensal agrupados por ano */}
       {contagemMensal && contagemMensal.length > 0 && (
         <Card className="p-4 mt-6 max-w-xl mx-auto">
-          <h3 className="text-lg font-semibold mb-3">Viagens por mês</h3>
-          <table className="w-full text-sm">
-            <thead>
-              <tr>
-                <th className="text-left">Mês</th>
-                <th className="text-left">Ano</th>
-                <th className="text-right">Total de Viagens</th>
-              </tr>
-            </thead>
-            <tbody>
-              {contagemMensal
-                .filter(item => {
-                  // Só mostra mês atual ou meses anteriores que já tenham viagens
-                  const agora = new Date();
-                  const mesAtual = agora.getMonth() + 1;
-                  const anoAtual = agora.getFullYear();
-                  return (
-                    item.ano < anoAtual ||
-                    (item.ano === anoAtual && item.mesNum <= mesAtual)
-                  );
-                })
-                .map((item, idx) => (
-                  <tr key={idx}>
-                    <td>{item.mes}</td>
-                    <td>{item.ano}</td>
-                    <td className="text-right font-bold">{item.total}</td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
+          <h3 className="text-lg font-semibold mb-3">Viagens por ano</h3>
+          <div className="divide-y">
+            {Object.entries(contagemPorAno).sort(([a], [b]) => {
+              const anoA = Number(a);
+              const anoB = Number(b);
+              if (anoA === anoAtual - 1) return -1;
+              if (anoB === anoAtual - 1) return 1;
+              return anoB - anoA;
+            }).map(([ano, meses]) => (
+              <details key={ano} open={Number(ano) === anoAtual} className="group py-2">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-md py-2 hover:bg-muted/50 [&::-webkit-details-marker]:hidden">
+                  <span className="flex items-center gap-2 font-semibold"><ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />{ano}</span>
+                  <span className="text-right"><strong>{meses.reduce((total, mes) => total + mes.total, 0)}</strong> viagens</span>
+                </summary>
+                <table className="w-full text-sm">
+                  <thead><tr><th className="text-left">Mês</th><th className="text-right">Total de viagens</th></tr></thead>
+                  <tbody>{meses.map((item, idx) => <tr key={`${ano}-${idx}`}><td className="py-1">{item.mes}</td><td className="text-right font-bold">{item.total}</td></tr>)}</tbody>
+                </table>
+              </details>
+            ))}
+          </div>
         </Card>
       )}
 
@@ -314,8 +317,21 @@ export default function ViagensObra() {
           </CardHeader>
           <CardContent>
             {contagemCarrosMensal.length > 0 ? (
-              <div className="space-y-4">
-                {contagemCarrosMensal.map((mes, index) => (
+              <div className="divide-y">
+                {Object.entries(contagemCarrosPorAno).sort(([a], [b]) => {
+                  const anoA = Number(a);
+                  const anoB = Number(b);
+                  if (anoA === anoAtual - 1) return -1;
+                  if (anoB === anoAtual - 1) return 1;
+                  return anoB - anoA;
+                }).map(([ano, meses]) => (
+                  <details key={ano} open={Number(ano) === anoAtual} className="group py-2">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-md py-2 hover:bg-muted/50 [&::-webkit-details-marker]:hidden">
+                      <span className="flex items-center gap-2 font-semibold"><ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />{ano}</span>
+                      <span className="text-right"><strong>{meses.reduce((total, mes) => total + mes.carros.reduce((totalMes, carro) => totalMes + carro.total, 0), 0)}</strong> viagens</span>
+                    </summary>
+                    <div className="space-y-4 pt-2">
+                {meses.map((mes, index) => (
                   <div key={index}>
                     <h4 className="font-semibold mb-2">{mes.mes} {mes.ano}</h4>
                     <Table>
@@ -346,6 +362,9 @@ export default function ViagensObra() {
                       </TableBody>
                     </Table>
                   </div>
+                ))}
+                    </div>
+                  </details>
                 ))}
               </div>
             ) : (

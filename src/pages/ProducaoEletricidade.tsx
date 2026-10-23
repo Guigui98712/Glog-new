@@ -408,7 +408,7 @@ const ProducaoEletricidade = () => {
         exibirNoMes,
       };
     }).filter((item) => item.exibirNoMes)
-      .sort((a, b) => compararTarefa(a.tarefa, b.tarefa));
+      .sort((a, b) => compararNomeTarefa(a.tarefa.nome, b.tarefa.nome));
   }, [tarefas, registros, mesReferencia, tabelaEletricistaId]);
 
   const totalPagarMes = useMemo(() => {

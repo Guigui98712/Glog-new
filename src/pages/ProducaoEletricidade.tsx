@@ -53,6 +53,9 @@ interface Eletricista {
 const compararNomeTarefa = (a: string, b: string) =>
   a.localeCompare(b, 'pt-BR', { numeric: true, sensitivity: 'base' });
 
+const compararTarefa = (a: EletricaTarefa, b: EletricaTarefa) =>
+  a.ordem - b.ordem || compararNomeTarefa(a.nome, b.nome);
+
 const formatQuantidade = (valor: number) => {
   return new Intl.NumberFormat('pt-BR', {
     minimumFractionDigits: 0,
@@ -175,7 +178,7 @@ const ProducaoEletricidade = () => {
           valor: Number(t.valor || 0),
           metragemPrevista: Number(t.metragem_prevista || 0),
           ordem: Number(t.ordem || 0),
-        })).sort((a, b) => compararNomeTarefa(a.nome, b.nome))
+        })).sort(compararTarefa)
       );
 
       setRegistros(
@@ -237,7 +240,7 @@ const ProducaoEletricidade = () => {
 
     return comStatus.sort((a, b) => {
       if (a.concluida !== b.concluida) return a.concluida ? 1 : -1;
-      return compararNomeTarefa(a.tarefa.nome, b.tarefa.nome);
+      return compararTarefa(a.tarefa, b.tarefa);
     });
   }, [tarefas, registros]);
 
@@ -405,7 +408,7 @@ const ProducaoEletricidade = () => {
         exibirNoMes,
       };
     }).filter((item) => item.exibirNoMes)
-      .sort((a, b) => compararNomeTarefa(a.tarefa.nome, b.tarefa.nome));
+      .sort((a, b) => compararTarefa(a.tarefa, b.tarefa));
   }, [tarefas, registros, mesReferencia, tabelaEletricistaId]);
 
   const totalPagarMes = useMemo(() => {
@@ -840,7 +843,7 @@ const ProducaoEletricidade = () => {
         metragemPrevista: Number(data.metragem_prevista || 0),
         ordem: Number(data.ordem || 0),
       },
-    ].sort((a, b) => compararNomeTarefa(a.nome, b.nome)));
+    ].sort(compararTarefa));
 
     setNovaTarefa('');
     setNovoValorTarefa('');
@@ -884,7 +887,7 @@ const ProducaoEletricidade = () => {
       t.id === editandoTarefa.id
         ? { ...t, nome, valor, metragemPrevista }
         : t
-    ).sort((a, b) => compararNomeTarefa(a.nome, b.nome)));
+    ).sort(compararTarefa));
     setEditandoTarefa(null);
   };
 

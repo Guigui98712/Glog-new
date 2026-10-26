@@ -88,7 +88,8 @@ export const gerarRelatorioSemanalV2 = async (
         .eq('obra_id', obraId)
         .order('data', { ascending: true });
 
-      // Processar etapas iniciadas e concluídas
+      // Registrar todos os inícios antes das conclusões, pois pode haver mais
+      // de um registro no mesmo dia e a ordem deles não é garantida.
       todosRegistros.forEach(registro => {
         const data = registro.data;
         
@@ -108,7 +109,12 @@ export const gerarRelatorioSemanalV2 = async (
           }
         });
         
-        // Registrar etapas concluídas
+      });
+
+      // Registrar etapas concluídas depois de todos os inícios. Assim, uma
+      // etapa iniciada e concluída no mesmo dia fica somente como concluída.
+      todosRegistros.forEach(registro => {
+        const data = registro.data;
         registro.etapas_concluidas?.forEach(etapa => {
           const info = etapasInfo.get(etapa);
           if (info) {

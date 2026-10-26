@@ -235,7 +235,9 @@ const normalizarNomeAba = (nome: string) => {
 };
 
 const ordenarTarefas = (lista: Tarefa[]) => {
-  return [...lista].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true, sensitivity: 'base' }));
+  return [...lista].sort((a, b) =>
+    a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true, sensitivity: 'base' })
+  );
 };
 
 const montarSemanasDoMes = (mesReferencia: Date): SemanaColuna[] => {

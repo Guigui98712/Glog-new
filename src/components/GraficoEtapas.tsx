@@ -163,6 +163,7 @@ export default function GraficoEtapas({ registros, etapasFluxograma = ETAPAS_FLU
           <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.5} />
           <XAxis 
             type="number" 
+            allowDecimals={false}
             label={{ 
               value: 'Dias', 
               position: 'insideBottom', 

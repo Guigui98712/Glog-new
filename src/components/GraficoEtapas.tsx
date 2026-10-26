@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { format, parseISO, differenceInDays } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ETAPAS_FLUXOGRAMA } from '../constants/etapas';
 
@@ -39,6 +39,21 @@ const CustomTooltip = ({ active, payload, label }: any) => {
     );
   }
   return null;
+};
+
+const contarDiasUteis = (dataInicio: Date, dataFim: Date) => {
+  let diasUteis = 0;
+  const dataAtual = new Date(dataInicio);
+
+  while (dataAtual <= dataFim) {
+    const diaSemana = dataAtual.getDay();
+    if (diaSemana !== 0 && diaSemana !== 6) {
+      diasUteis += 1;
+    }
+    dataAtual.setDate(dataAtual.getDate() + 1);
+  }
+
+  return diasUteis;
 };
 
 export default function GraficoEtapas({ registros, etapasFluxograma = ETAPAS_FLUXOGRAMA }: GraficoEtapasProps) {
@@ -91,7 +106,7 @@ export default function GraficoEtapas({ registros, etapasFluxograma = ETAPAS_FLU
   const dadosGrafico = Array.from(etapasInfo.values()).map(etapa => {
     const dataInicio = parseISO(etapa.data_inicio);
     const dataFim = etapa.data_fim ? parseISO(etapa.data_fim) : hoje;
-    const duracao = differenceInDays(dataFim, dataInicio) + 1;
+    const duracao = contarDiasUteis(dataInicio, dataFim);
     
     return {
       ...etapa,

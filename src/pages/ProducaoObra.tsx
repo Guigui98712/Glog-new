@@ -2246,9 +2246,6 @@ const ProducaoObra = () => {
           });
 
           const metragemMes = registrosNoMes.reduce((acc, r) => acc + (r.metragem || 0), 0);
-          const metragemAcumuladaAteMes = registrosTarefa
-            .filter((r) => normalizarDataISO(r.data) <= fimMesIso)
-            .reduce((acc, r) => acc + (r.metragem || 0), 0);
 
           const dataFinalManual = registrosTarefaTodos
             .map((r) => r.data_fim)
@@ -2256,7 +2253,7 @@ const ProducaoObra = () => {
             .sort((a, b) => (a as string).localeCompare(b as string))[0] || null;
 
           const percentual = tarefa.metragem_prevista > 0
-            ? Math.min(100, (metragemAcumuladaAteMes / tarefa.metragem_prevista) * 100)
+            ? Math.min(100, (metragemMes / tarefa.metragem_prevista) * 100)
             : 0;
 
           const dataInicio = registrosTarefa.length > 0
@@ -2334,14 +2331,11 @@ const ProducaoObra = () => {
             .sort((a, b) => a.data.localeCompare(b.data));
           const registrosNoMes = registrosTarefa.filter((r) => ehDoMesReferencia(r.data));
           const metragemMes = registrosNoMes.reduce((acc, r) => acc + (r.metragem || 0), 0);
-          const metragemAcumuladaAteMes = registrosTarefa
-            .filter((r) => normalizarDataISO(r.data) <= fimMesIso)
-            .reduce((acc, r) => acc + (r.metragem || 0), 0);
           const dataInicio = registrosTarefa.map((r) => r.data_inicio).sort((a, b) => a.localeCompare(b))[0] || null;
           const dataFinalManual = registrosTarefaTodos.map((r) => r.data_fim).filter(Boolean)
             .sort((a, b) => (a as string).localeCompare(b as string))[0] || null;
           const percentual = tarefa.metragem_prevista > 0
-            ? Math.min(100, (metragemAcumuladaAteMes / tarefa.metragem_prevista) * 100)
+            ? Math.min(100, (metragemMes / tarefa.metragem_prevista) * 100)
             : 0;
           let dataFinal: string | null = dataFinalManual;
           if (!dataFinal && tarefa.metragem_prevista > 0) {
@@ -2719,7 +2713,7 @@ const ProducaoObra = () => {
       ]);
       wsHidraulica.addRow([encanador.nome.toUpperCase()]);
       wsHidraulica.addRow([]);
-      wsHidraulica.addRow(['SERVIÇO', 'VALOR', '% FEITO', 'DIA DE INÍCIO', 'DIA DE FINAL', 'METRAGEM', 'A PAGAR']);
+      wsHidraulica.addRow(['SERVIÇO', 'VALOR', '% NO MÊS', 'DIA DE INÍCIO', 'DIA DE FINAL', 'METRAGEM', 'A PAGAR']);
 
       for (const item of resumoHidraulica) {
         wsHidraulica.addRow([
@@ -2879,7 +2873,7 @@ const ProducaoObra = () => {
       ]);
       wsEletrica.addRow([eletricista.nome.toUpperCase()]);
       wsEletrica.addRow([]);
-      wsEletrica.addRow(['SERVIÇO', 'VALOR', '% FEITO', 'DIA DE INÍCIO', 'DIA DE FINAL', 'METRAGEM', 'A PAGAR']);
+      wsEletrica.addRow(['SERVIÇO', 'VALOR', '% NO MÊS', 'DIA DE INÍCIO', 'DIA DE FINAL', 'METRAGEM', 'A PAGAR']);
 
       for (const item of resumoEletrica) {
         wsEletrica.addRow([

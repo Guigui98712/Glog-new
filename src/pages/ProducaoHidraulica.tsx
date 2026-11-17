@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
@@ -14,12 +14,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Trash2, Plus, ArrowLeft, ClipboardList, Check, X, Pencil, Users, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Trash2, Plus, ArrowLeft, ClipboardList, Check, X, Pencil, Users, ChevronLeft, ChevronRight, FileDown } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { addMonths, endOfMonth, format, parseISO, startOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/utils';
+import { generateProductionTablesPdf } from '@/lib/productionTablesPdf';
 
 interface HidraulicaTarefa {
   id: string;
@@ -89,6 +90,9 @@ const ProducaoHidraulica = () => {
     return new Date(hoje.getFullYear(), hoje.getMonth(), 1);
   });
   const [tabelaEncanadorId, setTabelaEncanadorId] = useState<string>('all');
+  const tabelaPrincipalRef = useRef<HTMLTableElement>(null);
+  const tabelaPresencaRef = useRef<HTMLTableElement>(null);
+  const [gerandoPdf, setGerandoPdf] = useState(false);
 
   const [novaTarefa, setNovaTarefa] = useState('');
   const [novoValorTarefa, setNovoValorTarefa] = useState('');
@@ -301,6 +305,29 @@ const ProducaoHidraulica = () => {
     ? 'Toda a Equipe'
     : (encanadorTabelaAtual?.nome || 'Encanador');
 
+  const handleGerarPdf = async () => {
+    setGerandoPdf(true);
+    try {
+      await generateProductionTablesPdf({
+        sections: [
+          { table: tabelaPrincipalRef.current, title: 'Produção mensal' },
+          { table: tabelaPresencaRef.current, title: 'Presenças e diárias do mês' },
+        ],
+        fileName: `producao_hidraulica_${format(mesReferencia, 'yyyy-MM')}.pdf`,
+        title: `Produção Hidráulica - ${obraNome}`,
+        subtitle: `${format(mesReferencia, "MMMM 'de' yyyy", { locale: ptBR })} - ${tabelaTitulo}`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Erro ao gerar PDF',
+        description: error instanceof Error ? error.message : 'Não foi possível gerar o PDF.',
+        variant: 'destructive',
+      });
+    } finally {
+      setGerandoPdf(false);
+    }
+  };
+
   const tileClassName = ({ date, view }: { date: Date; view: string }) => {
     if (view !== 'month') {
       return '';
@@ -332,6 +359,9 @@ const ProducaoHidraulica = () => {
       const registrosTarefaTodos = registrosProducaoTodos
         .filter((r) => r.tarefaId === tarefa.id)
         .sort((a, b) => a.data.localeCompare(b.data));
+      const equipeTarefa = [...new Set(registrosTarefaTodos.map((r) => r.encanadorId))]
+        .map((encanadorId) => encanadoresPorId[encanadorId]?.nome || 'Encanador removido')
+        .sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
       const registrosNoMes = registrosTarefa.filter((r) => {
         return pertenceAoMes(r.data, mesReferencia);
@@ -403,6 +433,7 @@ const ProducaoHidraulica = () => {
 
       return {
         tarefa,
+        equipeTarefa,
         metragemMes,
         percentualMes,
         dataInicio,
@@ -412,7 +443,7 @@ const ProducaoHidraulica = () => {
       };
     }).filter((item) => item.exibirNoMes)
       .sort((a, b) => compararNomeTarefa(a.tarefa.nome, b.tarefa.nome));
-  }, [tarefas, registros, mesReferencia, tabelaEncanadorId]);
+  }, [tarefas, registros, mesReferencia, tabelaEncanadorId, encanadoresPorId]);
 
   const totalPagarMes = useMemo(() => {
     return resumoMensal.reduce((acc, item) => acc + item.aPagar, 0);
@@ -1403,7 +1434,7 @@ const ProducaoHidraulica = () => {
         </div>
 
         <div className="overflow-x-auto rounded-lg border -mx-1 sm:mx-0">
-          <table className="min-w-[960px] w-full table-fixed text-xs sm:text-sm border-collapse whitespace-nowrap">
+          <table ref={tabelaPrincipalRef} className="min-w-[960px] w-full table-fixed text-xs sm:text-sm border-collapse whitespace-nowrap">
             <colgroup>
               <col style={{ width: '28%' }} />
               <col style={{ width: '12%' }} />
@@ -1434,7 +1465,12 @@ const ProducaoHidraulica = () => {
               ) : (
                 resumoMensal.map((item, idx) => (
                   <tr key={item.tarefa.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                    <td className="px-3 py-2 border border-gray-200 font-semibold uppercase text-xs">{item.tarefa.nome}</td>
+                    <td className="px-3 py-2 border border-gray-200 font-semibold uppercase text-xs">
+                      <div>{item.tarefa.nome}</div>
+                      <div className="mt-1 whitespace-normal font-normal normal-case text-[11px] text-muted-foreground">
+                        Encanador(es): {item.equipeTarefa.join(', ')}
+                      </div>
+                    </td>
                     <td className="px-3 py-2 border border-gray-200 text-center text-xs">{formatCurrency(item.tarefa.valor)}</td>
                     <td className="px-3 py-2 border border-gray-200 text-center text-xs font-semibold">
                       {item.tarefa.metragemPrevista > 0 ? `${item.percentualMes.toFixed(1).replace('.', ',')}%` : '-'}
@@ -1495,7 +1531,7 @@ const ProducaoHidraulica = () => {
         </div>
 
         <div className="overflow-x-auto rounded-lg border -mx-1 sm:mx-0">
-          <table className="min-w-[640px] w-full text-xs sm:text-sm border-collapse whitespace-nowrap">
+          <table ref={tabelaPresencaRef} className="min-w-[640px] w-full text-xs sm:text-sm border-collapse whitespace-nowrap">
             <thead>
               <tr className="bg-slate-600 text-white">
                 <th className="px-3 py-2 text-left font-bold uppercase text-xs border border-slate-500">Diárias no mês</th>
@@ -1531,6 +1567,18 @@ const ProducaoHidraulica = () => {
               )}
             </tbody>
           </table>
+        </div>
+        <div className="flex justify-end pt-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 text-muted-foreground"
+            onClick={handleGerarPdf}
+            disabled={gerandoPdf}
+          >
+            <FileDown className="mr-2 h-4 w-4" />
+            {gerandoPdf ? 'Gerando PDF...' : 'Gerar PDF'}
+          </Button>
         </div>
       </Card>
 

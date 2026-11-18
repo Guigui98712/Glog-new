@@ -65,14 +65,26 @@ const normalizarDataISO = (valor?: string | null) => {
   return valor ? valor.slice(0, 10) : '';
 };
 
+function filtrarPorPagina<T extends {
+  eq: (column: 'pagina_id', value: string) => T;
+  is: (column: 'pagina_id', value: null) => T;
+}>(query: T, paginaId: string | null): T {
+  return paginaId ? query.eq('pagina_id', paginaId) : query.is('pagina_id', null);
+}
+
 const pertenceAoMes = (dataIso: string, mesReferencia: Date) => {
   return normalizarDataISO(dataIso).slice(0, 7) === format(mesReferencia, 'yyyy-MM');
 };
 
 const ProducaoHidraulica = () => {
-  const { id: obraId } = useParams();
+  const { id: obraId, paginaId } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const ehPaginaEmpreita = Boolean(paginaId);
+  const profissionalLabel = ehPaginaEmpreita ? 'profissional' : 'encanador';
+  const profissionaisLabel = ehPaginaEmpreita ? 'profissionais' : 'encanadores';
+  const profissionalLabelCapitalizado = ehPaginaEmpreita ? 'Profissional' : 'Encanador';
+  const profissionaisLabelCapitalizado = ehPaginaEmpreita ? 'Profissionais' : 'Encanadores';
 
   const [obraNome, setObraNome] = useState('Obra');
   const [nomePagina, setNomePagina] = useState('Hidráulica');
@@ -143,24 +155,31 @@ const ProducaoHidraulica = () => {
           .from('producao_empreita_paginas')
           .select('nome, arquivada')
           .eq('obra_id', Number(obraId))
-          .eq('tipo', 'hidraulica')
+          .eq('tipo', paginaId ? 'empreita' : 'hidraulica')
+          .match(paginaId ? { id: paginaId } : {})
           .maybeSingle(),
-        supabase
+        filtrarPorPagina(
+          supabase
           .from('producao_hidraulica_encanadores')
           .select('id, nome, ativo, valor_diaria')
-          .eq('obra_id', Number(obraId))
-          .order('nome', { ascending: true }),
-        supabase
+          .eq('obra_id', Number(obraId)),
+          paginaId || null,
+        ).order('nome', { ascending: true }),
+        filtrarPorPagina(
+          supabase
           .from('producao_hidraulica_tarefas')
           .select('id, nome, valor, metragem_prevista, ordem')
-          .eq('obra_id', Number(obraId))
-          .order('ordem', { ascending: true })
+          .eq('obra_id', Number(obraId)),
+          paginaId || null,
+        ).order('ordem', { ascending: true })
           .order('nome', { ascending: true }),
-        supabase
+        filtrarPorPagina(
+          supabase
           .from('producao_hidraulica_registros')
           .select('id, data, encanador_id, tarefa_id, eh_diaria, fator_diaria, valor, data_inicio, data_fim, metragem, observacao')
-          .eq('obra_id', Number(obraId))
-          .order('data', { ascending: false }),
+          .eq('obra_id', Number(obraId)),
+          paginaId || null,
+        ).order('data', { ascending: false }),
       ]);
 
       if (obraResp.error) throw obraResp.error;
@@ -169,10 +188,10 @@ const ProducaoHidraulica = () => {
       if (tarefasResp.error) throw tarefasResp.error;
       if (registrosResp.error) throw registrosResp.error;
 
-      if (paginaResp.data?.arquivada) {
+      if ((paginaId && !paginaResp.data) || paginaResp.data?.arquivada) {
         toast({
-          title: 'Página arquivada',
-          description: 'Restaure a página pela lista de páginas arquivadas para acessá-la.',
+          title: 'Página indisponível',
+          description: 'A página foi arquivada ou não existe nesta obra.',
           variant: 'destructive',
         });
         navigate(`/obras/${obraId}/producao`, { replace: true });
@@ -217,10 +236,10 @@ const ProducaoHidraulica = () => {
         }))
       );
     } catch (error) {
-      console.error('Erro ao carregar produção hidráulica:', error);
+      console.error('Erro ao carregar página de produção:', error);
       toast({
-        title: 'Erro ao carregar produção hidráulica',
-        description: 'Verifique se as tabelas da hidráulica já foram criadas no banco.',
+        title: 'Erro ao carregar produção',
+        description: 'Verifique se as tabelas e a migração de páginas de produção estão atualizadas.',
         variant: 'destructive',
       });
     } finally {
@@ -230,7 +249,7 @@ const ProducaoHidraulica = () => {
 
   useEffect(() => {
     carregarDados();
-  }, [obraId]);
+  }, [obraId, paginaId]);
 
   const tarefasPorId = useMemo(() => {
     return tarefas.reduce<Record<string, HidraulicaTarefa>>((acc, tarefa) => {
@@ -322,7 +341,8 @@ const ProducaoHidraulica = () => {
   const encanadorTabelaAtual = encanadoresTabelaDisponiveis.find((e) => e.id === tabelaEncanadorId);
   const tabelaTitulo = tabelaEncanadorId === 'all'
     ? 'Toda a Equipe'
-    : (encanadorTabelaAtual?.nome || 'Encanador');
+    : (encanadorTabelaAtual?.nome || profissionalLabelCapitalizado);
+  const nomeRelatorio = ehPaginaEmpreita ? nomePagina : 'Hidráulica';
 
   const handleGerarPdf = async () => {
     setGerandoPdf(true);
@@ -332,8 +352,8 @@ const ProducaoHidraulica = () => {
           { table: tabelaPrincipalRef.current, title: 'Produção mensal' },
           { table: tabelaPresencaRef.current, title: 'Presenças e diárias do mês' },
         ],
-        fileName: `producao_hidraulica_${format(mesReferencia, 'yyyy-MM')}.pdf`,
-        title: `Produção Hidráulica - ${obraNome}`,
+        fileName: `producao_${nomeRelatorio.toLocaleLowerCase('pt-BR').replace(/\s+/g, '_')}_${format(mesReferencia, 'yyyy-MM')}.pdf`,
+        title: `Produção ${nomeRelatorio} - ${obraNome}`,
         subtitle: `${format(mesReferencia, "MMMM 'de' yyyy", { locale: ptBR })} - ${tabelaTitulo}`,
       });
     } catch (error) {
@@ -379,7 +399,7 @@ const ProducaoHidraulica = () => {
         .filter((r) => r.tarefaId === tarefa.id)
         .sort((a, b) => a.data.localeCompare(b.data));
       const equipeTarefa = [...new Set(registrosTarefaTodos.map((r) => r.encanadorId))]
-        .map((encanadorId) => encanadoresPorId[encanadorId]?.nome || 'Encanador removido')
+        .map((encanadorId) => encanadoresPorId[encanadorId]?.nome || `${profissionalLabelCapitalizado} removido`)
         .sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
       const registrosNoMes = registrosTarefa.filter((r) => {
@@ -462,7 +482,7 @@ const ProducaoHidraulica = () => {
       };
     }).filter((item) => item.exibirNoMes)
       .sort((a, b) => compararNomeTarefa(a.tarefa.nome, b.tarefa.nome));
-  }, [tarefas, registros, mesReferencia, tabelaEncanadorId, encanadoresPorId]);
+  }, [tarefas, registros, mesReferencia, tabelaEncanadorId, encanadoresPorId, profissionalLabelCapitalizado]);
 
   const totalPagarMes = useMemo(() => {
     return resumoMensal.reduce((acc, item) => acc + item.aPagar, 0);
@@ -562,11 +582,11 @@ const ProducaoHidraulica = () => {
 
       if (registrosDiariasDoMes.length === 0) {
         if (tabelaEncanadorId !== 'all') {
-          const { error } = await supabase
+          const { error } = await filtrarPorPagina(supabase
             .from('producao_hidraulica_encanadores')
             .update({ valor_diaria: valor })
             .eq('id', tabelaEncanadorId)
-            .eq('obra_id', Number(obraId));
+            .eq('obra_id', Number(obraId)), paginaId || null);
 
           if (error) throw error;
 
@@ -585,11 +605,11 @@ const ProducaoHidraulica = () => {
       }
 
       const ids = registrosDiariasDoMes.map((registro) => registro.id);
-      const { error } = await supabase
+      const { error } = await filtrarPorPagina(supabase
         .from('producao_hidraulica_registros')
         .update({ valor })
         .in('id', ids)
-        .eq('obra_id', Number(obraId));
+        .eq('obra_id', Number(obraId)), paginaId || null);
 
       if (error) {
         throw error;
@@ -602,11 +622,11 @@ const ProducaoHidraulica = () => {
       )));
 
       if (tabelaEncanadorId !== 'all') {
-        const { error: encError } = await supabase
+        const { error: encError } = await filtrarPorPagina(supabase
           .from('producao_hidraulica_encanadores')
           .update({ valor_diaria: valor })
           .eq('id', tabelaEncanadorId)
-          .eq('obra_id', Number(obraId));
+          .eq('obra_id', Number(obraId)), paginaId || null);
 
         if (encError) {
           throw encError;
@@ -720,7 +740,7 @@ const ProducaoHidraulica = () => {
     if (!nome) {
       toast({
         title: 'Nome obrigatório',
-        description: 'Informe o nome do encanador.',
+        description: `Informe o nome do ${profissionalLabel}.`,
         variant: 'destructive',
       });
       return;
@@ -728,14 +748,14 @@ const ProducaoHidraulica = () => {
 
     const { data, error } = await supabase
       .from('producao_hidraulica_encanadores')
-      .insert({ obra_id: Number(obraId), nome, ativo: true, valor_diaria: 0 })
+      .insert({ obra_id: Number(obraId), pagina_id: paginaId || null, nome, ativo: true, valor_diaria: 0 })
       .select('id, nome, ativo, valor_diaria')
       .single();
 
     if (error || !data) {
       toast({
-        title: 'Erro ao adicionar encanador',
-        description: error?.message || 'Não foi possível salvar o encanador.',
+        title: `Erro ao adicionar ${profissionalLabel}`,
+        description: error?.message || `Não foi possível salvar o ${profissionalLabel}.`,
         variant: 'destructive',
       });
       return;
@@ -761,7 +781,7 @@ const ProducaoHidraulica = () => {
     if (!nome) {
       toast({
         title: 'Nome obrigatório',
-        description: 'Informe o nome do encanador.',
+        description: `Informe o nome do ${profissionalLabel}.`,
         variant: 'destructive',
       });
       return;
@@ -776,15 +796,15 @@ const ProducaoHidraulica = () => {
       return;
     }
 
-    const { error } = await supabase
+    const { error } = await filtrarPorPagina(supabase
       .from('producao_hidraulica_encanadores')
       .update({ nome, valor_diaria: valorDiaria })
       .eq('id', editandoEncanador.id)
-      .eq('obra_id', Number(obraId));
+      .eq('obra_id', Number(obraId)), paginaId || null);
 
     if (error) {
       toast({
-        title: 'Erro ao editar encanador',
+        title: `Erro ao editar ${profissionalLabel}`,
         description: error.message,
         variant: 'destructive',
       });
@@ -805,15 +825,15 @@ const ProducaoHidraulica = () => {
     const possuiHistorico = registros.some((r) => r.encanadorId === encanadorId);
 
     if (possuiHistorico) {
-      const { error } = await supabase
+      const { error } = await filtrarPorPagina(supabase
         .from('producao_hidraulica_encanadores')
         .update({ ativo: false })
         .eq('id', encanadorId)
-        .eq('obra_id', Number(obraId));
+        .eq('obra_id', Number(obraId)), paginaId || null);
 
       if (error) {
         toast({
-          title: 'Erro ao inativar encanador',
+          title: `Erro ao inativar ${profissionalLabel}`,
           description: error.message,
           variant: 'destructive',
         });
@@ -822,21 +842,21 @@ const ProducaoHidraulica = () => {
 
       setEncanadores((prev) => prev.map((e) => (e.id === encanadorId ? { ...e, ativo: false } : e)));
       toast({
-        title: 'Encanador inativado',
+        title: `${profissionalLabelCapitalizado} inativado`,
         description: 'O histórico foi mantido para os relatórios.',
       });
       return;
     }
 
-    const { error } = await supabase
+    const { error } = await filtrarPorPagina(supabase
       .from('producao_hidraulica_encanadores')
       .delete()
       .eq('id', encanadorId)
-      .eq('obra_id', Number(obraId));
+      .eq('obra_id', Number(obraId)), paginaId || null);
 
     if (error) {
       toast({
-        title: 'Erro ao excluir encanador',
+        title: `Erro ao excluir ${profissionalLabel}`,
         description: error.message,
         variant: 'destructive',
       });
@@ -870,6 +890,7 @@ const ProducaoHidraulica = () => {
       .from('producao_hidraulica_tarefas')
       .insert({
         obra_id: Number(obraId),
+        pagina_id: paginaId || null,
         nome,
         valor,
         metragem_prevista: metragemPrevista,
@@ -921,11 +942,11 @@ const ProducaoHidraulica = () => {
       return;
     }
 
-    const { error } = await supabase
+    const { error } = await filtrarPorPagina(supabase
       .from('producao_hidraulica_tarefas')
       .update({ nome, valor, metragem_prevista: metragemPrevista })
       .eq('id', editandoTarefa.id)
-      .eq('obra_id', Number(obraId));
+      .eq('obra_id', Number(obraId)), paginaId || null);
 
     if (error) {
       toast({
@@ -953,17 +974,17 @@ const ProducaoHidraulica = () => {
     if (existeRegistro) {
       toast({
         title: 'Não é possível excluir',
-        description: 'A tarefa já possui lançamentos de hidráulica.',
+        description: `A tarefa já possui lançamentos de ${nomeRelatorio.toLocaleLowerCase('pt-BR')}.`,
         variant: 'destructive',
       });
       return;
     }
 
-    const { error } = await supabase
+    const { error } = await filtrarPorPagina(supabase
       .from('producao_hidraulica_tarefas')
       .delete()
       .eq('id', tarefaId)
-      .eq('obra_id', Number(obraId));
+      .eq('obra_id', Number(obraId)), paginaId || null);
 
     if (error) {
       toast({
@@ -1012,8 +1033,8 @@ const ProducaoHidraulica = () => {
       toast({
         title: 'Campos obrigatórios',
         description: formEhDiaria
-          ? 'Selecione o encanador.'
-          : 'Selecione encanador, tarefa e data de início.',
+          ? `Selecione o ${profissionalLabel}.`
+          : `Selecione ${profissionalLabel}, tarefa e data de início.`,
         variant: 'destructive',
       });
       return;
@@ -1052,6 +1073,7 @@ const ProducaoHidraulica = () => {
       .from('producao_hidraulica_registros')
       .insert({
         obra_id: Number(obraId),
+        pagina_id: paginaId || null,
         data: dataLancamento,
         encanador_id: formEncanadorId,
         tarefa_id: formEhDiaria ? null : formTarefaId,
@@ -1164,8 +1186,8 @@ const ProducaoHidraulica = () => {
       toast({
         title: 'Campos obrigatórios',
         description: editandoRegistro.ehDiaria
-          ? 'Selecione o encanador.'
-          : 'Selecione encanador, serviço e data de início.',
+          ? `Selecione o ${profissionalLabel}.`
+          : `Selecione ${profissionalLabel}, serviço e data de início.`,
         variant: 'destructive',
       });
       return;
@@ -1191,7 +1213,7 @@ const ProducaoHidraulica = () => {
 
     const fatorDiaria = editandoRegistro.ehDiaria ? editandoRegistro.fatorDiaria : 1;
 
-    const { data, error } = await supabase
+    const { data, error } = await filtrarPorPagina(supabase
       .from('producao_hidraulica_registros')
       .update({
         encanador_id: editandoRegistro.encanadorId,
@@ -1206,6 +1228,7 @@ const ProducaoHidraulica = () => {
       })
       .eq('id', editandoRegistro.id)
       .eq('obra_id', Number(obraId))
+      , paginaId || null)
       .select('id, data, encanador_id, tarefa_id, eh_diaria, fator_diaria, valor, data_inicio, data_fim, metragem, observacao')
       .single();
 
@@ -1247,11 +1270,11 @@ const ProducaoHidraulica = () => {
       return;
     }
 
-    const { error } = await supabase
+    const { error } = await filtrarPorPagina(supabase
       .from('producao_hidraulica_registros')
       .delete()
       .eq('id', registroId)
-      .eq('obra_id', Number(obraId));
+      .eq('obra_id', Number(obraId)), paginaId || null);
 
     if (error) {
       toast({
@@ -1270,7 +1293,7 @@ const ProducaoHidraulica = () => {
       <div className="container mx-auto p-4">
         <Card className="p-6 flex items-center justify-center min-h-[220px]">
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
-          <p className="ml-3 text-sm text-muted-foreground">Carregando produção hidráulica...</p>
+          <p className="ml-3 text-sm text-muted-foreground">Carregando produção...</p>
         </Card>
       </div>
     );
@@ -1285,8 +1308,18 @@ const ProducaoHidraulica = () => {
             <p className="text-sm text-muted-foreground">{obraNome}</p>
           </div>
           <Button className="h-9 w-full sm:w-auto" variant="outline" onClick={() => navigate(`/obras/${obraId}/producao`)}>
-            Pedreiros
+            Páginas
           </Button>
+          {ehPaginaEmpreita && (
+            <>
+              <Button className="h-9 w-full sm:w-auto" variant="outline" onClick={() => navigate(`/obras/${obraId}/producao/hidraulica`)}>
+                Hidráulica
+              </Button>
+              <Button className="h-9 w-full sm:w-auto" variant="outline" onClick={() => navigate(`/obras/${obraId}/producao/eletricidade`)}>
+                Elétrica
+              </Button>
+            </>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row gap-2">
@@ -1296,7 +1329,7 @@ const ProducaoHidraulica = () => {
           </Button>
           <Button className="w-full sm:w-auto" variant="outline" onClick={() => setShowGerenciarEncanadores(true)}>
             <Users className="h-4 w-4 mr-2" />
-            Gerenciar encanadores
+            Gerenciar {profissionaisLabel}
           </Button>
           <Button className="w-full sm:w-auto" variant="outline" onClick={() => setShowGerenciarTarefas(true)}>
             <ClipboardList className="h-4 w-4 mr-2" />
@@ -1329,13 +1362,13 @@ const ProducaoHidraulica = () => {
       <Dialog open={showGerenciarEncanadores} onOpenChange={setShowGerenciarEncanadores}>
         <DialogContent className="w-[95vw] max-w-lg h-[86vh] sm:h-[88vh] max-h-[92vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>Gerenciar encanadores</DialogTitle>
+            <DialogTitle>Gerenciar {profissionaisLabel}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-3 min-h-0 flex-1 flex flex-col">
             <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
               <Input
-                placeholder="Nome do encanador"
+                placeholder={`Nome do ${profissionalLabel}`}
                 value={novoEncanador}
                 onChange={(e) => setNovoEncanador(e.target.value)}
               />
@@ -1347,7 +1380,7 @@ const ProducaoHidraulica = () => {
 
             <div className="space-y-2 overflow-y-auto pr-1 min-h-0 flex-1">
               {encanadoresAtivos.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nenhum encanador cadastrado.</p>
+                <p className="text-sm text-muted-foreground">Nenhum {profissionalLabel} cadastrado.</p>
               ) : (
                 encanadoresAtivos.map((encanador) =>
                   editandoEncanador?.id === encanador.id ? (
@@ -1408,7 +1441,7 @@ const ProducaoHidraulica = () => {
         <div className="border rounded-lg overflow-hidden">
           <div className="bg-gray-700 text-white text-center py-2 px-4">
             <p className="font-bold text-sm md:text-base uppercase tracking-wide">
-              Relatório de Produção Hidráulica {format(mesReferencia, 'MMMM/yyyy', { locale: ptBR }).toUpperCase()} - {obraNome.toUpperCase()}
+              Relatório de Produção {nomeRelatorio} {format(mesReferencia, 'MMMM/yyyy', { locale: ptBR }).toUpperCase()} - {obraNome.toUpperCase()}
             </p>
           </div>
           <div className="bg-gray-200 text-center py-2 px-4">
@@ -1478,7 +1511,7 @@ const ProducaoHidraulica = () => {
               {resumoMensal.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="text-center text-muted-foreground py-10">
-                    Cadastre tarefas de hidráulica para começar.
+                    Cadastre tarefas para começar.
                   </td>
                 </tr>
               ) : (
@@ -1487,7 +1520,7 @@ const ProducaoHidraulica = () => {
                     <td className="px-3 py-2 border border-gray-200 font-semibold uppercase text-xs">
                       <div>{item.tarefa.nome}</div>
                       <div className="mt-1 whitespace-normal font-normal normal-case text-[11px] text-muted-foreground">
-                        Encanador(es): {item.equipeTarefa.join(', ')}
+                        {profissionaisLabelCapitalizado}: {item.equipeTarefa.join(', ')}
                       </div>
                     </td>
                     <td className="px-3 py-2 border border-gray-200 text-center text-xs">{formatCurrency(item.tarefa.valor)}</td>
@@ -1555,7 +1588,7 @@ const ProducaoHidraulica = () => {
               <tr className="bg-slate-600 text-white">
                 <th className="px-3 py-2 text-left font-bold uppercase text-xs border border-slate-500">Diárias no mês</th>
                 <th className="px-3 py-2 text-center font-bold uppercase text-xs border border-slate-500">Data</th>
-                <th className="px-3 py-2 text-left font-bold uppercase text-xs border border-slate-500">Encanador</th>
+                <th className="px-3 py-2 text-left font-bold uppercase text-xs border border-slate-500">{profissionalLabelCapitalizado}</th>
                 <th className="px-3 py-2 text-left font-bold uppercase text-xs border border-slate-500">Observação</th>
               </tr>
             </thead>
@@ -1576,7 +1609,7 @@ const ProducaoHidraulica = () => {
                       {format(parseISO(registro.data), 'dd/MM/yyyy')}
                     </td>
                     <td className="px-3 py-2 border border-gray-200 text-xs">
-                      {encanadoresPorId[registro.encanadorId]?.nome || 'Encanador removido'}
+                      {encanadoresPorId[registro.encanadorId]?.nome || `${profissionalLabelCapitalizado} removido`}
                     </td>
                     <td className="px-3 py-2 border border-gray-200 text-xs">
                       {registro.observacao || '-'}
@@ -1604,7 +1637,7 @@ const ProducaoHidraulica = () => {
       <Dialog open={showGerenciarTarefas} onOpenChange={setShowGerenciarTarefas}>
         <DialogContent className="w-[95vw] max-w-2xl h-[86vh] sm:h-[88vh] max-h-[92vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>Tarefas de hidráulica</DialogTitle>
+            <DialogTitle>Gerenciar tarefas</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-3 min-h-0 flex-1 flex flex-col">
@@ -1730,7 +1763,7 @@ const ProducaoHidraulica = () => {
         <DialogContent className="w-[95vw] max-w-2xl h-[86vh] sm:h-[88vh] max-h-[92vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>
-              Lançar produção hidráulica - {selectedDate ? format(selectedDate, "dd/MM/yyyy") : ''}
+              Lançar produção {nomeRelatorio.toLocaleLowerCase('pt-BR')} - {selectedDate ? format(selectedDate, "dd/MM/yyyy") : ''}
             </DialogTitle>
           </DialogHeader>
 
@@ -1738,11 +1771,11 @@ const ProducaoHidraulica = () => {
             {encanadoresAtivos.length === 0 ? (
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  Para lançar, primeiro cadastre pelo menos 1 encanador.
+                  Para lançar, primeiro cadastre pelo menos 1 {profissionalLabel}.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <Button variant="outline" onClick={() => setShowGerenciarEncanadores(true)}>
-                    Gerenciar encanadores
+                    Gerenciar {profissionaisLabel}
                   </Button>
                 </div>
               </div>
@@ -1789,7 +1822,7 @@ const ProducaoHidraulica = () => {
                 </div>
 
                 <div>
-                  <Label>Encanador</Label>
+                  <Label>{profissionalLabelCapitalizado}</Label>
                   <Select value={formEncanadorId} onValueChange={setFormEncanadorId}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione" />
@@ -1947,7 +1980,7 @@ const ProducaoHidraulica = () => {
 
                         <div className="grid gap-3 sm:grid-cols-2">
                           <div>
-                            <Label className="text-xs">Encanador</Label>
+                            <Label className="text-xs">{profissionalLabelCapitalizado}</Label>
                             <Select
                               value={editandoRegistro.encanadorId}
                               onValueChange={(value) => setEditandoRegistro((prev) => prev ? { ...prev, encanadorId: value } : prev)}
@@ -2073,7 +2106,7 @@ const ProducaoHidraulica = () => {
                       <div key={registro.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border rounded-md px-3 py-2">
                         <div className="min-w-0">
                           <p className="font-medium break-words">
-                            {encanadoresPorId[registro.encanadorId]?.nome || 'Encanador removido'} - {registro.ehDiaria ? 'DIÁRIA' : (tarefasPorId[registro.tarefaId || '']?.nome || 'Serviço removido')}
+                            {encanadoresPorId[registro.encanadorId]?.nome || `${profissionalLabelCapitalizado} removido`} - {registro.ehDiaria ? 'DIÁRIA' : (tarefasPorId[registro.tarefaId || '']?.nome || 'Serviço removido')}
                           </p>
                           <p className="text-sm text-muted-foreground break-words">
                             Início: {format(parseISO(registro.dataInicio), 'dd/MM/yyyy')}

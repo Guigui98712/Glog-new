@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ArrowLeft, Building2, Calendar as CalendarIcon, DollarSign, FileText, Plus, Pencil, CalendarDays, AlertCircle, FileUp, ListTodo, ShoppingCart, FolderKanban, Bus, BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, Building2, Calendar as CalendarIcon, DollarSign, FileText, Plus, Pencil, CalendarDays, AlertCircle, FileUp, ListTodo, ShoppingCart, FolderKanban, Bus, BarChart3, ChevronDown, ChevronUp, ListChecks } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis } from 'recharts';
 import Calendar from 'react-calendar';
@@ -1092,6 +1092,20 @@ const ObraDetalhes = () => {
                 </div>
                 <p className="text-xs md:text-sm text-gray-500 mt-1">
                   Controle de produção e pagamento
+                </p>
+              </div>
+
+              <div
+                className="p-3 md:p-4 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
+                onClick={() => navigate(`/obras/${id}/etapas-detalhadas`)}
+              >
+                <h3 className="text-xs md:text-sm font-medium text-gray-500">Acompanhamento</h3>
+                <div className="mt-1 flex items-center justify-between">
+                  <p className="text-base md:text-lg font-semibold">Etapas detalhadas</p>
+                  <ListChecks className="w-4 h-4 md:w-5 md:h-5 text-emerald-600" />
+                </div>
+                <p className="text-xs md:text-sm text-gray-500 mt-1">
+                  Conclusão por pavimento, categoria e etapa
                 </p>
               </div>
 

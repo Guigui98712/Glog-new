@@ -41,6 +41,7 @@ import Ferramentas from './pages/Ferramentas';
 import ProducaoObra from './pages/ProducaoObra';
 import ProducaoHidraulica from './pages/ProducaoHidraulica';
 import ProducaoEletricidade from './pages/ProducaoEletricidade';
+import EtapasDetalhadasObra from './pages/EtapasDetalhadasObra';
 import AppUpdateChecker from './components/AppUpdateChecker';
 
 // Componente para capturar erros
@@ -320,6 +321,7 @@ function App() {
             <Route path=":id/producao/empreita/:paginaId" element={<ProducaoHidraulica />} />
             <Route path=":id/producao/hidraulica" element={<ProducaoHidraulica />} />
             <Route path=":id/producao/eletricidade" element={<ProducaoEletricidade />} />
+            <Route path=":id/etapas-detalhadas" element={<EtapasDetalhadasObra />} />
             <Route path=":id/projetos" element={<Projetos />} />
             <Route path=":id/viagens" element={<ViagensObra />} />
           </Route>

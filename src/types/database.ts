@@ -34,8 +34,13 @@ export interface Database {
           progresso: number;
           status: 'pendente' | 'em_andamento' | 'concluido';
           created_at: string;
+          numero_pavimentos: number | null;
+          numero_subsolos: number;
         };
-        Insert: Omit<Database['public']['Tables']['obras']['Row'], 'id' | 'created_at'>;
+        Insert: Omit<Database['public']['Tables']['obras']['Row'], 'id' | 'created_at'> & {
+          numero_pavimentos?: number | null;
+          numero_subsolos?: number;
+        };
         Update: Partial<Database['public']['Tables']['obras']['Insert']>;
       };
       etapas: {

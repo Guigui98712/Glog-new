@@ -36,6 +36,7 @@ import { RegistroDiario } from "@/types/obra";
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { supabase } from "@/lib/supabase";
 
 // Interface estendida para incluir o progresso calculado
 interface ObraComProgresso extends Obra {
@@ -67,6 +68,9 @@ const Obras = () => {
 
   const [novaObraNome, setNovaObraNome] = useState("");
   const [novaObraEndereco, setNovaObraEndereco] = useState("");
+  const [novaObraPavimentos, setNovaObraPavimentos] = useState("");
+  const [novaObraTemSubsolo, setNovaObraTemSubsolo] = useState(false);
+  const [novaObraSubsolos, setNovaObraSubsolos] = useState("");
   const [novaObraObservacoes, setNovaObraObservacoes] = useState("");
   const [novaObraCustoPrevisto, setNovaObraCustoPrevisto] = useState(0);
   const [novaObraCliente, setNovaObraCliente] = useState("");
@@ -78,6 +82,7 @@ const Obras = () => {
   const [salvandoNovaObra, setSalvandoNovaObra] = useState(false);
 
   const [obraEmEdicao, setObraEmEdicao] = useState<Obra | null>(null);
+  const [obraEditTemSubsolo, setObraEditTemSubsolo] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [logoEditFile, setLogoEditFile] = useState<File | null>(null);
   const [logoEditPreview, setLogoEditPreview] = useState<string | null>(null);
@@ -187,6 +192,28 @@ const Obras = () => {
       });
       return;
     }
+    if (novaObraPavimentos) {
+      const quantidade = Number(novaObraPavimentos);
+      if (!Number.isInteger(quantidade) || quantidade < 1 || quantidade > 200) {
+        toast({
+          title: "Quantidade de pavimentos inválida",
+          description: "Informe um número inteiro entre 1 e 200 ou deixe o campo vazio para informar depois.",
+          variant: "destructive"
+        });
+        return;
+      }
+    }
+    if (novaObraTemSubsolo) {
+      const quantidade = Number(novaObraSubsolos);
+      if (!Number.isInteger(quantidade) || quantidade < 1 || quantidade > 200) {
+        toast({
+          title: "Quantidade de subsolos inválida",
+          description: "Informe um número inteiro entre 1 e 200.",
+          variant: "destructive"
+        });
+        return;
+      }
+    }
 
     try {
       setSalvandoNovaObra(true);
@@ -208,7 +235,9 @@ const Obras = () => {
         data_inicio: null,
         data_previsao_fim: novaObraDataPrevisaoFim ? `${novaObraDataPrevisaoFim}-01` : null,
         user_id: null, // Será preenchido automaticamente pelo backend
-        trello_board_id: null
+        trello_board_id: null,
+        numero_pavimentos: novaObraPavimentos ? Number(novaObraPavimentos) : null,
+        numero_subsolos: novaObraTemSubsolo ? Number(novaObraSubsolos) : 0
       };
 
       console.log('[DEBUG] Enviando dados para criação da obra:', novaObraData);
@@ -220,6 +249,9 @@ const Obras = () => {
       
       setNovaObraNome("");
       setNovaObraEndereco("");
+      setNovaObraPavimentos("");
+      setNovaObraTemSubsolo(false);
+      setNovaObraSubsolos("");
       setNovaObraObservacoes("");
       setNovaObraCustoPrevisto(0);
       setNovaObraCliente("");
@@ -247,7 +279,8 @@ const Obras = () => {
   };
 
   const handleEditarObra = (obra: Obra) => {
-    setObraEmEdicao(obra);
+    setObraEmEdicao({ ...obra, numero_subsolos: obra.numero_subsolos || 0 });
+    setObraEditTemSubsolo((obra.numero_subsolos || 0) > 0);
     setLogoEditPreview(obra.logo_url);
     setLogoEditFile(null);
     setLogoEditRemovido(false);
@@ -263,8 +296,56 @@ const Obras = () => {
 
     console.log('[DEBUG] Dados da obra em edição:', obraEmEdicao);
 
+    const numeroPavimentos = obraEmEdicao.numero_pavimentos;
+    const numeroSubsolos = obraEmEdicao.numero_subsolos || 0;
+    if (obraEditTemSubsolo && (!Number.isInteger(numeroSubsolos) || numeroSubsolos < 1 || numeroSubsolos > 200)) {
+      toast({
+        title: "Quantidade de subsolos inválida",
+        description: "Informe um número inteiro entre 1 e 200.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (numeroPavimentos !== null && numeroPavimentos !== undefined &&
+      (!Number.isInteger(numeroPavimentos) || numeroPavimentos < 1 || numeroPavimentos > 200)) {
+      toast({
+        title: "Quantidade de pavimentos inválida",
+        description: "Informe um número inteiro entre 1 e 200 ou deixe vazio para informar depois.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (!Number.isInteger(numeroSubsolos) || numeroSubsolos < 0 || numeroSubsolos > 200) {
+      toast({
+        title: "Quantidade de subsolos inválida",
+        description: "Informe um número inteiro entre 1 e 200 ou desmarque a opção Subsolo.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     try {
       setUploadingLogo(true);
+      const { data: conclusoes, error: erroConclusoes } = await supabase
+        .from('obra_etapas_conclusoes')
+        .select('pavimento')
+        .eq('obra_id', obraEmEdicao.id);
+      if (erroConclusoes) throw erroConclusoes;
+      const registrosExistentes = conclusoes || [];
+      const quantidadeInvalida = registrosExistentes.some(({ pavimento }) =>
+        numeroPavimentos === null || numeroPavimentos === undefined
+          ? true
+          : pavimento >= numeroPavimentos || pavimento < -numeroSubsolos
+      );
+      if (quantidadeInvalida) {
+        toast({
+          title: "Quantidade incompatível com as conclusões",
+          description: "A quantidade de pavimentos ou subsolos não pode excluir locais que já possuem etapas concluídas.",
+          variant: "destructive"
+        });
+        return;
+      }
+
       console.log('[DEBUG] Iniciando upload do logo (se houver)');
       
       // Upload do logo se existir
@@ -288,6 +369,8 @@ const Obras = () => {
         responsavel: obraEmEdicao.responsavel,
         logo_url: logoUrl,
         data_inicio: obraEmEdicao.data_inicio,
+        numero_pavimentos: numeroPavimentos ?? null,
+        numero_subsolos: obraEditTemSubsolo ? numeroSubsolos : 0,
         data_previsao_fim: obraEmEdicao.data_previsao_fim ? 
           (obraEmEdicao.data_previsao_fim.length === 7 ? `${obraEmEdicao.data_previsao_fim}-01` : obraEmEdicao.data_previsao_fim) : 
           null
@@ -591,6 +674,58 @@ const Obras = () => {
                 />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="edit-numero-pavimentos">Quantidade de pavimentos (inclui o térreo)</Label>
+                <Input
+                  id="edit-numero-pavimentos"
+                  type="number"
+                  min="1"
+                  max="200"
+                  step="1"
+                  value={obraEmEdicao.numero_pavimentos ?? ''}
+                  onChange={(event) => setObraEmEdicao((prev) => prev ? {
+                    ...prev,
+                    numero_pavimentos: event.target.value ? Number(event.target.value) : null,
+                  } : null)}
+                  placeholder="Ex.: 3"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={obraEditTemSubsolo}
+                    onChange={(event) => {
+                      const temSubsolo = event.target.checked;
+                      setObraEditTemSubsolo(temSubsolo);
+                      setObraEmEdicao((prev) => prev ? {
+                        ...prev,
+                        numero_subsolos: temSubsolo ? Math.max(prev.numero_subsolos || 0, 1) : 0,
+                      } : null);
+                    }}
+                    className="accent-primary"
+                  />
+                  Subsolo
+                </label>
+                {obraEditTemSubsolo && (
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-numero-subsolos">Quantidade de subsolos</Label>
+                    <Input
+                      id="edit-numero-subsolos"
+                      type="number"
+                      min="1"
+                      max="200"
+                      step="1"
+                      value={obraEmEdicao.numero_subsolos || ''}
+                      onChange={(event) => setObraEmEdicao((prev) => prev ? {
+                        ...prev,
+                        numero_subsolos: event.target.value ? Number(event.target.value) : 0,
+                      } : null)}
+                      placeholder="Ex.: 2"
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="edit-observacoes">Observações</Label>
                 <Textarea
                   id="edit-observacoes"
@@ -719,6 +854,48 @@ const Obras = () => {
                 autoCorrect="on"
                 autoCapitalize="sentences"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="numero-pavimentos">Quantidade de pavimentos (inclui o térreo, opcional)</Label>
+              <Input
+                id="numero-pavimentos"
+                type="number"
+                min="1"
+                max="200"
+                step="1"
+                value={novaObraPavimentos}
+                onChange={(e) => setNovaObraPavimentos(e.target.value)}
+                placeholder="Ex.: 3"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={novaObraTemSubsolo}
+                  onChange={(event) => {
+                    setNovaObraTemSubsolo(event.target.checked);
+                    if (!event.target.checked) setNovaObraSubsolos("");
+                  }}
+                  className="accent-primary"
+                />
+                Subsolo
+              </label>
+              {novaObraTemSubsolo && (
+                <div className="space-y-2">
+                  <Label htmlFor="numero-subsolos">Quantidade de subsolos</Label>
+                  <Input
+                    id="numero-subsolos"
+                    type="number"
+                    min="1"
+                    max="200"
+                    step="1"
+                    value={novaObraSubsolos}
+                    onChange={(event) => setNovaObraSubsolos(event.target.value)}
+                    placeholder="Ex.: 2"
+                  />
+                </div>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="observacoes">Observações</Label>

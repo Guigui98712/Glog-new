@@ -9,6 +9,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -16,7 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowLeft, Plus, Trash2, Users, ClipboardList, ChevronLeft, ChevronRight, Pencil, Check, X, FileSpreadsheet, ArrowUp, ArrowDown, FileText, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Users, ClipboardList, ChevronLeft, ChevronRight, Pencil, Check, X, FileSpreadsheet, ArrowUp, ArrowDown, FileText, RefreshCw, Archive, RotateCcw, MoreHorizontal } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import {
   endOfMonth,
@@ -62,6 +68,13 @@ interface Feriado {
   id: string;
   data: string;
   descricao?: string;
+}
+
+interface PaginaEmpreita {
+  id: string;
+  nome: string;
+  arquivada: boolean;
+  tipo: 'empreita' | 'hidraulica' | 'eletrica';
 }
 
 const FALTA_TAG = '[FALTOU]';
@@ -125,7 +138,7 @@ const montarDetalheErro = (error: any) => {
   return [error?.message, error?.details, error?.hint].filter(Boolean).join(' | ');
 };
 
-const carregarTodosRegistrosProducao = async (obraNumero: number, comFormula: boolean) => {
+const carregarTodosRegistrosProducao = async (obraNumero: number, comFormula: boolean, paginaId: string | null) => {
   const registros: any[] = [];
   let ultimoCreatedAt: string | null = null;
 
@@ -138,6 +151,7 @@ const carregarTodosRegistrosProducao = async (obraNumero: number, comFormula: bo
       .order('created_at', { ascending: false })
       .order('id', { ascending: false })
       .limit(TAMANHO_PAGINA_REGISTROS);
+    query = filtrarPorPagina(query, paginaId);
 
     if (ultimoCreatedAt) {
       query = query.lt('created_at', ultimoCreatedAt);
@@ -240,6 +254,13 @@ const ordenarTarefas = (lista: Tarefa[]) => {
   );
 };
 
+function filtrarPorPagina<T extends {
+  eq: (column: 'pagina_id', value: string) => T;
+  is: (column: 'pagina_id', value: null) => T;
+}>(query: T, paginaId: string | null): T {
+  return paginaId ? query.eq('pagina_id', paginaId) : query.is('pagina_id', null);
+}
+
 const montarSemanasDoMes = (mesReferencia: Date): SemanaColuna[] => {
   const inicioMes = startOfMonth(mesReferencia);
   const fimMes = endOfMonth(mesReferencia);
@@ -292,7 +313,7 @@ const montarSemanasDoMes = (mesReferencia: Date): SemanaColuna[] => {
 };
 
 const ProducaoObra = () => {
-  const { id: obraId } = useParams();
+  const { id: obraId, paginaId } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -304,10 +325,17 @@ const ProducaoObra = () => {
   const [tarefas, setTarefas] = useState<Tarefa[]>([]);
   const [registros, setRegistros] = useState<ProducaoRegistro[]>([]);
   const [feriados, setFeriados] = useState<Feriado[]>([]);
+  const [paginasEmpreita, setPaginasEmpreita] = useState<PaginaEmpreita[]>([]);
 
   const [showGerenciarPedreiros, setShowGerenciarPedreiros] = useState(false);
   const [showGerenciarTarefas, setShowGerenciarTarefas] = useState(false);
   const [showLancarDialog, setShowLancarDialog] = useState(false);
+  const [showPaginaDialog, setShowPaginaDialog] = useState(false);
+  const [showPaginasArquivadasDialog, setShowPaginasArquivadasDialog] = useState(false);
+  const [paginaParaArquivar, setPaginaParaArquivar] = useState<PaginaEmpreita | null>(null);
+  const [paginaEmEdicao, setPaginaEmEdicao] = useState<PaginaEmpreita | null>(null);
+  const [nomePagina, setNomePagina] = useState('');
+  const [salvandoPagina, setSalvandoPagina] = useState(false);
 
   const [novoPedreiro, setNovoPedreiro] = useState('');
   const [novaTarefa, setNovaTarefa] = useState('');
@@ -356,32 +384,60 @@ const ProducaoObra = () => {
       setLoadingDados(true);
       const obraNumero = Number(obraId);
 
-      const [pedreirosResp, tarefasResp] = await Promise.all([
+      const [paginasResp, pedreirosResp, tarefasResp] = await Promise.all([
         supabase
-          .from('producao_pedreiros')
-          .select('id, nome, ativo')
+          .from('producao_empreita_paginas')
+          .select('id, nome, arquivada, tipo')
           .eq('obra_id', obraNumero)
           .order('nome', { ascending: true }),
-        supabase
+        filtrarPorPagina(supabase
+          .from('producao_pedreiros')
+          .select('id, nome, ativo')
+          .eq('obra_id', obraNumero), paginaId || null)
+          .order('nome', { ascending: true }),
+        filtrarPorPagina(supabase
           .from('producao_tarefas')
           .select('id, nome, valor, ordem')
-          .eq('obra_id', obraNumero)
+          .eq('obra_id', obraNumero), paginaId || null)
           .order('ordem', { ascending: true })
           .order('nome', { ascending: true }),
       ]);
+
+      if (paginasResp.error) {
+        throw paginasResp.error;
+      }
+
+      const paginasCarregadas = (paginasResp.data || []).map((pagina) => ({
+        id: pagina.id,
+        nome: pagina.nome,
+        arquivada: Boolean(pagina.arquivada),
+        tipo: pagina.tipo,
+      }));
+      setPaginasEmpreita(paginasCarregadas);
+      if (paginaId && !paginasCarregadas.some((pagina) =>
+        pagina.id === paginaId && pagina.tipo === 'empreita' && !pagina.arquivada
+      )) {
+        toast({
+          title: 'Página de empreita indisponível',
+          description: 'A página foi arquivada ou não existe nesta obra.',
+          variant: 'destructive',
+        });
+        navigate(`/obras/${obraId}/producao`, { replace: true });
+        return;
+      }
 
       let registrosData: any[] = [];
       let suportaFormulaNoBanco = true;
 
       try {
-        registrosData = await carregarTodosRegistrosProducao(obraNumero, true);
+        registrosData = await carregarTodosRegistrosProducao(obraNumero, true, paginaId || null);
       } catch (error: any) {
         if (!erroColunaNaoExiste(error, 'quantidade_formula')) {
           throw error;
         }
 
         suportaFormulaNoBanco = false;
-        registrosData = await carregarTodosRegistrosProducao(obraNumero, false);
+        registrosData = await carregarTodosRegistrosProducao(obraNumero, false, paginaId || null);
       }
 
       if (pedreirosResp.error || tarefasResp.error) {
@@ -531,7 +587,7 @@ const ProducaoObra = () => {
         void listenerEstadoApp.remove();
       }
     };
-  }, [obraId]);
+  }, [obraId, paginaId]);
 
   const pedreirosAtivos = useMemo(() => pedreiros.filter((p) => p.ativo), [pedreiros]);
 
@@ -800,11 +856,11 @@ const ProducaoObra = () => {
     );
 
     if (inativoMesmoNome) {
-      const { data, error } = await supabase
+      const { data, error } = await filtrarPorPagina(supabase
         .from('producao_pedreiros')
         .update({ nome, ativo: true, data_inativacao: null })
         .eq('id', inativoMesmoNome.id)
-        .eq('obra_id', Number(obraId))
+        .eq('obra_id', Number(obraId)), paginaId || null)
         .select('id, nome, ativo')
         .single();
 
@@ -830,7 +886,7 @@ const ProducaoObra = () => {
 
     const { data, error } = await supabase
       .from('producao_pedreiros')
-      .insert({ obra_id: Number(obraId), nome, ativo: true, data_inativacao: null })
+      .insert({ obra_id: Number(obraId), pagina_id: paginaId || null, nome, ativo: true, data_inativacao: null })
       .select('id, nome, ativo')
       .single();
 
@@ -861,11 +917,11 @@ const ProducaoObra = () => {
       return;
     }
 
-    const { error } = await supabase
+    const { error } = await filtrarPorPagina(supabase
       .from('producao_pedreiros')
       .update({ ativo: false, data_inativacao: new Date().toISOString() })
       .eq('id', pedreiroId)
-      .eq('obra_id', Number(obraId));
+      .eq('obra_id', Number(obraId)), paginaId || null);
 
     if (error) {
       toast({
@@ -888,11 +944,11 @@ const ProducaoObra = () => {
       return;
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await filtrarPorPagina(supabase
       .from('producao_pedreiros')
       .update({ ativo: true, data_inativacao: null })
       .eq('id', pedreiroId)
-      .eq('obra_id', Number(obraId))
+      .eq('obra_id', Number(obraId)), paginaId || null)
       .select('id, nome, ativo')
       .single();
 
@@ -925,11 +981,11 @@ const ProducaoObra = () => {
       return;
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await filtrarPorPagina(supabase
       .from('producao_pedreiros')
       .update({ nome })
       .eq('id', editandoPedreiro.id)
-      .eq('obra_id', Number(obraId))
+      .eq('obra_id', Number(obraId)), paginaId || null)
       .select('id, nome')
       .single();
 
@@ -972,11 +1028,30 @@ const ProducaoObra = () => {
       return;
     }
 
-    const maiorOrdem = tarefas.length === 0 ? 0 : Math.max(...tarefas.map((t) => t.ordem));
+    const { data: tarefasOrdenadas, error: erroAoConsultarOrdem } = await supabase
+      .from('producao_tarefas')
+      .select('ordem')
+      .eq('obra_id', Number(obraId))
+      .order('ordem', { ascending: false })
+      .limit(1);
+
+    if (erroAoConsultarOrdem) {
+      toast({
+        title: 'Erro ao criar tarefa',
+        description: erroAoConsultarOrdem.message,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const maiorOrdem = Math.max(
+      tarefas.length > 0 ? Math.max(...tarefas.map((t) => t.ordem)) : 0,
+      Number(tarefasOrdenadas?.[0]?.ordem || 0),
+    );
 
     const { data, error } = await supabase
       .from('producao_tarefas')
-      .insert({ obra_id: Number(obraId), nome, valor, ordem: maiorOrdem + 1 })
+      .insert({ obra_id: Number(obraId), pagina_id: paginaId || null, nome, valor, ordem: maiorOrdem + 1 })
       .select('id, nome, valor, ordem')
       .single();
 
@@ -1009,11 +1084,11 @@ const ProducaoObra = () => {
       return;
     }
 
-    const { error } = await supabase
+    const { error } = await filtrarPorPagina(supabase
       .from('producao_tarefas')
       .delete()
       .eq('id', tarefaId)
-      .eq('obra_id', Number(obraId));
+      .eq('obra_id', Number(obraId)), paginaId || null);
 
     if (error) {
       toast({
@@ -1047,11 +1122,11 @@ const ProducaoObra = () => {
       return;
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await filtrarPorPagina(supabase
       .from('producao_tarefas')
       .update({ nome, valor })
       .eq('id', editandoTarefa.id)
-      .eq('obra_id', Number(obraId))
+      .eq('obra_id', Number(obraId)), paginaId || null)
       .select('id, nome, valor')
       .single();
 
@@ -1095,11 +1170,11 @@ const ProducaoObra = () => {
 
     const ordemTemporaria = -2147483648;
 
-    const moverAtualParaTemp = await supabase
+    const moverAtualParaTemp = await filtrarPorPagina(supabase
       .from('producao_tarefas')
       .update({ ordem: ordemTemporaria })
       .eq('id', tarefaAtual.id)
-      .eq('obra_id', Number(obraId));
+      .eq('obra_id', Number(obraId)), paginaId || null);
 
     if (moverAtualParaTemp.error) {
       toast({
@@ -1111,18 +1186,18 @@ const ProducaoObra = () => {
       return;
     }
 
-    const moverAlvoParaAtual = await supabase
+    const moverAlvoParaAtual = await filtrarPorPagina(supabase
       .from('producao_tarefas')
       .update({ ordem: ordemAtual })
       .eq('id', tarefaAlvo.id)
-      .eq('obra_id', Number(obraId));
+      .eq('obra_id', Number(obraId)), paginaId || null);
 
     if (moverAlvoParaAtual.error) {
-      await supabase
+      await filtrarPorPagina(supabase
         .from('producao_tarefas')
         .update({ ordem: ordemAtual })
         .eq('id', tarefaAtual.id)
-        .eq('obra_id', Number(obraId));
+        .eq('obra_id', Number(obraId)), paginaId || null);
 
       toast({
         title: 'Erro ao reordenar',
@@ -1133,11 +1208,11 @@ const ProducaoObra = () => {
       return;
     }
 
-    const moverTempParaAlvo = await supabase
+    const moverTempParaAlvo = await filtrarPorPagina(supabase
       .from('producao_tarefas')
       .update({ ordem: ordemAlvo })
       .eq('id', tarefaAtual.id)
-      .eq('obra_id', Number(obraId));
+      .eq('obra_id', Number(obraId)), paginaId || null);
 
     if (moverTempParaAlvo.error) {
       toast({
@@ -1238,6 +1313,7 @@ const ProducaoObra = () => {
 
     const payloadBase: Record<string, any> = {
       obra_id: Number(obraId),
+      pagina_id: paginaId || null,
       data: format(selectedDate, 'yyyy-MM-dd'),
       pedreiro_id: formPedreiroId,
       tarefa_id: tarefaParaSalvar,
@@ -1738,11 +1814,11 @@ const ProducaoObra = () => {
       return;
     }
 
-    const { error } = await supabase
+    const { error } = await filtrarPorPagina(supabase
       .from('producao_registros')
       .delete()
       .eq('id', registroId)
-      .eq('obra_id', Number(obraId));
+      .eq('obra_id', Number(obraId)), paginaId || null);
 
     if (error) {
       toast({
@@ -1942,22 +2018,22 @@ const ProducaoObra = () => {
       payloadEdicao.quantidade_formula = editandoRegistro.faltou || edicaoSomenteObservacao ? null : formulaDigitada;
     }
 
-    let updateResp = await supabase
+    let updateResp = await filtrarPorPagina(supabase
       .from('producao_registros')
       .update(payloadEdicao)
       .eq('id', editandoRegistro.id)
-      .eq('obra_id', Number(obraId));
+      .eq('obra_id', Number(obraId)), paginaId || null);
 
     if (updateResp.error && erroColunaNaoExiste(updateResp.error, 'quantidade_formula')) {
       setSuportaQuantidadeFormula(false);
       const payloadEdicaoSemFormula: Record<string, any> = { ...payloadEdicao };
       delete payloadEdicaoSemFormula.quantidade_formula;
 
-      updateResp = await supabase
+      updateResp = await filtrarPorPagina(supabase
         .from('producao_registros')
         .update(payloadEdicaoSemFormula)
         .eq('id', editandoRegistro.id)
-        .eq('obra_id', Number(obraId));
+        .eq('obra_id', Number(obraId)), paginaId || null);
     }
 
     const { error: updateError } = updateResp;
@@ -2002,6 +2078,229 @@ const ProducaoObra = () => {
   const tabelaTitulo = tabelaPedreiroId === 'all'
     ? 'Toda a Equipe'
     : (pedreiroAtual?.nome || 'Pedreiro');
+  const paginaEmpreitaAtual = paginasEmpreita.find((pagina) =>
+    pagina.id === paginaId && pagina.tipo === 'empreita' && !pagina.arquivada
+  );
+  const paginaHidraulica = paginasEmpreita.find((pagina) => pagina.tipo === 'hidraulica');
+  const paginaEletrica = paginasEmpreita.find((pagina) => pagina.tipo === 'eletrica');
+  const paginasEmpreitaPersonalizadasAtivas = useMemo(
+    () => paginasEmpreita.filter((pagina) => pagina.tipo === 'empreita' && !pagina.arquivada),
+    [paginasEmpreita],
+  );
+  const paginasEmpreitaAtivas = useMemo(
+    () => paginasEmpreita.filter((pagina) => !pagina.arquivada),
+    [paginasEmpreita],
+  );
+  const paginasEmpreitaArquivadas = useMemo(
+    () => paginasEmpreita.filter((pagina) => pagina.arquivada),
+    [paginasEmpreita],
+  );
+
+  const abrirNovaPaginaEmpreita = () => {
+    setPaginaEmEdicao(null);
+    setNomePagina('');
+    setShowPaginaDialog(true);
+  };
+
+  const abrirEdicaoPaginaEmpreita = (pagina: PaginaEmpreita) => {
+    setPaginaEmEdicao(pagina);
+    setNomePagina(pagina.nome);
+    setShowPaginaDialog(true);
+  };
+
+  const menuOpcoesPagina = (pagina: PaginaEmpreita) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          aria-label={`Opções de ${pagina.nome}`}
+          title={`Opções de ${pagina.nome}`}
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => abrirEdicaoPaginaEmpreita(pagina)} className="cursor-pointer">
+          <Pencil className="mr-2 h-4 w-4" />
+          Renomear
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => setPaginaParaArquivar(pagina)}
+          className="cursor-pointer text-red-600 focus:text-red-600"
+        >
+          <Archive className="mr-2 h-4 w-4" />
+          Arquivar
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  const handleSalvarPaginaEmpreita = async () => {
+    if (!obraId) {
+      return;
+    }
+
+    const nome = nomePagina.trim();
+    if (!nome) {
+      toast({ title: 'Nome obrigatório', description: 'Informe o nome da página.', variant: 'destructive' });
+      return;
+    }
+
+    const nomeDuplicado = paginasEmpreitaAtivas.some((pagina) =>
+      pagina.id !== paginaEmEdicao?.id
+      && pagina.nome.toLocaleLowerCase('pt-BR') === nome.toLocaleLowerCase('pt-BR')
+    );
+    if (nomeDuplicado) {
+      toast({ title: 'Nome já cadastrado', description: 'Escolha outro nome para esta página.', variant: 'destructive' });
+      return;
+    }
+
+    setSalvandoPagina(true);
+    try {
+      if (paginaEmEdicao) {
+        const { data, error } = await supabase
+          .from('producao_empreita_paginas')
+          .update({ nome })
+          .eq('id', paginaEmEdicao.id)
+          .eq('obra_id', Number(obraId))
+          .select('id, nome, arquivada, tipo')
+          .single();
+
+        if (error || !data) {
+          toast({
+            title: 'Erro ao renomear página',
+            description: error?.message || 'Não foi possível atualizar o nome da página.',
+            variant: 'destructive',
+          });
+          return;
+        }
+
+        const paginaAtualizada = {
+          id: data.id,
+          nome: data.nome,
+          arquivada: Boolean(data.arquivada),
+          tipo: data.tipo,
+        };
+        setPaginasEmpreita((prev) => prev.map((pagina) => pagina.id === data.id ? paginaAtualizada : pagina));
+        toast({ title: 'Página renomeada', description: `A página agora se chama ${data.nome}.` });
+      } else {
+        const { data, error } = await supabase
+          .from('producao_empreita_paginas')
+          .insert({ obra_id: Number(obraId), nome, tipo: 'empreita' })
+          .select('id, nome, arquivada, tipo')
+          .single();
+
+        if (error || !data) {
+          toast({
+            title: 'Erro ao criar empreita',
+            description: error?.message || 'Não foi possível criar a página.',
+            variant: 'destructive',
+          });
+          return;
+        }
+
+        const novaPagina = {
+          id: data.id,
+          nome: data.nome,
+          arquivada: Boolean(data.arquivada),
+          tipo: data.tipo,
+        };
+        setPaginasEmpreita((prev) => [...prev, novaPagina]);
+        toast({ title: 'Empreita criada', description: `A página ${data.nome} está pronta para uso.` });
+        navigate(`/obras/${obraId}/producao/empreita/${data.id}`);
+      }
+
+      setShowPaginaDialog(false);
+      setPaginaEmEdicao(null);
+      setNomePagina('');
+    } catch (error) {
+      toast({
+        title: 'Erro ao salvar página',
+        description: error instanceof Error ? error.message : 'Não foi possível salvar a empreita.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSalvandoPagina(false);
+    }
+  };
+
+  const handleArquivarPaginaEmpreita = async () => {
+    if (!obraId || !paginaParaArquivar) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from('producao_empreita_paginas')
+      .update({ arquivada: true })
+      .eq('id', paginaParaArquivar.id)
+      .eq('obra_id', Number(obraId));
+
+    if (error) {
+      toast({
+        title: 'Erro ao arquivar página',
+        description: error.message,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setPaginasEmpreita((prev) => prev.map((pagina) =>
+      pagina.id === paginaParaArquivar.id ? { ...pagina, arquivada: true } : pagina
+    ));
+    if (paginaId === paginaParaArquivar.id) {
+      navigate(`/obras/${obraId}/producao`);
+    }
+    toast({
+      title: 'Página arquivada',
+      description: 'A página foi ocultada. Os dados associados foram preservados.',
+    });
+    setPaginaParaArquivar(null);
+  };
+
+  const handleRestaurarPaginaEmpreita = async (pagina: PaginaEmpreita) => {
+    if (!obraId) {
+      return;
+    }
+
+    const nomeEmUso = paginasEmpreitaAtivas.some((item) =>
+      item.id !== pagina.id
+      && item.nome.toLocaleLowerCase('pt-BR') === pagina.nome.toLocaleLowerCase('pt-BR')
+    );
+    if (nomeEmUso) {
+      toast({
+        title: 'Não foi possível restaurar',
+        description: 'Outra página ativa já usa esse nome. Renomeie-a antes de restaurar esta página.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('producao_empreita_paginas')
+      .update({ arquivada: false })
+      .eq('id', pagina.id)
+      .eq('obra_id', Number(obraId))
+      .select('id, nome, arquivada, tipo')
+      .single();
+
+    if (error || !data) {
+      toast({
+        title: 'Erro ao restaurar página',
+        description: error?.message || 'Não foi possível restaurar a página.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setPaginasEmpreita((prev) => prev.map((item) =>
+      item.id === data.id
+        ? { id: data.id, nome: data.nome, arquivada: false, tipo: data.tipo }
+        : item
+    ));
+    toast({ title: 'Página restaurada', description: `A página ${data.nome} voltou para a lista.` });
+  };
 
   const handleExportarExcelMensal = async () => {
     const semanas = montarSemanasDoMes(tabelaMes);
@@ -3042,17 +3341,63 @@ const ProducaoObra = () => {
   return (
     <div className="container mx-auto p-3 sm:p-4 space-y-4 sm:space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-start gap-3">
+        <div className="flex flex-wrap items-start gap-3">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold">Produção</h1>
+            <h1 className="text-xl sm:text-2xl font-bold">{paginaEmpreitaAtual?.nome || 'Produção'}</h1>
             <p className="text-sm text-muted-foreground">{obraNome}</p>
           </div>
-          <Button className="h-9" variant="outline" onClick={() => navigate(`/obras/${obraId}/producao/hidraulica`)}>
-            Hidráulica
+          <Button
+            className="h-9"
+            variant={!paginaId ? 'default' : 'outline'}
+            onClick={() => navigate(`/obras/${obraId}/producao`)}
+          >
+            Pedreiros
           </Button>
-          <Button className="h-9" variant="outline" onClick={() => navigate(`/obras/${obraId}/producao/eletricidade`)}>
-            Elétrica
+          {(!paginaHidraulica || !paginaHidraulica.arquivada) && (
+            <div className="flex items-center rounded-md border">
+              <Button
+                className="h-9 border-0"
+                variant="outline"
+                onClick={() => navigate(`/obras/${obraId}/producao/hidraulica`)}
+              >
+                {paginaHidraulica?.nome || 'Hidráulica'}
+              </Button>
+              {paginaHidraulica && menuOpcoesPagina(paginaHidraulica)}
+            </div>
+          )}
+          {(!paginaEletrica || !paginaEletrica.arquivada) && (
+            <div className="flex items-center rounded-md border">
+              <Button
+                className="h-9 border-0"
+                variant="outline"
+                onClick={() => navigate(`/obras/${obraId}/producao/eletricidade`)}
+              >
+                {paginaEletrica?.nome || 'Elétrica'}
+              </Button>
+              {paginaEletrica && menuOpcoesPagina(paginaEletrica)}
+            </div>
+          )}
+          {paginasEmpreitaPersonalizadasAtivas.map((pagina) => (
+            <div key={pagina.id} className="flex items-center rounded-md border">
+              <Button
+                className="h-9 border-0"
+                variant={paginaId === pagina.id ? 'default' : 'ghost'}
+                onClick={() => navigate(`/obras/${obraId}/producao/empreita/${pagina.id}`)}
+              >
+                {pagina.nome}
+              </Button>
+              {menuOpcoesPagina(pagina)}
+            </div>
+          ))}
+          <Button className="h-9" variant="outline" onClick={abrirNovaPaginaEmpreita}>
+            <Plus className="mr-1 h-4 w-4" />
+            Empreita
           </Button>
+          {paginasEmpreitaArquivadas.length > 0 && (
+            <Button className="h-9" variant="ghost" onClick={() => setShowPaginasArquivadasDialog(true)}>
+              Páginas arquivadas ({paginasEmpreitaArquivadas.length})
+            </Button>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row gap-2">
@@ -3378,6 +3723,108 @@ const ProducaoObra = () => {
           </div>
         </div>
       </Card>
+
+      <Dialog
+        open={showPaginaDialog}
+        onOpenChange={(open) => {
+          setShowPaginaDialog(open);
+          if (!open) {
+            setPaginaEmEdicao(null);
+            setNomePagina('');
+          }
+        }}
+      >
+        <DialogContent className="w-[95vw] max-w-md">
+          <DialogHeader>
+            <DialogTitle>{paginaEmEdicao ? 'Renomear página' : 'Nova página de empreita'}</DialogTitle>
+            <DialogDescription>
+              {paginaEmEdicao
+                ? 'A alteração do nome não modifica os registros de produção.'
+                : 'A página terá seus próprios pedreiros, tarefas e registros.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="nome-pagina-empreita">Nome da página</Label>
+              <Input
+                id="nome-pagina-empreita"
+                autoFocus
+                value={nomePagina}
+                onChange={(event) => setNomePagina(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    void handleSalvarPaginaEmpreita();
+                  }
+                }}
+                maxLength={80}
+                placeholder="Ex.: Alvenaria do bloco B"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowPaginaDialog(false)} disabled={salvandoPagina}>
+                Cancelar
+              </Button>
+              <Button onClick={() => void handleSalvarPaginaEmpreita()} disabled={salvandoPagina}>
+                {salvandoPagina ? 'Salvando...' : paginaEmEdicao ? 'Salvar nome' : 'Criar página'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={paginaParaArquivar !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPaginaParaArquivar(null);
+          }
+        }}
+      >
+        <DialogContent className="w-[95vw] max-w-md">
+          <DialogHeader>
+            <DialogTitle>Arquivar página?</DialogTitle>
+            <DialogDescription>
+              A página {paginaParaArquivar?.nome ? `"${paginaParaArquivar.nome}"` : ''} será ocultada.
+              Os dados associados serão preservados e poderão ser restaurados.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setPaginaParaArquivar(null)}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={() => void handleArquivarPaginaEmpreita()}>
+              Arquivar página
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showPaginasArquivadasDialog} onOpenChange={setShowPaginasArquivadasDialog}>
+        <DialogContent className="w-[95vw] max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Páginas arquivadas</DialogTitle>
+            <DialogDescription>
+              Restaurar uma página volta a mostrá-la com todo o histórico preservado.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] space-y-2 overflow-y-auto">
+            {paginasEmpreitaArquivadas.map((pagina) => (
+              <div key={pagina.id} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+                <span className="min-w-0 break-words">{pagina.nome}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void handleRestaurarPaginaEmpreita(pagina)}
+                >
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  Restaurar
+                </Button>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showGerenciarPedreiros} onOpenChange={setShowGerenciarPedreiros}>
         <DialogContent className="w-[95vw] max-w-lg h-[86vh] sm:h-[88vh] max-h-[92vh] overflow-hidden flex flex-col">

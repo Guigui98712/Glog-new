@@ -317,6 +317,7 @@ function App() {
             <Route path=":id/demanda/relatorios" element={<DemandaRelatorios />} />
             <Route path=":id/demanda/total" element={<DemandaTotais />} />
             <Route path=":id/producao" element={<ProducaoObra />} />
+            <Route path=":id/producao/empreita/:paginaId" element={<ProducaoObra />} />
             <Route path=":id/producao/hidraulica" element={<ProducaoHidraulica />} />
             <Route path=":id/producao/eletricidade" element={<ProducaoEletricidade />} />
             <Route path=":id/projetos" element={<Projetos />} />

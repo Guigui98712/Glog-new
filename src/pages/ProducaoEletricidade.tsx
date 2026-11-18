@@ -78,6 +78,7 @@ const ProducaoEletricidade = () => {
   const { toast } = useToast();
 
   const [obraNome, setObraNome] = useState('Obra');
+  const [nomePagina, setNomePagina] = useState('Elétrica');
   const [loading, setLoading] = useState(true);
 
   const [eletricistas, setEletricistas] = useState<Eletricista[]>([]);
@@ -139,8 +140,14 @@ const ProducaoEletricidade = () => {
 
     setLoading(true);
     try {
-      const [obraResp, eletricistasResp, tarefasResp, registrosResp] = await Promise.all([
+      const [obraResp, paginaResp, eletricistasResp, tarefasResp, registrosResp] = await Promise.all([
         supabase.from('obras').select('nome').eq('id', Number(obraId)).single(),
+        supabase
+          .from('producao_empreita_paginas')
+          .select('nome, arquivada')
+          .eq('obra_id', Number(obraId))
+          .eq('tipo', 'eletrica')
+          .maybeSingle(),
         supabase
           .from('producao_eletrica_eletricistas')
           .select('id, nome, ativo, valor_diaria')
@@ -160,11 +167,23 @@ const ProducaoEletricidade = () => {
       ]);
 
       if (obraResp.error) throw obraResp.error;
+      if (paginaResp.error) throw paginaResp.error;
       if (eletricistasResp.error) throw eletricistasResp.error;
       if (tarefasResp.error) throw tarefasResp.error;
       if (registrosResp.error) throw registrosResp.error;
 
+      if (paginaResp.data?.arquivada) {
+        toast({
+          title: 'Página arquivada',
+          description: 'Restaure a página pela lista de páginas arquivadas para acessá-la.',
+          variant: 'destructive',
+        });
+        navigate(`/obras/${obraId}/producao`, { replace: true });
+        return;
+      }
+
       setObraNome(obraResp.data?.nome || 'Obra');
+      setNomePagina(paginaResp.data?.nome || 'Elétrica');
 
       setEletricistas(
         (eletricistasResp.data || []).map((e) => ({
@@ -1259,7 +1278,7 @@ const ProducaoEletricidade = () => {
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-start gap-2 sm:gap-3">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold">Produção Elétrica</h1>
+            <h1 className="text-xl sm:text-2xl font-bold">Produção {nomePagina}</h1>
             <p className="text-sm text-muted-foreground">{obraNome}</p>
           </div>
           <Button className="h-9 w-full sm:w-auto" variant="outline" onClick={() => navigate(`/obras/${obraId}/producao`)}>

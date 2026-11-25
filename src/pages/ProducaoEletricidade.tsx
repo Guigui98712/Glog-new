@@ -55,7 +55,7 @@ const compararNomeTarefa = (a: string, b: string) =>
   a.localeCompare(b, 'pt-BR', { numeric: true, sensitivity: 'base' });
 
 const compararTarefa = (a: EletricaTarefa, b: EletricaTarefa) =>
-  a.ordem - b.ordem || compararNomeTarefa(a.nome, b.nome);
+  compararNomeTarefa(a.nome, b.nome);
 
 const formatQuantidade = (valor: number) => {
   return new Intl.NumberFormat('pt-BR', {
@@ -258,7 +258,7 @@ const ProducaoEletricidade = () => {
       const concluida = Boolean(dataFinalManual)
         || (tarefa.metragemPrevista > 0 && metragemAcumulada >= tarefa.metragemPrevista);
 
-      return { tarefa, concluida };
+      return { tarefa, iniciada: registrosTarefa.length > 0, concluida };
     });
 
     return comStatus.sort((a, b) => {
@@ -266,6 +266,11 @@ const ProducaoEletricidade = () => {
       return compararTarefa(a.tarefa, b.tarefa);
     });
   }, [tarefas, registros]);
+
+  const tarefasAbertas = useMemo(
+    () => tarefasComStatus.filter(({ concluida }) => !concluida),
+    [tarefasComStatus]
+  );
 
   const eletricistasPorId = useMemo(() => {
     return eletricistas.reduce<Record<string, Eletricista>>((acc, eletricista) => {
@@ -699,7 +704,7 @@ const ProducaoEletricidade = () => {
     setSelectedDate(data);
     setFormTarefaId('');
     setFormEletricistaId('');
-    setFormEhDiaria(tarefas.length === 0);
+    setFormEhDiaria(tarefasAbertas.length === 0);
     setFormFatorDiaria(1);
     setFormDataInicio(format(data, 'yyyy-MM-dd'));
     setFormDataFim('');
@@ -1029,6 +1034,15 @@ const ProducaoEletricidade = () => {
       toast({
         title: 'Serviço inválido',
         description: 'Selecione uma tarefa válida para lançar a produção.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!formEhDiaria && !tarefasAbertas.some(({ tarefa }) => tarefa.id === formTarefaId)) {
+      toast({
+        title: 'Tarefa concluída',
+        description: 'Selecione uma tarefa em aberto para lançar a produção.',
         variant: 'destructive',
       });
       return;
@@ -1635,7 +1649,7 @@ const ProducaoEletricidade = () => {
               {tarefas.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhuma tarefa cadastrada.</p>
               ) : (
-                tarefasComStatus.map(({ tarefa, concluida }, idx) => {
+                tarefasComStatus.map(({ tarefa, iniciada, concluida }, idx) => {
                   const primeiraConcluida = concluida
                     && tarefasComStatus[idx - 1]
                     && !tarefasComStatus[idx - 1].concluida;
@@ -1650,7 +1664,9 @@ const ProducaoEletricidade = () => {
                         </div>
                       )}
                       {editandoTarefa?.id === tarefa.id ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-[1fr_120px_140px_auto_auto] gap-2 border rounded-md px-3 py-2 bg-blue-50">
+                        <div className={`grid grid-cols-1 sm:grid-cols-[1fr_120px_140px_auto_auto] gap-2 border rounded-md px-3 py-2 ${
+                          iniciada && !concluida ? 'border-yellow-300 bg-yellow-50' : 'bg-blue-50'
+                        }`}>
                           <Input
                             autoFocus
                             value={editandoTarefa.nome}
@@ -1678,7 +1694,7 @@ const ProducaoEletricidade = () => {
                       ) : (
                         <div
                           className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border rounded-md px-3 py-2 ${
-                            concluida ? 'border-green-300 bg-green-50' : ''
+                            concluida ? 'border-green-300 bg-green-50' : iniciada ? 'border-yellow-300 bg-yellow-50' : ''
                           }`}
                         >
                           <div>
@@ -1752,7 +1768,7 @@ const ProducaoEletricidade = () => {
                       <input
                         type="radio"
                         checked={!formEhDiaria}
-                        disabled={tarefas.length === 0}
+                        disabled={tarefasAbertas.length === 0}
                         onChange={() => setFormEhDiaria(false)}
                       />
                       Produção
@@ -1803,13 +1819,17 @@ const ProducaoEletricidade = () => {
 
                 <div>
                   <Label>Serviço</Label>
-                  <Select value={formTarefaId} onValueChange={setFormTarefaId} disabled={formEhDiaria || tarefas.length === 0}>
+                  <Select value={formTarefaId} onValueChange={setFormTarefaId} disabled={formEhDiaria || tarefasAbertas.length === 0}>
                     <SelectTrigger>
-                      <SelectValue placeholder={formEhDiaria ? 'Não se aplica para diária' : (tarefas.length === 0 ? 'Cadastre tarefas para produção' : 'Selecione')} />
+                      <SelectValue placeholder={formEhDiaria ? 'Não se aplica para diária' : (tarefasAbertas.length === 0 ? 'Nenhuma tarefa em aberto' : 'Selecione')} />
                     </SelectTrigger>
                     <SelectContent>
-                      {tarefas.map((tarefa) => (
-                        <SelectItem key={tarefa.id} value={tarefa.id}>
+                      {tarefasAbertas.map(({ tarefa, iniciada }) => (
+                        <SelectItem
+                          key={tarefa.id}
+                          value={tarefa.id}
+                          className={iniciada ? 'bg-yellow-100 focus:bg-yellow-100 focus:text-foreground data-[highlighted]:bg-yellow-100 data-[highlighted]:text-foreground' : ''}
+                        >
                           {tarefa.nome}
                         </SelectItem>
                       ))}
@@ -1878,11 +1898,16 @@ const ProducaoEletricidade = () => {
                     Sem tarefas cadastradas: você pode lançar apenas diária. Para produção, cadastre tarefas em "Gerenciar tarefas".
                   </div>
                 )}
+                {tarefas.length > 0 && tarefasAbertas.length === 0 && (
+                  <div className="sm:col-span-2 text-xs text-muted-foreground">
+                    Todas as tarefas estão concluídas. Você ainda pode lançar diária.
+                  </div>
+                )}
               </div>
             )}
 
             <div className="flex justify-end gap-2">
-              <Button className="w-full sm:w-auto" onClick={handleSalvarLancamento} disabled={eletricistasAtivos.length === 0 || (!formEhDiaria && tarefas.length === 0)}>
+              <Button className="w-full sm:w-auto" onClick={handleSalvarLancamento} disabled={eletricistasAtivos.length === 0 || (!formEhDiaria && tarefasAbertas.length === 0)}>
                 Salvar lançamento
               </Button>
             </div>

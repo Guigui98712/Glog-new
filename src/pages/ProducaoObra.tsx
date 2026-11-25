@@ -254,6 +254,12 @@ const ordenarTarefas = (lista: Tarefa[]) => {
   );
 };
 
+const ordenarTarefasAlfabeticamente = (lista: Tarefa[]) => {
+  return [...lista].sort((a, b) =>
+    a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true, sensitivity: 'base' })
+  );
+};
+
 function filtrarPorPagina<T extends {
   eq: (column: 'pagina_id', value: string) => T;
   is: (column: 'pagina_id', value: null) => T;
@@ -652,8 +658,13 @@ const ProducaoObra = () => {
     });
   }, [registros, tabelaMes, tabelaPedreiroId]);
 
+  const tarefasAlfabeticas = useMemo(
+    () => ordenarTarefasAlfabeticamente(tarefas),
+    [tarefas]
+  );
+
   const resumoPorTarefa = useMemo(() => {
-    return ordenarTarefas(tarefas).map((tarefa) => {
+    return tarefasAlfabeticas.map((tarefa) => {
       const registrosDaTarefa = registrosDoMes.filter((r) => r.tarefaId === tarefa.id);
       const valoresSemana = semanasDoMes.map((semana) => {
         return registrosDaTarefa
@@ -674,7 +685,7 @@ const ProducaoObra = () => {
         totalPagar,
       };
     });
-  }, [tarefas, registrosDoMes, semanasDoMes]);
+  }, [tarefasAlfabeticas, registrosDoMes, semanasDoMes]);
 
   const totalGeralPagar = useMemo(() => {
     return resumoPorTarefa.reduce((acc, item) => acc + item.totalPagar, 0);
@@ -4122,7 +4133,7 @@ const ProducaoObra = () => {
                             <SelectValue placeholder="Selecione" />
                           </SelectTrigger>
                           <SelectContent>
-                            {tarefas.map((tarefa) => (
+                            {tarefasAlfabeticas.map((tarefa) => (
                               <SelectItem key={tarefa.id} value={tarefa.id}>
                                 {tarefa.nome}
                               </SelectItem>
@@ -4229,7 +4240,7 @@ const ProducaoObra = () => {
                                     <SelectValue placeholder="Selecione" />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {tarefas.map((t) => (
+                                    {tarefasAlfabeticas.map((t) => (
                                       <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>
                                     ))}
                                   </SelectContent>

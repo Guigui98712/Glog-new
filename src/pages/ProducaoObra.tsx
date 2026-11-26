@@ -3023,7 +3023,7 @@ const ProducaoObra = () => {
       ]);
       wsHidraulica.addRow([encanador.nome.toUpperCase()]);
       wsHidraulica.addRow([]);
-      wsHidraulica.addRow(['SERVIÇO', 'VALOR', '% NO MÊS', 'DIA DE INÍCIO', 'DIA DE FINAL', 'METRAGEM', 'A PAGAR']);
+      wsHidraulica.addRow(['SERVIÇO', 'VALOR', '% NO MÊS', 'DIA DE INÍCIO', 'DIA DE FINAL', 'A PAGAR']);
 
       for (const item of resumoHidraulica) {
         wsHidraulica.addRow([
@@ -3032,14 +3032,13 @@ const ProducaoObra = () => {
           item.percentual / 100,
           item.dataInicio ? format(parseISO(item.dataInicio), 'dd/MM/yyyy') : '-',
           item.dataFinal ? format(parseISO(item.dataFinal), 'dd/MM/yyyy') : '-',
-          item.metragemMes,
           null,
         ]);
       }
 
-      wsHidraulica.addRow(['TOTAL PRODUÇÃO', '', '', '', '', '', null]);
-      wsHidraulica.addRow(['DIÁRIAS', valorDiariaExibida, totalDiariasQuantidade, '-', '-', '-', null]);
-      wsHidraulica.addRow(['TOTAL A PAGAR ENCANADOR', '', '', '', '', '', null]);
+      wsHidraulica.addRow(['TOTAL PRODUÇÃO', '', '', '', '', null]);
+      wsHidraulica.addRow(['DIÁRIAS', valorDiariaExibida, totalDiariasQuantidade, '-', '-', null]);
+      wsHidraulica.addRow(['TOTAL A PAGAR ENCANADOR', '', '', '', '', null]);
 
       wsHidraulica.columns = [
         { width: 30 },
@@ -3048,11 +3047,10 @@ const ProducaoObra = () => {
         { width: 16 },
         { width: 16 },
         { width: 14 },
-        { width: 14 },
       ];
 
-      wsHidraulica.mergeCells(1, 1, 1, 7);
-      wsHidraulica.mergeCells(2, 1, 2, 7);
+      wsHidraulica.mergeCells(1, 1, 1, 6);
+      wsHidraulica.mergeCells(2, 1, 2, 6);
 
       const tituloH = wsHidraulica.getCell(1, 1);
       tituloH.font = { bold: true, size: 13, color: { argb: 'FFFFFFFF' } };
@@ -3064,7 +3062,7 @@ const ProducaoObra = () => {
       subtituloH.alignment = { horizontal: 'center', vertical: 'middle' };
       subtituloH.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corCinzaEscuro } };
 
-      for (let c = 1; c <= 7; c += 1) {
+      for (let c = 1; c <= 6; c += 1) {
         const h = wsHidraulica.getCell(4, c);
         h.font = { bold: true, color: { argb: 'FFFFFFFF' } };
         h.alignment = { horizontal: 'center', vertical: 'middle' };
@@ -3073,7 +3071,7 @@ const ProducaoObra = () => {
       }
 
       for (let r = 5; r <= wsHidraulica.rowCount; r += 1) {
-        for (let c = 1; c <= 7; c += 1) {
+        for (let c = 1; c <= 6; c += 1) {
           const cell = wsHidraulica.getCell(r, c);
           cell.border = bordaFina;
           cell.alignment = { horizontal: c === 1 ? 'left' : 'center', vertical: 'middle' };
@@ -3085,7 +3083,6 @@ const ProducaoObra = () => {
         wsHidraulica.getCell(r, 2).numFmt = '#,##0.00';
         wsHidraulica.getCell(r, 3).numFmt = '0.00%';
         wsHidraulica.getCell(r, 6).numFmt = '#,##0.00';
-        wsHidraulica.getCell(r, 7).numFmt = '#,##0.00';
       }
 
       const linhaTotalProducao = wsHidraulica.rowCount - 2;
@@ -3095,25 +3092,25 @@ const ProducaoObra = () => {
       const linhaFimDados = linhaInicioDados + resumoHidraulica.length - 1;
 
       for (let r = linhaInicioDados; r <= linhaFimDados; r += 1) {
-        wsHidraulica.getCell(r, 7).value = {
+        wsHidraulica.getCell(r, 6).value = {
           formula: `IF(OR(B${r}="",C${r}=""),0,B${r}*C${r})`,
         };
       }
 
       if (resumoHidraulica.length > 0) {
-        wsHidraulica.getCell(linhaTotalProducao, 7).value = {
-          formula: `SUM(G${linhaInicioDados}:G${linhaFimDados})`,
+        wsHidraulica.getCell(linhaTotalProducao, 6).value = {
+          formula: `SUM(F${linhaInicioDados}:F${linhaFimDados})`,
         };
       } else {
-        wsHidraulica.getCell(linhaTotalProducao, 7).value = 0;
+        wsHidraulica.getCell(linhaTotalProducao, 6).value = 0;
       }
 
-      wsHidraulica.getCell(linhaTotalDiarias, 7).value = {
+      wsHidraulica.getCell(linhaTotalDiarias, 6).value = {
         formula: `IF(OR(B${linhaTotalDiarias}="",C${linhaTotalDiarias}=""),0,B${linhaTotalDiarias}*C${linhaTotalDiarias})`,
       };
 
-      wsHidraulica.getCell(ultimaLinhaH, 7).value = {
-        formula: `G${linhaTotalProducao}+G${linhaTotalDiarias}`,
+      wsHidraulica.getCell(ultimaLinhaH, 6).value = {
+        formula: `F${linhaTotalProducao}+F${linhaTotalDiarias}`,
       };
 
       wsHidraulica.getCell(linhaTotalDiarias, 1).alignment = { horizontal: 'left', vertical: 'middle' };
@@ -3121,11 +3118,9 @@ const ProducaoObra = () => {
       wsHidraulica.getCell(linhaTotalDiarias, 3).numFmt = '0.0';
       wsHidraulica.getCell(linhaTotalDiarias, 4).alignment = { horizontal: 'center', vertical: 'middle' };
       wsHidraulica.getCell(linhaTotalDiarias, 5).alignment = { horizontal: 'center', vertical: 'middle' };
-      wsHidraulica.getCell(linhaTotalDiarias, 6).alignment = { horizontal: 'center', vertical: 'middle' };
-      wsHidraulica.getCell(linhaTotalDiarias, 6).numFmt = '@';
-      wsHidraulica.getCell(linhaTotalDiarias, 7).numFmt = '#,##0.00';
+      wsHidraulica.getCell(linhaTotalDiarias, 6).numFmt = '#,##0.00';
 
-      for (let c = 1; c <= 7; c += 1) {
+      for (let c = 1; c <= 6; c += 1) {
         const totalProdCell = wsHidraulica.getCell(linhaTotalProducao, c);
         totalProdCell.font = { bold: true };
         totalProdCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corCinzaClaro } };
@@ -3147,7 +3142,7 @@ const ProducaoObra = () => {
 
       referenciasResumoEncanadores.set(
         encanador.id,
-        `'${escapeNomeAbaExcel(nomeAbaH)}'!G${ultimaLinhaH}`
+        `'${escapeNomeAbaExcel(nomeAbaH)}'!F${ultimaLinhaH}`
       );
     }
 
@@ -3183,7 +3178,7 @@ const ProducaoObra = () => {
       ]);
       wsEletrica.addRow([eletricista.nome.toUpperCase()]);
       wsEletrica.addRow([]);
-      wsEletrica.addRow(['SERVIÇO', 'VALOR', '% NO MÊS', 'DIA DE INÍCIO', 'DIA DE FINAL', 'METRAGEM', 'A PAGAR']);
+      wsEletrica.addRow(['SERVIÇO', 'VALOR', '% NO MÊS', 'DIA DE INÍCIO', 'DIA DE FINAL', 'A PAGAR']);
 
       for (const item of resumoEletrica) {
         wsEletrica.addRow([
@@ -3192,20 +3187,19 @@ const ProducaoObra = () => {
           item.percentual / 100,
           item.dataInicio ? format(parseISO(item.dataInicio), 'dd/MM/yyyy') : '-',
           item.dataFinal ? format(parseISO(item.dataFinal), 'dd/MM/yyyy') : '-',
-          item.metragemMes,
           null,
         ]);
       }
 
-      wsEletrica.addRow(['TOTAL PRODUÇÃO', '', '', '', '', '', null]);
-      wsEletrica.addRow(['DIÁRIAS', valorDiariaExibida, totalDiariasQuantidade, '-', '-', '-', null]);
-      wsEletrica.addRow(['TOTAL A PAGAR ELETRICISTA', '', '', '', '', '', null]);
+      wsEletrica.addRow(['TOTAL PRODUÇÃO', '', '', '', '', null]);
+      wsEletrica.addRow(['DIÁRIAS', valorDiariaExibida, totalDiariasQuantidade, '-', '-', null]);
+      wsEletrica.addRow(['TOTAL A PAGAR ELETRICISTA', '', '', '', '', null]);
       wsEletrica.columns = [
         { width: 30 }, { width: 14 }, { width: 12 }, { width: 16 },
-        { width: 16 }, { width: 14 }, { width: 14 },
+        { width: 16 }, { width: 14 },
       ];
-      wsEletrica.mergeCells(1, 1, 1, 7);
-      wsEletrica.mergeCells(2, 1, 2, 7);
+      wsEletrica.mergeCells(1, 1, 1, 6);
+      wsEletrica.mergeCells(2, 1, 2, 6);
 
       const tituloE = wsEletrica.getCell(1, 1);
       tituloE.font = { bold: true, size: 13, color: { argb: 'FFFFFFFF' } };
@@ -3216,7 +3210,7 @@ const ProducaoObra = () => {
       subtituloE.alignment = { horizontal: 'center', vertical: 'middle' };
       subtituloE.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corCinzaEscuro } };
 
-      for (let c = 1; c <= 7; c += 1) {
+      for (let c = 1; c <= 6; c += 1) {
         const header = wsEletrica.getCell(4, c);
         header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
         header.alignment = { horizontal: 'center', vertical: 'middle' };
@@ -3225,7 +3219,7 @@ const ProducaoObra = () => {
       }
 
       for (let r = 5; r <= wsEletrica.rowCount; r += 1) {
-        for (let c = 1; c <= 7; c += 1) {
+        for (let c = 1; c <= 6; c += 1) {
           const cell = wsEletrica.getCell(r, c);
           cell.border = bordaFina;
           cell.alignment = { horizontal: c === 1 ? 'left' : 'center', vertical: 'middle' };
@@ -3234,7 +3228,6 @@ const ProducaoObra = () => {
         wsEletrica.getCell(r, 2).numFmt = '#,##0.00';
         wsEletrica.getCell(r, 3).numFmt = '0.00%';
         wsEletrica.getCell(r, 6).numFmt = '#,##0.00';
-        wsEletrica.getCell(r, 7).numFmt = '#,##0.00';
       }
 
       const linhaTotalProducao = wsEletrica.rowCount - 2;
@@ -3243,22 +3236,21 @@ const ProducaoObra = () => {
       const linhaInicioDados = 5;
       const linhaFimDados = linhaInicioDados + resumoEletrica.length - 1;
       for (let r = linhaInicioDados; r <= linhaFimDados; r += 1) {
-        wsEletrica.getCell(r, 7).value = { formula: `IF(OR(B${r}="",C${r}=""),0,B${r}*C${r})` };
+        wsEletrica.getCell(r, 6).value = { formula: `IF(OR(B${r}="",C${r}=""),0,B${r}*C${r})` };
       }
-      wsEletrica.getCell(linhaTotalProducao, 7).value = resumoEletrica.length > 0
-        ? { formula: `SUM(G${linhaInicioDados}:G${linhaFimDados})` }
+      wsEletrica.getCell(linhaTotalProducao, 6).value = resumoEletrica.length > 0
+        ? { formula: `SUM(F${linhaInicioDados}:F${linhaFimDados})` }
         : 0;
-      wsEletrica.getCell(linhaTotalDiarias, 7).value = {
+      wsEletrica.getCell(linhaTotalDiarias, 6).value = {
         formula: `IF(OR(B${linhaTotalDiarias}="",C${linhaTotalDiarias}=""),0,B${linhaTotalDiarias}*C${linhaTotalDiarias})`,
       };
-      wsEletrica.getCell(ultimaLinhaE, 7).value = { formula: `G${linhaTotalProducao}+G${linhaTotalDiarias}` };
+      wsEletrica.getCell(ultimaLinhaE, 6).value = { formula: `F${linhaTotalProducao}+F${linhaTotalDiarias}` };
 
       wsEletrica.getCell(linhaTotalDiarias, 2).numFmt = '#,##0.00';
       wsEletrica.getCell(linhaTotalDiarias, 3).numFmt = '0.0';
-      wsEletrica.getCell(linhaTotalDiarias, 6).numFmt = '@';
-      wsEletrica.getCell(linhaTotalDiarias, 7).numFmt = '#,##0.00';
+      wsEletrica.getCell(linhaTotalDiarias, 6).numFmt = '#,##0.00';
 
-      for (let c = 1; c <= 7; c += 1) {
+      for (let c = 1; c <= 6; c += 1) {
         const totalProducaoCell = wsEletrica.getCell(linhaTotalProducao, c);
         totalProducaoCell.font = { bold: true };
         totalProducaoCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corCinzaClaro } };
@@ -3277,7 +3269,7 @@ const ProducaoObra = () => {
       wsEletrica.getRow(2).height = 28;
       referenciasResumoEletricistas.set(
         eletricista.id,
-        `'${escapeNomeAbaExcel(nomeAbaE)}'!G${ultimaLinhaE}`
+        `'${escapeNomeAbaExcel(nomeAbaE)}'!F${ultimaLinhaE}`
       );
     }
 

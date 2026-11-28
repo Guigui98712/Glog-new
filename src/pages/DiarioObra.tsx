@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -95,6 +95,7 @@ const DiarioObra = () => {
   const [descricao, setDescricao] = useState('');
   const [observacoes, setObservacoes] = useState('');
   const [fotos, setFotos] = useState<File[]>([]);
+  const [fotosEdicaoPendentes, setFotosEdicaoPendentes] = useState<File[]>([]);
   const [registrosAnteriores, setRegistrosAnteriores] = useState<RegistroDiario[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -110,6 +111,16 @@ const DiarioObra = () => {
   const [platform, setPlatform] = useState<string>('web');
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const previewsFotos = useMemo(() => fotos.map(foto => URL.createObjectURL(foto)), [fotos]);
+  const previewsFotosEdicao = useMemo(
+    () => fotosEdicaoPendentes.map(foto => URL.createObjectURL(foto)),
+    [fotosEdicaoPendentes]
+  );
+
+  useEffect(() => () => {
+    previewsFotos.forEach(url => URL.revokeObjectURL(url));
+    previewsFotosEdicao.forEach(url => URL.revokeObjectURL(url));
+  }, [previewsFotos, previewsFotosEdicao]);
 
   useEffect(() => {
     const checkPlatform = async () => {
@@ -315,11 +326,11 @@ const DiarioObra = () => {
           title: "Registro salvo com sucesso! 📝",
           description: "O registro do diário de obra foi salvo e está disponível para consulta.",
         });
-      } catch (err: any) {
+      } catch (err) {
         console.error('[DEBUG] Erro específico ao salvar no Supabase:', err);
         toast({
           title: "Erro no banco de dados",
-          description: `Não foi possível salvar o registro: ${err.message || 'Erro desconhecido'}. Tente novamente mais tarde.`,
+          description: `Não foi possível salvar o registro: ${err instanceof Error ? err.message : 'Erro desconhecido'}. Tente novamente mais tarde.`,
           variant: "destructive"
         });
       }
@@ -337,6 +348,7 @@ const DiarioObra = () => {
 
   const handleEditarRegistro = (registro: RegistroDiario) => {
     setRegistroEmEdicao(registro);
+    setFotosEdicaoPendentes([]);
     setShowEditDialog(true);
   };
 
@@ -344,7 +356,13 @@ const DiarioObra = () => {
     if (!registroEmEdicao || !obraId) return;
 
     try {
+      setSalvando(true);
       console.log('[DEBUG] Iniciando atualização do registro:', registroEmEdicao.id);
+
+      const novasFotos: string[] = [];
+      for (const foto of fotosEdicaoPendentes) {
+        novasFotos.push(await uploadFoto(foto));
+      }
       
       // Converter IDs para nomes de etapas se necessário
       let etapasIniciadas = registroEmEdicao.etapas_iniciadas;
@@ -361,7 +379,7 @@ const DiarioObra = () => {
       const dadosAtualizacao = {
         descricao: registroEmEdicao.descricao,
         observacoes: registroEmEdicao.observacoes,
-        fotos: registroEmEdicao.fotos || [],
+        fotos: [...(registroEmEdicao.fotos || []), ...novasFotos],
         etapas_iniciadas: etapasIniciadas || [],
         etapas_concluidas: registroEmEdicao.etapas_concluidas || [],
         obra_id: Number(obraId)
@@ -373,6 +391,7 @@ const DiarioObra = () => {
       await carregarDados();
       setShowEditDialog(false);
       setRegistroEmEdicao(null);
+      setFotosEdicaoPendentes([]);
       
       toast({
         title: "Registro atualizado! ✅",
@@ -382,9 +401,11 @@ const DiarioObra = () => {
       console.error('[DEBUG] Erro na atualização:', error);
       toast({
         title: "Erro na atualização",
-        description: "Não foi possível atualizar o registro. Tente novamente mais tarde.",
+        description: error instanceof Error ? error.message : "Não foi possível atualizar o registro. Tente novamente mais tarde.",
         variant: "destructive"
       });
+    } finally {
+      setSalvando(false);
     }
   };
 
@@ -520,113 +541,81 @@ const DiarioObra = () => {
     }
   };
 
-  const handleTirarFoto = async () => {
+  const handleAdicionarFoto = async (source: CameraSource, emEdicao = false) => {
     try {
       const image = await CapacitorCamera.getPhoto({
         quality: 90,
         allowEditing: false,
         resultType: CameraResultType.Base64,
-        source: CameraSource.Camera
+        source
       });
 
       if (!image.base64String) {
         throw new Error('Imagem não capturada');
       }
 
-      // Converter Base64 para Blob
-      const response = await fetch(`data:image/jpeg;base64,${image.base64String}`);
+      const formato = image.format.toLowerCase();
+      const tiposImagem: Record<string, { mime: string; extensao: string }> = {
+        jpg: { mime: 'image/jpeg', extensao: 'jpg' },
+        jpeg: { mime: 'image/jpeg', extensao: 'jpg' },
+        png: { mime: 'image/png', extensao: 'png' },
+        webp: { mime: 'image/webp', extensao: 'webp' },
+        gif: { mime: 'image/gif', extensao: 'gif' },
+        avif: { mime: 'image/avif', extensao: 'avif' },
+        heic: { mime: 'image/heic', extensao: 'heic' },
+        heif: { mime: 'image/heif', extensao: 'heif' }
+      };
+      const tipoImagem = tiposImagem[formato];
+      if (!tipoImagem) {
+        throw new Error(`Formato de imagem não suportado: ${formato}`);
+      }
+
+      const response = await fetch(`data:${tipoImagem.mime};base64,${image.base64String}`);
       const blob = await response.blob();
-
-      // Criar um arquivo File a partir do blob
       const timestamp = new Date().getTime();
-      const fileName = `foto_camera_${timestamp}.jpg`;
-      const file = new File([blob], fileName, { type: 'image/jpeg' });
+      const fileName = `foto_${source === CameraSource.Camera ? 'camera' : 'galeria'}_${timestamp}.${tipoImagem.extensao}`;
+      const file = new File([blob], fileName, { type: tipoImagem.mime });
 
-      // Adicionar à lista de fotos
-      setFotos(prevFotos => [...prevFotos, file]);
+      if (emEdicao) {
+        setFotosEdicaoPendentes(prevFotos => [...prevFotos, file]);
+      } else {
+        setFotos(prevFotos => [...prevFotos, file]);
+      }
       toast({
-        title: "Foto capturada",
+        title: source === CameraSource.Camera ? "Foto capturada" : "Foto selecionada",
         description: "A foto foi adicionada com sucesso!"
       });
     } catch (error) {
-      console.error('Erro ao tirar foto:', error);
+      console.error('Erro ao adicionar foto:', error);
       const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+      if (msg.toLowerCase().includes('cancel')) return;
       toast({
-        title: "Erro ao capturar imagem",
+        title: source === CameraSource.Camera ? "Erro ao capturar imagem" : "Erro ao selecionar foto",
         description: msg,
         variant: "destructive"
       });
     }
   };
 
-  // Nova função para selecionar fotos da galeria
-  const handleSelecionarFotoGaleria = async () => {
-    try {
-      // No Android, getPhotos não está implementado, então usamos getPhoto
-      const image = await CapacitorCamera.getPhoto({
-        quality: 90,
-        allowEditing: false,
-        resultType: CameraResultType.Base64,
-        source: CameraSource.Photos // Usar Photos para abrir a galeria em vez da câmera
-      });
-
-      if (!image.base64String) {
-        throw new Error('Imagem não capturada');
-      }
-
-      // Determinar o tipo MIME a partir do formato (ou default para jpeg)
-      const mimeType = image.format === 'png' ? 'image/png' : 'image/jpeg';
-      const fileExtension = image.format === 'png' ? 'png' : 'jpg';
-
-      // Converter Base64 para Blob
-      const response = await fetch(`data:${mimeType};base64,${image.base64String}`);
-      const blob = await response.blob();
-
-      // Criar um arquivo File a partir do blob
-      const timestamp = new Date().getTime();
-      const fileName = `foto_galeria_${timestamp}_${Math.random().toString(36).substring(2, 8)}.${fileExtension}`;
-      const file = new File([blob], fileName, { type: mimeType });
-
-      // Adicionar à lista de fotos
-      setFotos(prevFotos => [...prevFotos, file]);
-      toast({
-        title: "Foto selecionada",
-        description: "A foto foi adicionada com sucesso!"
-      });
-    } catch (error) {
-      console.error('[DEBUG] Erro ao selecionar foto da galeria:', error);
-      // Verificar se é erro de permissão cancelada pelo usuário (comum no iOS)
-      if (error instanceof Error && (error.message.includes('cancelled') || error.message.includes('cancelado'))) {
-         // Não mostrar toast de erro se o usuário cancelou
-         return;
-      }
-      const msg = error instanceof Error ? error.message : 'Erro desconhecido ao selecionar foto';
-      toast({
-        title: "Erro ao selecionar foto",
-        description: msg,
-        variant: "destructive"
-      });
-    }
-  };
-
-  // Nova função para lidar com o input de arquivo na web
-  const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>, emEdicao = false) => {
     if (event.target.files) {
       const arquivosSelecionados = Array.from(event.target.files);
-      // A função uploadFoto já tenta converter HEIC se necessário
-      setFotos(prevFotos => [...prevFotos, ...arquivosSelecionados]);
+      if (emEdicao) {
+        setFotosEdicaoPendentes(prevFotos => [...prevFotos, ...arquivosSelecionados]);
+      } else {
+        setFotos(prevFotos => [...prevFotos, ...arquivosSelecionados]);
+      }
       toast({
         title: "Arquivos Selecionados",
         description: `${arquivosSelecionados.length} arquivo(s) adicionado(s) para upload.`
       });
-      // Limpar o valor do input para permitir selecionar o mesmo arquivo novamente
       event.target.value = '';
     }
   };
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen">
+      <div className="flex min-h-screen flex-col items-center justify-center p-4">
         <div className="text-red-600 mb-4">{error}</div>
         <div className="flex gap-4">
           <Button onClick={() => navigate('/obras')}>
@@ -642,7 +631,7 @@ const DiarioObra = () => {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen">
+      <div className="flex min-h-screen flex-col items-center justify-center p-4">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
         <p className="text-gray-600">Carregando dados...</p>
       </div>
@@ -650,8 +639,8 @@ const DiarioObra = () => {
   }
 
   return (
-    <div className="space-y-8 p-6 max-w-4xl mx-auto">
-      <div className="flex items-center space-x-4">
+    <div className="mx-auto w-full max-w-4xl min-w-0 space-y-4 p-3 sm:space-y-8 sm:p-6">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-4">
         <Button
           variant="ghost"
           size="icon"
@@ -659,7 +648,7 @@ const DiarioObra = () => {
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <h1 className="text-3xl font-bold text-gray-800">Diário de Obra</h1>
+        <h1 className="min-w-0 flex-1 text-2xl font-bold text-gray-800 sm:text-3xl">Diário de Obra</h1>
         <Button
           variant="ghost"
           onClick={() => navigate(`/obras/${obraId}/relatorios`)}
@@ -668,18 +657,18 @@ const DiarioObra = () => {
         </Button>
       </div>
 
-      <div className="container mx-auto p-4 space-y-4">
-        <div className="flex flex-wrap gap-2 mb-4">
+      <div className="w-full min-w-0 space-y-4">
+        <div className="mb-4 flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => navigate(`/obras/${obraId}`)}>
             <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
           </Button>
         </div>
 
         {/* Calendário */}
-        <Card className="p-6">
+        <Card className="min-w-0 p-3 sm:p-6">
           <div className="flex flex-col items-center">
-            <h2 className="text-2xl font-semibold mb-6">Calendário de Registros</h2>
-            <div className="w-full flex justify-center">
+            <h2 className="mb-4 text-xl font-semibold sm:mb-6 sm:text-2xl">Calendário de Registros</h2>
+            <div className="flex w-full max-w-full justify-center overflow-x-auto">
               <Calendar
                 mode="single"
                 selected={data}
@@ -708,7 +697,7 @@ const DiarioObra = () => {
                 disabled={(date) => date > new Date()}
               />
             </div>
-            <div className="flex items-center justify-center space-x-4 mt-4">
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
               <div className="flex items-center">
                 <div className="w-4 h-4 rounded-full bg-primary mr-2"></div>
                 <span className="text-sm">Com Registro</span>
@@ -722,7 +711,7 @@ const DiarioObra = () => {
         </Card>
 
         {/* Formulário */}
-        <Card className="p-6 space-y-6">
+        <Card className="min-w-0 space-y-6 p-3 sm:p-6">
           <div>
             <Label>Data do Registro</Label>
             <Input
@@ -850,24 +839,25 @@ const DiarioObra = () => {
             {/* Seção de Fotos (Condicional por Plataforma) */}
             <div className="space-y-2">
               <Label htmlFor="fotos">Fotos ({fotos.length})</Label>
-              <div className="flex items-center space-x-4">
+              <div className="flex flex-wrap items-center gap-2">
                 {/* ---- Lógica Condicional ---- */}
                 {platform === 'web' ? (
                   // Opção para Web: Input de Arquivo
-                  <div className="relative">
+                  <div className="relative flex-1 sm:flex-none">
                     <Input
                       id="file-upload-input" // ID para o label (opcional)
                       type="file"
                       multiple
                       accept="image/*,.heic,.heif" // Tenta aceitar HEIC
                       onChange={handleFileInputChange}
-                      className="hidden" // Esconde o input padrão
+                      className="hidden"
                     />
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => document.getElementById('file-upload-input')?.click()} // Aciona o input escondido
+                      onClick={() => document.getElementById('file-upload-input')?.click()}
                       title="Selecionar arquivos do computador"
+                      className="min-h-11 w-full"
                     >
                       <ImageIcon className="mr-2 h-4 w-4" />
                       Selecionar Arquivos
@@ -878,8 +868,9 @@ const DiarioObra = () => {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={handleSelecionarFotoGaleria}
+                    onClick={() => handleAdicionarFoto(CameraSource.Photos)}
                     title="Selecionar fotos da galeria"
+                    className="min-h-11 flex-1 sm:flex-none"
                   >
                     <ImageIcon className="mr-2 h-4 w-4" />
                     Selecionar da Galeria
@@ -892,9 +883,10 @@ const DiarioObra = () => {
                   type="button"
                   variant="outline"
                   size="icon"
-                  onClick={handleTirarFoto} // handleTirarFoto usa CameraSource.Camera, que funciona em tudo
+                  onClick={() => handleAdicionarFoto(CameraSource.Camera)}
                   title="Tirar foto com a câmera"
-                  className="bg-primary text-white hover:bg-primary/90"
+                  aria-label="Tirar foto com a câmera"
+                  className="h-11 w-11 shrink-0 bg-primary text-white hover:bg-primary/90"
                 >
                   <FaCamera className="h-4 w-4" />
                 </Button>
@@ -905,6 +897,7 @@ const DiarioObra = () => {
                     type="button"
                     variant="outline"
                     onClick={() => setFotos([])}
+                    className="min-h-11 flex-1 sm:flex-none"
                   >
                     Limpar Fotos
                   </Button>
@@ -916,11 +909,10 @@ const DiarioObra = () => {
                   {fotos.map((foto, index) => (
                     <div key={index} className="relative group">
                       <img
-                        src={URL.createObjectURL(foto)}
+                        src={previewsFotos[index]}
                         alt={`Preview ${index + 1}`}
                         className="w-full h-24 object-cover rounded-lg"
-                        onLoad={(e) => URL.revokeObjectURL((e.target as HTMLImageElement).src)} // Boa prática
-                        onError={(e) => { // Fallback se a preview falhar (ex: HEIC no browser)
+                        onError={(e) => {
                           console.warn("Erro ao carregar preview da imagem:", foto.name);
                           (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150?text=Preview+Indisponível';
                           (e.target as HTMLImageElement).alt = 'Preview indisponível';
@@ -929,7 +921,9 @@ const DiarioObra = () => {
                       <Button
                         variant="destructive"
                         size="icon"
-                        className="absolute top-1 right-1 h-6 w-6 opacity-75 group-hover:opacity-100"
+                        type="button"
+                        aria-label={`Remover foto ${index + 1}`}
+                        className="absolute right-1 top-1 h-11 w-11 opacity-90 sm:h-8 sm:w-8 sm:opacity-75 sm:group-hover:opacity-100"
                         onClick={() => setFotos(fotos.filter((_, i) => i !== index))}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -951,7 +945,7 @@ const DiarioObra = () => {
         </Card>
 
         {/* Registros Anteriores */}
-        <Card className="p-6">
+        <Card className="min-w-0 p-3 sm:p-6">
           <h2 className="text-xl font-semibold mb-4">Registros Anteriores</h2>
           {registrosAnteriores.length === 0 ? (
             <div className="flex justify-center items-center h-[200px] text-gray-500">
@@ -961,8 +955,8 @@ const DiarioObra = () => {
             <div className="space-y-4">
               {registrosAnteriores.map((registro) => (
                 <Card key={registro.id} className="p-4">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
+                  <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 flex-1 break-words">
                       <p className="font-medium">
                         {format(parseISO(registro.data), "dd 'de' MMMM 'de' yyyy", {
                           locale: ptBR,
@@ -1051,8 +1045,18 @@ const DiarioObra = () => {
         </Card>
 
         {/* Dialog de Edição */}
-        <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <Dialog
+          open={showEditDialog}
+          onOpenChange={(open) => {
+            if (salvando && !open) return;
+            setShowEditDialog(open);
+            if (!open) {
+              setRegistroEmEdicao(null);
+              setFotosEdicaoPendentes([]);
+            }
+          }}
+        >
+          <DialogContent className="w-[calc(100vw-1rem)] max-w-4xl max-h-[90dvh] overflow-y-auto p-4 sm:max-h-[90vh] sm:p-6">
             <DialogHeader>
               <DialogTitle>Editar Registro</DialogTitle>
             </DialogHeader>
@@ -1182,52 +1186,83 @@ const DiarioObra = () => {
                 {/* Upload de Novas Fotos */}
                 <div>
                   <Label>Adicionar Novas Fotos</Label>
-                  <div className="space-y-4">
-                    <Input
-                      type="file"
-                      multiple
-                      accept="image/*,.heic,.heif"
-                      onChange={async (e) => {
-                        if (e.target.files && e.target.files.length > 0) {
-                          const novasUrls = [];
-                          for (const foto of Array.from(e.target.files)) {
-                            try {
-                              console.log('[DEBUG] Iniciando upload de nova foto na edição:', foto.name);
-                              const resultado = await uploadFoto(foto);
-                              novasUrls.push(resultado);
-                              console.log('[DEBUG] Foto enviada com sucesso:', resultado);
-                            } catch (error) {
-                              console.error('[DEBUG] Erro ao fazer upload da foto na edição:', error);
-                              toast({
-                                title: "Erro no upload de imagens",
-                                description: error instanceof Error ? error.message : "Não foi possível enviar uma ou mais fotos. Verifique o tamanho e formato das imagens.",
-                                variant: "destructive"
-                              });
-                            }
-                          }
-                          
-                          if (novasUrls.length > 0) {
-                            console.log('[DEBUG] Atualizando registro com novas fotos:', novasUrls);
-                            setRegistroEmEdicao(prev => {
-                              if (!prev) return null;
-                              const fotosAtuais = prev.fotos || [];
-                              const novasFotos = [...fotosAtuais, ...novasUrls];
-                              console.log('[DEBUG] Fotos atualizadas:', novasFotos);
-                              return {
-                                ...prev,
-                                fotos: novasFotos
-                              };
-                            });
-                            
-                            toast({
-                              title: "Fotos adicionadas",
-                              description: `${novasUrls.length} foto(s) adicionada(s) com sucesso!`
-                            });
-                          }
-                        }
-                      }}
-                    />
-                    
+                  <div className="mt-2 space-y-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {platform === 'web' ? (
+                        <>
+                          <Input
+                            id="file-upload-edit-input"
+                            type="file"
+                            multiple
+                            accept="image/*,.heic,.heif"
+                            onChange={(e) => handleFileInputChange(e, true)}
+                            disabled={salvando}
+                            className="hidden"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => document.getElementById('file-upload-edit-input')?.click()}
+                            disabled={salvando}
+                            className="min-h-11 flex-1 sm:flex-none"
+                          >
+                            <ImageIcon className="mr-2 h-4 w-4" />
+                            Selecionar arquivos
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => handleAdicionarFoto(CameraSource.Photos, true)}
+                          disabled={salvando}
+                          className="min-h-11 flex-1 sm:flex-none"
+                        >
+                          <ImageIcon className="mr-2 h-4 w-4" />
+                          Selecionar da galeria
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handleAdicionarFoto(CameraSource.Camera, true)}
+                        disabled={salvando}
+                        aria-label="Tirar foto com a câmera"
+                        className="min-h-11 flex-1 sm:flex-none"
+                      >
+                        <Camera className="mr-2 h-4 w-4" />
+                        Tirar foto
+                      </Button>
+                    </div>
+
+                    {fotosEdicaoPendentes.length > 0 && (
+                      <div>
+                        <Label>Novas fotos ({fotosEdicaoPendentes.length})</Label>
+                        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                          {fotosEdicaoPendentes.map((foto, index) => (
+                            <div key={`${foto.name}-${index}`} className="relative">
+                              <img
+                                src={previewsFotosEdicao[index]}
+                                alt={`Nova foto ${index + 1}`}
+                                className="h-24 w-full rounded-lg object-cover"
+                              />
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                size="icon"
+                                aria-label={`Remover nova foto ${index + 1}`}
+                                disabled={salvando}
+                                className="absolute right-1 top-1 h-11 w-11 sm:h-8 sm:w-8"
+                                onClick={() => setFotosEdicaoPendentes(prev => prev.filter((_, i) => i !== index))}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Preview das fotos atuais */}
                     {registroEmEdicao.fotos && registroEmEdicao.fotos.length > 0 && (
                       <div className="mt-4">
@@ -1245,9 +1280,12 @@ const DiarioObra = () => {
                                 }}
                               />
                               <Button
+                                type="button"
                                 variant="destructive"
                                 size="icon"
-                                className="absolute top-1 right-1 h-6 w-6 opacity-75 group-hover:opacity-100"
+                                aria-label={`Remover foto ${index + 1}`}
+                                disabled={salvando}
+                                className="absolute right-1 top-1 h-11 w-11 opacity-90 sm:h-8 sm:w-8 sm:opacity-75 sm:group-hover:opacity-100"
                                 onClick={() => {
                                   setRegistroEmEdicao(prev => {
                                     if (!prev) return null;
@@ -1266,8 +1304,8 @@ const DiarioObra = () => {
                   </div>
                 </div>
 
-                <Button onClick={handleSalvarEdicao} className="w-full">
-                  Salvar Alterações
+                <Button onClick={handleSalvarEdicao} className="min-h-11 w-full" disabled={salvando}>
+                  {salvando ? 'Salvando...' : 'Salvar Alterações'}
                 </Button>
               </div>
             )}
@@ -1276,7 +1314,7 @@ const DiarioObra = () => {
 
         {/* Dialog de Visualização */}
         <Dialog open={!!registroSelecionado} onOpenChange={() => setRegistroSelecionado(null)}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="w-[calc(100vw-1rem)] max-w-4xl max-h-[90dvh] overflow-y-auto p-4 sm:max-h-[90vh] sm:p-6">
             <DialogHeader>
               <DialogTitle>
                 Registro do dia {registroSelecionado && format(parseISO(registroSelecionado.data), "dd 'de' MMMM 'de' yyyy", {
@@ -1330,7 +1368,7 @@ const DiarioObra = () => {
                     </div>
                   </div>
                 )}
-                <div className="flex justify-end space-x-2">
+                <div className="flex flex-wrap justify-end gap-2">
                   <Button
                     variant="outline"
                     onClick={() => handleEditarRegistro(registroSelecionado)}

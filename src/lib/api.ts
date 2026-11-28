@@ -561,16 +561,33 @@ export const uploadFoto = async (file: File): Promise<string> => {
       tamanho: file.size
     });
 
-    // Validar se é uma imagem
-    if (!file.type.startsWith('image/') && !file.name.toLowerCase().match(/\.(heic|heif)$/)) {
+    const extensaoOriginal = file.name.split('.').pop()?.toLowerCase() || '';
+    const mimePorExtensao: Record<string, string> = {
+      avif: 'image/avif',
+      bmp: 'image/bmp',
+      gif: 'image/gif',
+      heic: 'image/heic',
+      heif: 'image/heif',
+      jpeg: 'image/jpeg',
+      jpg: 'image/jpeg',
+      png: 'image/png',
+      tif: 'image/tiff',
+      tiff: 'image/tiff',
+      webp: 'image/webp'
+    };
+    const mimeDaExtensao = mimePorExtensao[extensaoOriginal];
+
+    if (!file.type.startsWith('image/') && !mimeDaExtensao) {
       throw new Error('O arquivo deve ser uma imagem');
     }
 
-    let fileToUpload = file;
+    let fileToUpload = !file.type || file.type === 'application/octet-stream'
+      ? new File([file], file.name, { type: mimeDaExtensao })
+      : file;
     
     // Verificar se é uma imagem HEIC/HEIF
-    const isHeic = file.type === 'image/heic' || 
-                   file.type === 'image/heif' || 
+    const isHeic = file.type.toLowerCase().includes('heic') ||
+                   file.type.toLowerCase().includes('heif') ||
                    file.name.toLowerCase().endsWith('.heic') || 
                    file.name.toLowerCase().endsWith('.heif');
 
@@ -708,7 +725,8 @@ export const salvarRegistroDiario = async (registro: Partial<RegistroDiario>) =>
       obra_id: registro.obra_id,
       data: registro.data,
       descricao: registro.descricao,
-      observacoes: registro.observacoes || null
+      observacoes: registro.observacoes || null,
+      fotos: registro.fotos || []
     };
     
     try {
